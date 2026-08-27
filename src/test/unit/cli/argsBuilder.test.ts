@@ -64,6 +64,23 @@ test('an empty or absent coverageExclusions never appends the flag', () => {
 	assert.ok(!empty.includes('--coverage-exclusions'));
 });
 
+test('perTest appends --per-test-report and --per-test-classpath id=path together', () => {
+	const args = buildAnalyzeArgs({
+		repo: '/repo', diffMode: { kind: 'uncommitted' }, reportPath: 'jacoco.xml', outPath: '/tmp/out.json',
+		perTest: { classpathModuleId: 'root', classpathPath: 'mutation-classpath.txt' },
+	});
+	assert.ok(args.includes('--per-test-report'));
+	const flagIndex = args.indexOf('--per-test-classpath');
+	assert.ok(flagIndex >= 0);
+	assert.equal(args[flagIndex + 1], 'root=mutation-classpath.txt');
+});
+
+test('an absent perTest never appends either flag', () => {
+	const args = buildAnalyzeArgs({ repo: '/repo', diffMode: { kind: 'uncommitted' }, reportPath: 'jacoco.xml', outPath: '/tmp/out.json' });
+	assert.ok(!args.includes('--per-test-report'));
+	assert.ok(!args.includes('--per-test-classpath'));
+});
+
 test('--out is always the last two args, so a caller can rely on args[args.length - 1]', () => {
 	const args = buildAnalyzeArgs({
 		repo: '/repo', diffMode: { kind: 'no-vcs' }, reportPath: 'jacoco.xml', outPath: '/tmp/out.json',

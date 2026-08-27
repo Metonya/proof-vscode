@@ -20,6 +20,8 @@ export interface AnalyzeArgsInput {
 	fileCoverage?: boolean;
 	/** Sonar-style `sonar.coverage.exclusions` globs (D-05) - passed through verbatim, one authored list, never merged with a repo's own coverdict.config.json. */
 	coverageExclusions?: readonly string[];
+	/** F3 (Plan.md Bölüm 4): L2 per-test evidence. Requires a diff mode (rejected under --no-vcs on the CLI side) and perTestClasspathPath - both or neither, never one alone. */
+	perTest?: { classpathModuleId: string; classpathPath: string };
 }
 
 export function buildAnalyzeArgs(input: AnalyzeArgsInput): string[] {
@@ -43,6 +45,9 @@ export function buildAnalyzeArgs(input: AnalyzeArgsInput): string[] {
 	}
 	if (input.coverageExclusions && input.coverageExclusions.length > 0) {
 		args.push('--coverage-exclusions', input.coverageExclusions.join(','));
+	}
+	if (input.perTest) {
+		args.push('--per-test-report', '--per-test-classpath', `${input.perTest.classpathModuleId}=${input.perTest.classpathPath}`);
 	}
 	args.push('--out', input.outPath);
 

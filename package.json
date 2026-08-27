@@ -62,6 +62,14 @@
       {
         "command": "coverdict.toggleCoverageGutter",
         "title": "coverdict: Toggle Coverage Gutter"
+      },
+      {
+        "command": "coverdict.analyzePerTest",
+        "title": "coverdict: Analyze (per-test)"
+      },
+      {
+        "command": "coverdict.showLineTests",
+        "title": "coverdict: Show Line → Tests"
       }
     ]
   },

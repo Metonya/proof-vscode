@@ -1,4 +1,17 @@
-import type { FileCoverageBlock, FileCoverageEntry, LineTuple, Metric, MetricSet, VerdictDocument } from './types';
+import type {
+	FileCoverageBlock,
+	FileCoverageEntry,
+	LineTuple,
+	Metric,
+	MetricSet,
+	ModuleInput,
+	PerTestBlock,
+	PerTestEntry,
+	PerTestLine,
+	PerTestModuleEvidence,
+	Reason,
+	VerdictDocument,
+} from './types';
 
 /**
  * `verdict/` never throws (Plan.md Bölüm 2/6) - a malformed or truncated
@@ -16,10 +29,13 @@ export function parseVerdict(raw: string): Result<VerdictDocument> {
 	}
 
 	if (!isVerdictDocument(json)) {
-		return { ok: false, error: 'does not look like a coverdict verdict document (missing schemaVersion/tool/analysis/coverage)' };
+		return { ok: false, error: 'does not look like a coverdict verdict document (missing a required top-level field)' };
 	}
 	if ('fileCoverage' in json && !isFileCoverageBlock(json.fileCoverage)) {
 		return { ok: false, error: 'fileCoverage is present but malformed' };
+	}
+	if ('perTest' in json && !isPerTestBlock(json.perTest)) {
+		return { ok: false, error: 'perTest is present but malformed' };
 	}
 	return { ok: true, value: json };
 }
@@ -31,7 +47,21 @@ function isVerdictDocument(value: unknown): value is VerdictDocument {
 	return typeof value.schemaVersion === 'string'
 		&& isRecord(value.tool) && typeof value.tool.version === 'string'
 		&& isRecord(value.analysis) && (value.analysis.status === 'complete' || value.analysis.status === 'incomplete')
-		&& isRecord(value.coverage) && isMetricSet(value.coverage.overall);
+		&& isRecord(value.inputs) && Array.isArray(value.inputs.modules) && value.inputs.modules.every(isModuleInput)
+		&& isRecord(value.coverage) && isMetricSet(value.coverage.overall)
+		&& Array.isArray(value.warnings) && value.warnings.every(isReason);
+}
+
+function isModuleInput(value: unknown): value is ModuleInput {
+	return isRecord(value)
+		&& typeof value.id === 'string'
+		&& typeof value.root === 'string'
+		&& Array.isArray(value.sourceRoots) && value.sourceRoots.every((s) => typeof s === 'string')
+		&& Array.isArray(value.testRoots) && value.testRoots.every((s) => typeof s === 'string');
+}
+
+function isReason(value: unknown): value is Reason {
+	return isRecord(value) && typeof value.code === 'string' && typeof value.message === 'string';
 }
 
 function isFileCoverageBlock(value: unknown): value is FileCoverageBlock {
@@ -51,6 +81,33 @@ function isFileCoverageEntry(value: unknown): value is FileCoverageEntry {
 
 function isLineTuple(value: unknown): value is LineTuple {
 	return Array.isArray(value) && value.length === 5 && value.every((n) => typeof n === 'number');
+}
+
+function isPerTestBlock(value: unknown): value is PerTestBlock {
+	return isRecord(value)
+		&& typeof value.engine === 'string'
+		&& typeof value.engineVersion === 'string'
+		&& Array.isArray(value.modules) && value.modules.every(isPerTestModuleEvidence);
+}
+
+function isPerTestModuleEvidence(value: unknown): value is PerTestModuleEvidence {
+	return isRecord(value)
+		&& typeof value.id === 'string'
+		&& Array.isArray(value.entries) && value.entries.every(isPerTestEntry)
+		&& Array.isArray(value.ambient) && value.ambient.every(isPerTestEntry);
+}
+
+function isPerTestEntry(value: unknown): value is PerTestEntry {
+	return isRecord(value)
+		&& typeof value.className === 'string'
+		&& typeof value.methodName === 'string'
+		&& Array.isArray(value.lines) && value.lines.every(isPerTestLine);
+}
+
+function isPerTestLine(value: unknown): value is PerTestLine {
+	return isRecord(value)
+		&& typeof value.line === 'number'
+		&& Array.isArray(value.tests) && value.tests.every((t) => typeof t === 'string');
 }
 
 function isMetricSet(value: unknown): value is MetricSet {

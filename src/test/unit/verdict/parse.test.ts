@@ -11,7 +11,9 @@ function minimalDocument(): unknown {
 		schemaVersion: '0.1.0',
 		tool: { name: 'coverdict', version: '0.1.0' },
 		analysis: { status: 'complete', exitCode: 0, incompleteReasons: [] },
+		inputs: { modules: [{ id: 'root', root: '.', sourceRoots: ['src/main/java'], testRoots: ['src/test/java'] }] },
 		coverage: { overall: MINIMAL_METRIC_SET, newCode: { status: 'unavailable_no_vcs' } },
+		warnings: [],
 	};
 }
 
@@ -76,4 +78,53 @@ test('a malformed fileCoverage block (a line tuple with the wrong arity) is reje
 	};
 	const result = parseVerdict(JSON.stringify(doc));
 	assert.equal(result.ok, false);
+});
+
+test('a well-formed perTest block parses through, entries and ambient both', () => {
+	const doc = minimalDocument() as Record<string, unknown>;
+	doc.perTest = {
+		engine: 'pitest',
+		engineVersion: '1.15.8',
+		modules: [{
+			id: 'root',
+			entries: [{ className: 'dev.coverdict.playground.Calculator', methodName: 'add', lines: [{ line: 7, tests: ['CalcTest#addsTwoNumbers()'] }] }],
+			ambient: [{ className: 'dev.coverdict.playground.Calculator', methodName: '<clinit>', lines: [{ line: 3, tests: ['CalcTest#addsTwoNumbers()'] }] }],
+		}],
+	};
+	const result = parseVerdict(JSON.stringify(doc));
+	assert.equal(result.ok, true);
+	if (result.ok) {
+		assert.equal(result.value.perTest?.modules[0].entries[0].lines[0].tests[0], 'CalcTest#addsTwoNumbers()');
+		assert.equal(result.value.perTest?.modules[0].ambient[0].methodName, '<clinit>');
+	}
+});
+
+test('a document with no perTest at all parses with it left undefined', () => {
+	const result = parseVerdict(JSON.stringify(minimalDocument()));
+	assert.equal(result.ok, true);
+	if (result.ok) {
+		assert.equal(result.value.perTest, undefined);
+	}
+});
+
+test('a malformed perTest block (a line with no tests array) is rejected', () => {
+	const doc = minimalDocument() as Record<string, unknown>;
+	doc.perTest = {
+		engine: 'pitest',
+		engineVersion: '1.15.8',
+		modules: [{ id: 'root', entries: [{ className: 'C', methodName: 'm', lines: [{ line: 1 }] }], ambient: [] }],
+	};
+	const result = parseVerdict(JSON.stringify(doc));
+	assert.equal(result.ok, false);
+});
+
+test('warnings carry through with their optional path/module/count fields', () => {
+	const doc = minimalDocument() as Record<string, unknown>;
+	doc.warnings = [{ code: 'PER_TEST_TRUNCATED', message: 'evidence dropped', module: 'root', count: 3 }];
+	const result = parseVerdict(JSON.stringify(doc));
+	assert.equal(result.ok, true);
+	if (result.ok) {
+		assert.equal(result.value.warnings[0].code, 'PER_TEST_TRUNCATED');
+		assert.equal(result.value.warnings[0].count, 3);
+	}
 });

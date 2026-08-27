@@ -1,4 +1,4 @@
-import type { FileCoverageBlock, MetricSet } from '../verdict/types';
+import type { FileCoverageBlock, MetricSet, PerTestBlock, Reason } from '../verdict/types';
 
 /**
  * The one place the last analyze run's coverage data lives (Plan.md Bölüm
@@ -52,4 +52,21 @@ export function setUsingFallback(next: boolean): void {
 export function onCoverageStateChanged(listener: (state: CoverageState) => void): () => void {
 	listeners.add(listener);
 	return () => listeners.delete(listener);
+}
+
+/** F3: the last run's L2 evidence, set only by `coverdict.analyzePerTest` (a separate command from the main scan - --per-test-report needs a diff mode, D-55). */
+export interface PerTestState {
+	moduleId: string;
+	perTest: PerTestBlock | undefined;
+	warnings: readonly Reason[];
+}
+
+let perTestState: PerTestState | undefined;
+
+export function setPerTestState(next: PerTestState): void {
+	perTestState = next;
+}
+
+export function getPerTestState(): PerTestState | undefined {
+	return perTestState;
 }
