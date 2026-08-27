@@ -8,7 +8,7 @@ import { getCoverageState, isGutterVisible, setCoverageState, setGutterVisible, 
 import { parseVerdict } from '../verdict/parse';
 import type { FileCoverageBlock, MetricSet } from '../verdict/types';
 import { applyExcludedDecorations, applyFallbackCoverage, clearFallbackCoverage, type FallbackDecorationTypes } from './decorationFallback';
-import { clearCoverage, hasNativeCoverageApi, publishFileCoverage, readPartialLineMode } from './coverageProvider';
+import { hasNativeCoverageApi, publishFileCoverage, readPartialLineMode, resetCoverageController } from './coverageProvider';
 import { showCoverageSummary, showNoFileCoverageWarning } from './statusBar';
 
 /**
@@ -18,8 +18,15 @@ import { showCoverageSummary, showNoFileCoverageWarning } from './statusBar';
  * next diff sees). Always requests `--file-coverage` - painting the gutter
  * is F2's whole point, and the payload-size reason it is opt-in on the CLI
  * (Plan.md Faz 1) does not apply to a single-workspace, on-demand run here.
+ *
+ * `controller` is mutable and re-assigned by `resetController` (F4's hide
+ * path, verified by hand: an empty `TestRun` does NOT clear a prior run's
+ * Explorer file-percentage badges - only disposing and rebuilding the whole
+ * `TestController` does). Every read of `sinks.controller` happens at call
+ * time, never captured early, so a reset is visible everywhere immediately.
  */
 export interface CoverageSinks {
+	context: vscode.ExtensionContext;
 	controller: vscode.TestController;
 	excludedDecorationType: vscode.TextEditorDecorationType;
 	fallbackDecorationTypes: FallbackDecorationTypes;
@@ -33,6 +40,14 @@ export function registerAnalyzeCommand(context: vscode.ExtensionContext, output:
 /** F4: toggles the gutter for the last analyze run's data - no re-scan, just republish or clear what is already in model/store. */
 export function registerToggleCoverageCommand(sinks: CoverageSinks): vscode.Disposable {
 	return vscode.commands.registerCommand('coverdict.toggleCoverageGutter', () => toggleCoverageGutter(sinks));
+}
+
+/** Restores the last run's coverage from storage without invoking the CLI - see restoreLastCoverage in extension.ts. */
+export function republishCoverage(sinks: CoverageSinks, workspaceRoot: string, fileCoverage: FileCoverageBlock, overall: MetricSet): void {
+	setCoverageState({ workspaceRoot, fileCoverage, overall });
+	paintCoverage(sinks, workspaceRoot, fileCoverage);
+	applyExcludedDecorations(sinks.excludedDecorationType, workspaceRoot, fileCoverage.excluded);
+	showCoverageSummary(sinks.statusBarItem, overall, true);
 }
 
 function toggleCoverageGutter(sinks: CoverageSinks): void {
@@ -49,7 +64,7 @@ function toggleCoverageGutter(sinks: CoverageSinks): void {
 		paintCoverage(sinks, state.workspaceRoot, state.fileCoverage);
 		showCoverageSummary(sinks.statusBarItem, state.overall, true);
 	} else {
-		clearCoverage(sinks.controller);
+		resetController(sinks);
 		clearFallbackCoverage(sinks.fallbackDecorationTypes);
 		applyExcludedDecorations(sinks.excludedDecorationType, state.workspaceRoot, []);
 		sinks.statusBarItem.text = '$(eye-closed) coverdict';
@@ -168,7 +183,7 @@ function publishCoverage(folder: vscode.WorkspaceFolder, sinks: CoverageSinks, f
 	if (!fileCoverage) {
 		showNoFileCoverageWarning(sinks.statusBarItem);
 		applyExcludedDecorations(sinks.excludedDecorationType, workspaceRoot, []);
-		clearCoverage(sinks.controller);
+		resetController(sinks);
 		clearFallbackCoverage(sinks.fallbackDecorationTypes);
 		return;
 	}
@@ -182,9 +197,9 @@ function publishCoverage(folder: vscode.WorkspaceFolder, sinks: CoverageSinks, f
  * Tries the native path first unless `coverdict.gutter.forceFallback` is
  * set (F7's own manual-test lever); a `false` return from
  * `publishFileCoverage` (unsupported host, or a real runtime failure) falls
- * through to the decoration fallback automatically. Whichever path is NOT
- * used gets explicitly cleared, so a host that flips between them across
- * runs (e.g. toggling `forceFallback`) never shows both at once.
+ * through to the decoration fallback automatically. A switch away from the
+ * native path resets the controller first (see `resetController`) so no
+ * stale native marks survive alongside the fallback's.
  */
 function paintCoverage(sinks: CoverageSinks, workspaceRoot: string, fileCoverage: FileCoverageBlock): void {
 	const forceFallback = vscode.workspace.getConfiguration('coverdict').get<boolean>('gutter.forceFallback') ?? false;
@@ -194,7 +209,12 @@ function paintCoverage(sinks: CoverageSinks, workspaceRoot: string, fileCoverage
 	if (painted) {
 		clearFallbackCoverage(sinks.fallbackDecorationTypes);
 	} else {
-		clearCoverage(sinks.controller);
+		resetController(sinks);
 		applyFallbackCoverage(sinks.fallbackDecorationTypes, workspaceRoot, fileCoverage, readPartialLineMode());
 	}
+}
+
+function resetController(sinks: CoverageSinks): void {
+	sinks.controller = resetCoverageController(sinks.controller);
+	sinks.context.subscriptions.push(sinks.controller);
 }

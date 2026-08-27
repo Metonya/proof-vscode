@@ -1,8 +1,9 @@
+import * as fs from 'node:fs';
 import * as vscode from 'vscode';
 
 import { getCoverageState, isGutterVisible, isUsingFallback } from './model/store';
 import { createCoverageController, readPartialLineMode } from './ui/coverageProvider';
-import { registerAnalyzeCommand, registerToggleCoverageCommand } from './ui/commands';
+import { registerAnalyzeCommand, registerToggleCoverageCommand, republishCoverage, type CoverageSinks } from './ui/commands';
 import {
 	applyExcludedDecorations,
 	applyFallbackCoverage,
@@ -10,6 +11,7 @@ import {
 	createFallbackDecorationTypes,
 } from './ui/decorationFallback';
 import { createStatusBarItem } from './ui/statusBar';
+import { parseVerdict } from './verdict/parse';
 
 /**
  * Registration only - no logic lives here. Features register themselves
@@ -22,7 +24,7 @@ export function activate(context: vscode.ExtensionContext): void {
 	const excludedDecorationType = createExcludedDecorationType();
 	const fallbackDecorationTypes = createFallbackDecorationTypes();
 	const statusBarItem = createStatusBarItem();
-	const sinks = { controller, excludedDecorationType, fallbackDecorationTypes, statusBarItem };
+	const sinks: CoverageSinks = { context, controller, excludedDecorationType, fallbackDecorationTypes, statusBarItem };
 
 	context.subscriptions.push(
 		output,
@@ -49,6 +51,33 @@ export function activate(context: vscode.ExtensionContext): void {
 			}
 		}),
 	);
+
+	// The CLI's own output is already sitting in extension storage from the
+	// last run (Plan.md Bölüm 5: verdict-current.json, byte-for-byte) - a
+	// window reload should not force a fresh scan just to see it again.
+	void restoreLastCoverage(context, sinks);
+}
+
+async function restoreLastCoverage(context: vscode.ExtensionContext, sinks: CoverageSinks): Promise<void> {
+	const folder = vscode.workspace.workspaceFolders?.[0];
+	const storageRoot = context.storageUri ?? context.globalStorageUri;
+	if (!folder || !storageRoot) {
+		return;
+	}
+
+	const outUri = vscode.Uri.joinPath(storageRoot, 'verdict-current.json');
+	let raw: string;
+	try {
+		raw = await fs.promises.readFile(outUri.fsPath, 'utf8');
+	} catch {
+		return; // nothing saved yet - the normal first-run shape, not an error
+	}
+
+	const parsed = parseVerdict(raw);
+	if (!parsed.ok || !parsed.value.fileCoverage) {
+		return;
+	}
+	republishCoverage(sinks, folder.uri.fsPath, parsed.value.fileCoverage, parsed.value.coverage.overall);
 }
 
 export function deactivate(): void {

@@ -66,17 +66,17 @@ export function publishFileCoverage(controller: vscode.TestController, workspace
 }
 
 /**
- * F4's toggle-off: the native API has no "remove this coverage" call, so an
- * empty `TestRun` (started and ended with zero `addCoverage` calls) is
- * published instead - unverified in real VS Code whether this actually
- * clears the previous run's gutter marks or merely stops adding to them
- * (Plan.md's open risk 7). If it doesn't, F4 needs a different mechanism.
+ * F4's toggle-off: an empty `TestRun` does NOT reliably clear a prior run's
+ * coverage in real VS Code (confirmed by hand, 2026-08-27 - Explorer file-
+ * percentage badges kept the old numbers) - VS Code has no "remove this
+ * coverage" call at all, so the only guaranteed clear is destroying the
+ * `TestController` itself and building a fresh one. The caller must replace
+ * its stored controller reference with the return value and re-subscribe it
+ * for disposal - the old one is fully disposed here, unusable afterwards.
  */
-export function clearCoverage(controller: vscode.TestController): void {
-	if (!hasNativeCoverageApi()) {
-		return;
-	}
-	controller.createTestRun(new vscode.TestRunRequest()).end();
+export function resetCoverageController(oldController: vscode.TestController): vscode.TestController {
+	oldController.dispose();
+	return createCoverageController();
 }
 
 function toStatementCoverage(mapped: MappedLine): vscode.StatementCoverage {
