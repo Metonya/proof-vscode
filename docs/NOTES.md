@@ -82,8 +82,40 @@ Bu hem madde 5'in "boş diff" durumunu netleştirecek hem de Kapsama
 ağacındaki "Yeni Kod" ve "Kapsanmayan Yeni Satırlar" bölümlerini gerçek
 veriyle test edecek ilk senaryo olacak.
 
+## 8. Explorer rozetleri artık sadece `Calculator.java`'da görünüyor - eskiden daha fazla dosyada vardı
+
+Faz 9'dan önce (native Test Coverage API'yle) `Notifier.java` ve
+`NotifyingCalculator.java` gibi dosyalarda da (örn. %100) rozet
+görünüyordu; Faz 9'un kendi `ExplorerBadgeProvider`'ıyla artık sadece
+`Calculator.java` üzerinde rozet var, klasör rozetleri (`src`,
+`.../playground`) de görünüyor ama tek dosyadan geliyor. Kullanıcı eski
+görünümü ("daha güzeldi") tercih ediyor. Olası neden: `ExplorerBadgeProvider`
+sadece `fileCoverage.files[]`'ta **gerçekten olan** dosyaları
+rozetliyor - `Notifier`/`NotifyingCalculator` JaCoCo raporunda hiç
+görünmüyor olabilir (hiç test edilmemiş/instrumente edilmemiş dosyalar
+JaCoCo'nun raporuna hiç girmeyebilir), native API'nin bunları nasıl
+%100 gösterdiği (belki VS Code'un kendi "test edilmeyen dosya = kapsam
+dışı, göstermeye gerek yok" farklı bir varsayılan davranışı vardı, ya da
+eskiden farklı bir veri seti kullanılıyordu) araştırılmalı. Yapılacak:
+gerçek `fileCoverage.files[]` içeriğini (playground'un son taramasından)
+inceleyip hangi dosyaların hiç girmediğini doğrula, sonra native'in eski
+davranışıyla kıyasla - kasıtlı bir fark mı (JaCoCo'da olmayan dosya
+gerçekten "veri yok" demektir, hard rule 3a'ya göre boyanmaması doğru
+olabilir) yoksa gerçek bir regresyon mu, karar ver.
+
+## 9. Analiz sonrası sağ alttan çıkan bildirim mesajının formatı kötü
+
+`runAnalyzeCore`'un sonunda `showInformationMessage` ile gösterilen
+"coverdict: complete - jacoco-line 94.4% · strict-line 83.3% ·
+sonar-compatible 84.6%" mesajı ekran görüntüsünde çirkin/okunaksız
+duruyor. Format, satır sonu davranışı, hangi bilginin öne çıkarılacağı
+(belki sadece seçili `badgeMetric` öne çıkıp diğer ikisi küçük harfle
+yanında, ya da bildirim yerine sadece durum çubuğuna/ağaçlara
+bırakılıp bu bildirim tamamen kaldırılıp yerine daha sade bir şey
+konması) yeniden tasarlanmalı.
+
 ---
 
-**Sıra:** yukarıdaki 5 madde (1-5) kodda çözülecek, sonra madde 7'deki
-branch senaryosuyla gerçek "yeni kod" akışı doğrulanacak, ondan sonra
-Faz 12'ye (mutasyon) geçilecek.
+**Sıra:** yukarıdaki maddeler (1-5, 8, 9) kodda çözülecek, sonra madde
+7'deki branch senaryosuyla gerçek "yeni kod" akışı doğrulanacak, ondan
+sonra Faz 12'ye (mutasyon) geçilecek.
