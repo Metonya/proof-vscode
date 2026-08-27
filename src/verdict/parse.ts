@@ -1,4 +1,4 @@
-import type { Metric, MetricSet, VerdictDocument } from './types';
+import type { FileCoverageBlock, FileCoverageEntry, LineTuple, Metric, MetricSet, VerdictDocument } from './types';
 
 /**
  * `verdict/` never throws (Plan.md Bölüm 2/6) - a malformed or truncated
@@ -18,6 +18,9 @@ export function parseVerdict(raw: string): Result<VerdictDocument> {
 	if (!isVerdictDocument(json)) {
 		return { ok: false, error: 'does not look like a coverdict verdict document (missing schemaVersion/tool/analysis/coverage)' };
 	}
+	if ('fileCoverage' in json && !isFileCoverageBlock(json.fileCoverage)) {
+		return { ok: false, error: 'fileCoverage is present but malformed' };
+	}
 	return { ok: true, value: json };
 }
 
@@ -29,6 +32,25 @@ function isVerdictDocument(value: unknown): value is VerdictDocument {
 		&& isRecord(value.tool) && typeof value.tool.version === 'string'
 		&& isRecord(value.analysis) && (value.analysis.status === 'complete' || value.analysis.status === 'incomplete')
 		&& isRecord(value.coverage) && isMetricSet(value.coverage.overall);
+}
+
+function isFileCoverageBlock(value: unknown): value is FileCoverageBlock {
+	if (!isRecord(value) || !Array.isArray(value.files) || !Array.isArray(value.excluded)) {
+		return false;
+	}
+	return value.files.every(isFileCoverageEntry) && value.excluded.every((p) => typeof p === 'string');
+}
+
+function isFileCoverageEntry(value: unknown): value is FileCoverageEntry {
+	return isRecord(value)
+		&& typeof value.module === 'string'
+		&& typeof value.path === 'string'
+		&& isMetricSet(value.metrics)
+		&& Array.isArray(value.lines) && value.lines.every(isLineTuple);
+}
+
+function isLineTuple(value: unknown): value is LineTuple {
+	return Array.isArray(value) && value.length === 5 && value.every((n) => typeof n === 'number');
 }
 
 function isMetricSet(value: unknown): value is MetricSet {

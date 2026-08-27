@@ -4,22 +4,32 @@ import * as vscode from 'vscode';
 import { buildAnalyzeArgs } from '../cli/argsBuilder';
 import { locateJar } from '../cli/jarLocator';
 import { run } from '../cli/runner';
+import { setCoverageState } from '../model/store';
 import { parseVerdict } from '../verdict/parse';
+import type { FileCoverageBlock } from '../verdict/types';
+import { applyExcludedDecorations } from './decorationFallback';
+import { publishFileCoverage } from './coverageProvider';
+import { showCoverageSummary, showNoFileCoverageWarning, showUnsupportedHostWarning } from './statusBar';
 
 /**
- * F1 (Plan.md Bölüm 7): the manual "run coverdict on this workspace" gesture
- * - `withProgress` cancellable, `--out` written to extension storage (never
- * the repo, so it can never become an untracked file the next diff sees).
- * No gutter/panel yet (F2/F3) - success is reported as an information
- * message with the same headline number the CLI's own text report prints,
- * which is what proves this wiring end to end until there is a UI surface
- * to show it in.
+ * F1/F2 (Plan.md Bölüm 7): the manual "run coverdict on this workspace"
+ * gesture - `withProgress` cancellable, `--out` written to extension
+ * storage (never the repo, so it can never become an untracked file the
+ * next diff sees). Always requests `--file-coverage` - painting the gutter
+ * is F2's whole point, and the payload-size reason it is opt-in on the CLI
+ * (Plan.md Faz 1) does not apply to a single-workspace, on-demand run here.
  */
-export function registerAnalyzeCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel): vscode.Disposable {
-	return vscode.commands.registerCommand('coverdict.analyze', () => runAnalyze(context, output));
+export interface CoverageSinks {
+	controller: vscode.TestController;
+	excludedDecorationType: vscode.TextEditorDecorationType;
+	statusBarItem: vscode.StatusBarItem;
 }
 
-async function runAnalyze(context: vscode.ExtensionContext, output: vscode.OutputChannel): Promise<void> {
+export function registerAnalyzeCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
+	return vscode.commands.registerCommand('coverdict.analyze', () => runAnalyze(context, output, sinks));
+}
+
+async function runAnalyze(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
 		vscode.window.showErrorMessage('coverdict: open a folder first.');
@@ -50,6 +60,7 @@ async function runAnalyze(context: vscode.ExtensionContext, output: vscode.Outpu
 		diffMode: { kind: 'no-vcs' },
 		reportPath,
 		outPath: outUri.fsPath,
+		fileCoverage: true,
 	});
 
 	output.show(true);
@@ -88,6 +99,34 @@ async function runAnalyze(context: vscode.ExtensionContext, output: vscode.Outpu
 			const percent = parsed.value.coverage.overall['jacoco-line'].percent;
 			const percentText = percent === null ? 'n/a' : `${percent}%`;
 			vscode.window.showInformationMessage(`coverdict: ${parsed.value.analysis.status} - jacoco-line ${percentText}`);
+
+			publishCoverage(folder, sinks, parsed.value.fileCoverage, percent);
 		},
 	);
+}
+
+/**
+ * F2's four states: painted from `fileCoverage.files[]` (native API),
+ * `excluded` grayed out (decoration, native has no such concept), anything
+ * absent from the report simply never gets a `FileCoverage` entry (nothing
+ * painted - hard rule 3a), and the whole block missing shows the status-bar
+ * warning instead of leaving the previous run's data looking current.
+ */
+function publishCoverage(folder: vscode.WorkspaceFolder, sinks: CoverageSinks, fileCoverage: FileCoverageBlock | undefined, jacocoLinePercent: number | null): void {
+	const workspaceRoot = folder.uri.fsPath;
+	setCoverageState({ workspaceRoot, fileCoverage });
+
+	if (!fileCoverage) {
+		showNoFileCoverageWarning(sinks.statusBarItem);
+		applyExcludedDecorations(sinks.excludedDecorationType, workspaceRoot, []);
+		return;
+	}
+
+	const painted = publishFileCoverage(sinks.controller, workspaceRoot, fileCoverage);
+	applyExcludedDecorations(sinks.excludedDecorationType, workspaceRoot, fileCoverage.excluded);
+	if (painted) {
+		showCoverageSummary(sinks.statusBarItem, jacocoLinePercent);
+	} else {
+		showUnsupportedHostWarning(sinks.statusBarItem);
+	}
 }

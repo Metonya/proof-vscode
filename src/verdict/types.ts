@@ -21,6 +21,21 @@ export interface MetricSet {
 
 export type NewCodeCoverage = MetricSet | { status: string };
 
+/** [line, missedInstructions, coveredInstructions, missedBranches, coveredBranches] - same order as coverdict's own LineCoverage (Faz 1). */
+export type LineTuple = readonly [number, number, number, number, number];
+
+export interface FileCoverageEntry {
+	module: string;
+	path: string;
+	metrics: MetricSet;
+	lines: readonly LineTuple[];
+}
+
+export interface FileCoverageBlock {
+	files: readonly FileCoverageEntry[];
+	excluded: readonly string[];
+}
+
 export interface VerdictDocument {
 	schemaVersion: string;
 	tool: { name: string; version: string };
@@ -33,4 +48,6 @@ export interface VerdictDocument {
 		overall: MetricSet;
 		newCode: NewCodeCoverage;
 	};
+	/** Absent (never null) unless --file-coverage was passed (Faz 1's opt-in contract). */
+	fileCoverage?: FileCoverageBlock;
 }

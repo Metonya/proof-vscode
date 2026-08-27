@@ -1,6 +1,10 @@
 import * as vscode from 'vscode';
 
+import { getCoverageState } from './model/store';
+import { createCoverageController } from './ui/coverageProvider';
 import { registerAnalyzeCommand } from './ui/commands';
+import { applyExcludedDecorations, createExcludedDecorationType } from './ui/decorationFallback';
+import { createStatusBarItem } from './ui/statusBar';
 
 /**
  * Registration only - no logic lives here. Features register themselves
@@ -9,7 +13,23 @@ import { registerAnalyzeCommand } from './ui/commands';
  */
 export function activate(context: vscode.ExtensionContext): void {
 	const output = vscode.window.createOutputChannel('coverdict');
-	context.subscriptions.push(output, registerAnalyzeCommand(context, output));
+	const controller = createCoverageController();
+	const excludedDecorationType = createExcludedDecorationType();
+	const statusBarItem = createStatusBarItem();
+
+	context.subscriptions.push(
+		output,
+		controller,
+		excludedDecorationType,
+		statusBarItem,
+		registerAnalyzeCommand(context, output, { controller, excludedDecorationType, statusBarItem }),
+		vscode.window.onDidChangeVisibleTextEditors(() => {
+			const state = getCoverageState();
+			if (state) {
+				applyExcludedDecorations(excludedDecorationType, state.workspaceRoot, state.fileCoverage?.excluded ?? []);
+			}
+		}),
+	);
 }
 
 export function deactivate(): void {
