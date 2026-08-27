@@ -18,8 +18,8 @@ export function createStatusBarItem(): vscode.StatusBarItem {
 }
 
 export function showNoFileCoverageWarning(item: vscode.StatusBarItem): void {
-	item.text = '$(warning) coverdict: no coverage data';
-	item.tooltip = 'The last analyze run has no fileCoverage block - nothing is painted in the gutter.';
+	item.text = '$(warning) coverdict: kapsama verisi yok';
+	item.tooltip = 'Son analiz koşusunda fileCoverage bloğu yok - kapsama görünümünde hiçbir şey gösterilmiyor.';
 	item.show();
 }
 
@@ -29,7 +29,7 @@ export function showCoverageSummary(item: vscode.StatusBarItem, overall: MetricS
 	item.text = jacocoLine === null ? '$(check) coverdict' : `$(${eyeIcon}) coverdict ${jacocoLine}%`;
 	item.tooltip = new vscode.MarkdownString(
 		[
-			`**coverdict** - ${gutterVisible ? 'gutter shown' : 'gutter hidden'} (click to toggle)`,
+			`**coverdict** - ${gutterVisible ? 'kapsama görünümü açık' : 'kapsama görünümü kapalı'} (aç/kapat için tıklayın)`,
 			'',
 			metricLine('jacoco-line', overall['jacoco-line']),
 			metricLine('strict-line', overall['strict-line']),
@@ -40,6 +40,6 @@ export function showCoverageSummary(item: vscode.StatusBarItem, overall: MetricS
 }
 
 function metricLine(name: string, metric: MetricSet['jacoco-line']): string {
-	const percentText = metric.percent === null ? 'n/a' : `${metric.percent}%`;
+	const percentText = metric.percent === null ? 'yok' : `${metric.percent}%`;
 	return `${name}: ${percentText} (${metric.numerator}/${metric.denominator})`;
 }

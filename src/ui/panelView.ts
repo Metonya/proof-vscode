@@ -31,7 +31,7 @@ export function isPanelOpen(): boolean {
 
 export function showLineTestsPanel(content: PanelContent): void {
 	if (!panel) {
-		panel = vscode.window.createWebviewPanel('coverdictLineTests', 'coverdict: Line → Tests', vscode.ViewColumn.Beside, { enableScripts: false });
+		panel = vscode.window.createWebviewPanel('coverdictLineTests', 'coverdict: Satır → Testler', vscode.ViewColumn.Beside, { enableScripts: false });
 		panel.onDidDispose(() => {
 			panel = undefined;
 		});
@@ -57,15 +57,15 @@ function renderHtml(content: PanelContent): string {
 function bodyFor(content: PanelContent): string {
 	switch (content.kind) {
 		case 'noWorkspace':
-			return message('Open a folder first.');
+			return message('Önce bir klasör açın.');
 		case 'noActiveEditor':
-			return message('Open a Java file to see which tests cover its lines.');
+			return message('Satırlarını hangi testlerin kapsadığını görmek için bir Java dosyası açın.');
 		case 'truncated':
-			return message(`Per-test evidence was dropped for this module: ${escapeHtml(content.message)}. What is shown may be incomplete - not "no tests cover this".`, true);
+			return message(`Bu modül için test bazlı (per-test) kanıt düşürüldü: ${escapeHtml(content.message)}. Gösterilenler eksik olabilir - "bu satırı hiçbir test kapsamıyor" anlamına gelmez.`, true);
 		case 'noPerTestData':
-			return message('No per-test evidence in the last scan. Run "coverdict: Analyze (per-test)" to collect it.');
+			return message('Son taramada test bazlı kanıt yok. Toplamak için "coverdict: Analiz Et (test bazlı)" komutunu çalıştırın.');
 		case 'classOutOfScope':
-			return message(`${escapeHtml(content.className)} has no per-test evidence - L2 only covers classes touched by the diff, not every open file.`);
+			return message(`${escapeHtml(content.className)} için test bazlı kanıt yok - L2 sadece diff'te değişen sınıfları kapsar, açık olan her dosyayı değil.`);
 		case 'lines':
 			return linesTable(content);
 	}
@@ -81,7 +81,7 @@ function linesTable(content: Extract<PanelContent, { kind: 'lines' }>): string {
 		.join('');
 	return `<h2>${escapeHtml(content.fileName)}</h2>
 <p class="muted">${escapeHtml(content.className)}</p>
-<table><thead><tr><th>Line</th><th>Covering tests</th></tr></thead><tbody>${rows}</tbody></table>`;
+<table><thead><tr><th>Satır</th><th>Kapsayan testler</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function message(text: string, warning = false): string {

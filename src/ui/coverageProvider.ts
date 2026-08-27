@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 
 import { toAbsolutePath } from '../model/pathIndex';
-import { mapLines, type MappedLine, type PartialLineMode } from '../verdict/coverageMapping';
+import { classifyLine, mapLines, type MappedLine, type PartialLineMode } from '../verdict/coverageMapping';
 import type { FileCoverageBlock } from '../verdict/types';
 
 /**
@@ -40,8 +40,21 @@ export function createCoverageController(): vscode.TestController {
 	return controller;
 }
 
+/**
+ * `'detailed'` publishes real per-line `StatementCoverage`/`BranchCoverage`
+ * (drives both the Explorer % badge and the editor gutter marks - native
+ * ties the two together through `FileCoverage.fromDetails`). `'summary'`
+ * publishes only the aggregate count (`new vscode.FileCoverage(uri, count)`,
+ * no details attached) - Explorer still shows the % badge, but there is
+ * nothing for VS Code to paint in the gutter. This is how
+ * `coverdict.gutter.showFileCoverage` and `coverdict.gutter.showLineGutter`
+ * can be toggled independently even though the native API itself has no
+ * separate on/off for each.
+ */
+export type FileCoveragePublishMode = 'detailed' | 'summary';
+
 /** @returns true if coverage was actually published (false: unsupported host, or a real addCoverage failure - see Plan.md Bölüm 3's fork caveat). */
-export function publishFileCoverage(controller: vscode.TestController, workspaceRoot: string, block: FileCoverageBlock): boolean {
+export function publishFileCoverage(controller: vscode.TestController, workspaceRoot: string, block: FileCoverageBlock, mode: FileCoveragePublishMode): boolean {
 	if (!hasNativeCoverageApi()) {
 		return false;
 	}
@@ -51,8 +64,13 @@ export function publishFileCoverage(controller: vscode.TestController, workspace
 		for (const entry of block.files) {
 			const uri = vscode.Uri.file(toAbsolutePath(workspaceRoot, entry.path));
 			const mapped = mapLines(entry.lines, partialLineMode);
-			const details = mapped.map(toStatementCoverage);
-			run.addCoverage(vscode.FileCoverage.fromDetails(uri, details));
+			if (mode === 'detailed') {
+				const details = mapped.map(toStatementCoverage);
+				run.addCoverage(vscode.FileCoverage.fromDetails(uri, details));
+			} else {
+				const covered = mapped.filter((m) => classifyLine(m) !== 'uncovered').length;
+				run.addCoverage(new vscode.FileCoverage(uri, new vscode.TestCoverageCount(covered, mapped.length)));
+			}
 		}
 		return true;
 	} catch {
@@ -90,8 +108,8 @@ function toStatementCoverage(mapped: MappedLine): vscode.StatementCoverage {
 	// Synthetic branch-approximation pairs are labeled as the approximation
 	// they are, never presented as if JaCoCo reported them.
 	const label = mapped.branchesAreSynthetic
-		? 'partial line (synthesized - see coverdict.gutter.partialLineMode)'
-		: 'real branch (also counted in coverdict\'s sonar-compatible metric)';
+		? 'kısmi satır (uydurulmuş - bkz. coverdict.gutter.partialLineMode)'
+		: 'gerçek dal (coverdict\'in sonar-compatible metriğine de dahildir)';
 	const branches = mapped.branches.map((state) => new vscode.BranchCoverage(state === 'covered', position, label));
 	return new vscode.StatementCoverage(mapped.executed, position, branches);
 }

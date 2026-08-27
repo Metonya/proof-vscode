@@ -1,7 +1,7 @@
 {
   "name": "coverdict-vscode",
   "displayName": "coverdict",
-  "description": "Inline coverage gutter, per-line test evidence, and mutation findings, driven by the coverdict CLI.",
+  "description": "coverdict CLI tarafından üretilen satır içi kapsama görünümü, satır bazlı test kanıtı ve mutasyon bulguları.",
   "version": "0.0.1",
   "publisher": "coverdict",
   "private": true,
@@ -28,48 +28,58 @@
         "coverdict.jarPath": {
           "type": "string",
           "default": "",
-          "description": "Path to coverdict.jar. Relative paths resolve against the workspace root. Leave empty to use the default search order (coverdict-cli/target/coverdict.jar, then .coverdict/coverdict.jar)."
+          "description": "coverdict.jar dosyasının yolu. Göreli yollar workspace kök dizinine göre çözülür. Varsayılan arama sırasını kullanmak için boş bırakın (önce coverdict-cli/target/coverdict.jar, sonra .coverdict/coverdict.jar)."
         },
         "coverdict.javaExecutable": {
           "type": "string",
           "default": "java",
-          "description": "Java executable used to run coverdict.jar."
+          "description": "coverdict.jar'ı çalıştırmak için kullanılan Java çalıştırılabilir dosyası."
         },
         "coverdict.coverageExclusions": {
           "type": "array",
           "items": { "type": "string" },
           "default": [],
-          "description": "sonar.coverage.exclusions-style globs (same syntax you'd paste into SonarQube). Passed as --coverage-exclusions to every analyze run - one authored list (D-05), never merged with a repo's own coverdict.config.json."
+          "description": "sonar.coverage.exclusions tarzı glob desenleri (SonarQube'a yapıştıracağınız sözdizimiyle aynı). Her analiz koşusuna --coverage-exclusions olarak geçirilir - tek, elle yazılmış bir liste (D-05), repo'nun kendi coverdict.config.json dosyasıyla asla birleştirilmez."
+        },
+        "coverdict.gutter.showFileCoverage": {
+          "type": "boolean",
+          "default": true,
+          "description": "Explorer'da dosya/klasörlerin yanında kapsama yüzdesi rozetlerini göster. coverdict.gutter.showLineGutter'dan bağımsız olarak açılıp kapatılabilir."
+        },
+        "coverdict.gutter.showLineGutter": {
+          "type": "boolean",
+          "default": true,
+          "description": "Editördeki satırların yanında satır bazlı kapsama işaretlerini (gutter) göster. coverdict.gutter.showFileCoverage'dan bağımsız olarak açılıp kapatılabilir."
         },
         "coverdict.gutter.partialLineMode": {
           "type": "string",
           "enum": ["branch-approximation", "strict"],
           "default": "branch-approximation",
-          "description": "How a covered-but-not-fully-covered line with no real branch data renders. branch-approximation (default): synthesizes one covered + one missed branch so VS Code shows it as partial (yellow). strict: leaves it branchless, which VS Code renders as fully covered (green)."
+          "description": "Gerçek dal (branch) verisi olmayan, kapsanmış ama tam kapsanmamış bir satırın nasıl gösterileceği. branch-approximation (varsayılan): VS Code'un satırı kısmi (sarı) göstermesi için bir kapsanan + bir kaçırılan dal uydurur. strict: satırı dalsız bırakır, bu da VS Code'un onu tam kapsanmış (yeşil) göstermesine yol açar."
         },
         "coverdict.gutter.forceFallback": {
           "type": "boolean",
           "default": false,
-          "description": "Use the decoration-based fallback renderer even on a host with a working native Test Coverage API. For testing the fallback path (Plan.md F7) without needing an old VS Code build."
+          "description": "Çalışan bir native Test Coverage API'si olan bir ortamda bile dekorasyon tabanlı yedek render motorunu kullan. Eski bir VS Code sürümüne ihtiyaç duymadan yedek yolu (Plan.md F7) test etmek içindir."
         }
       }
     },
     "commands": [
       {
         "command": "coverdict.analyze",
-        "title": "coverdict: Analyze"
+        "title": "coverdict: Analiz Et"
       },
       {
         "command": "coverdict.toggleCoverageGutter",
-        "title": "coverdict: Toggle Coverage Gutter"
+        "title": "coverdict: Kapsama Görünümünü Aç/Kapat"
       },
       {
         "command": "coverdict.analyzePerTest",
-        "title": "coverdict: Analyze (per-test)"
+        "title": "coverdict: Analiz Et (test bazlı)"
       },
       {
         "command": "coverdict.showLineTests",
-        "title": "coverdict: Show Line → Tests"
+        "title": "coverdict: Satır → Testler Göster"
       }
     ]
   },

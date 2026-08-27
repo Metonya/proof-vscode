@@ -20,7 +20,7 @@ import {
 import { parseVerdict } from '../verdict/parse';
 import type { FileCoverageBlock, MetricSet, VerdictDocument } from '../verdict/types';
 import { applyExcludedDecorations, applyFallbackCoverage, clearFallbackCoverage, type FallbackDecorationTypes } from './decorationFallback';
-import { hasNativeCoverageApi, publishFileCoverage, readPartialLineMode, resetCoverageController } from './coverageProvider';
+import { hasNativeCoverageApi, publishFileCoverage, readPartialLineMode, resetCoverageController, type FileCoveragePublishMode } from './coverageProvider';
 import { refreshLineTestsPanelIfOpen, showLineTestsPanel, type PanelContent } from './panelView';
 import { showCoverageSummary, showNoFileCoverageWarning } from './statusBar';
 
@@ -84,7 +84,7 @@ export function republishCoverage(sinks: CoverageSinks, workspaceRoot: string, f
 function toggleCoverageGutter(sinks: CoverageSinks): void {
 	const state = getCoverageState();
 	if (!state?.fileCoverage) {
-		vscode.window.showInformationMessage('coverdict: no coverage data yet - run "coverdict: Analyze" first.');
+		vscode.window.showInformationMessage('coverdict: henüz kapsama verisi yok - önce "coverdict: Analiz Et" komutunu çalıştırın.');
 		return;
 	}
 
@@ -97,9 +97,10 @@ function toggleCoverageGutter(sinks: CoverageSinks): void {
 	} else {
 		resetController(sinks);
 		clearFallbackCoverage(sinks.fallbackDecorationTypes);
+		setUsingFallback(false);
 		applyExcludedDecorations(sinks.excludedDecorationType, state.workspaceRoot, []);
 		sinks.statusBarItem.text = '$(eye-closed) coverdict';
-		sinks.statusBarItem.tooltip = 'coverdict: gutter hidden (click to show)';
+		sinks.statusBarItem.tooltip = 'coverdict: kapsama görünümü gizli (göstermek için tıklayın)';
 	}
 }
 
@@ -123,7 +124,7 @@ async function runAnalyze(context: vscode.ExtensionContext, output: vscode.Outpu
  */
 async function runAnalyzePerTest(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
 	const classpathPath = await vscode.window.showInputBox({
-		prompt: 'Per-test classpath list file (one jar/output-dir path per line, relative to the workspace root)',
+		prompt: 'Test bazlı classpath liste dosyası (satır başına bir jar/çıktı-dizini yolu, workspace köküne göre)',
 		value: 'mutation-classpath.txt',
 	});
 	if (!classpathPath) {
@@ -142,7 +143,7 @@ async function runAnalyzePerTest(context: vscode.ExtensionContext, output: vscod
 	publishCoverage(folder, sinks, parsed.fileCoverage, parsed.coverage.overall);
 	setPerTestState({ moduleId: MODULE_ID, perTest: parsed.perTest, warnings: parsed.warnings });
 	if (!parsed.perTest) {
-		vscode.window.showWarningMessage('coverdict: no perTest evidence in this run - check the output channel for PER_TEST_* warnings.');
+		vscode.window.showWarningMessage('coverdict: bu koşuda test bazlı (per-test) kanıt yok - PER_TEST_* uyarıları için çıktı kanalını kontrol edin.');
 	}
 	showLineTestsPanel(computePanelContent());
 }
@@ -161,18 +162,18 @@ async function runAnalyzeCore(
 ): Promise<VerdictDocument | undefined> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
-		vscode.window.showErrorMessage('coverdict: open a folder first.');
+		vscode.window.showErrorMessage('coverdict: önce bir klasör açın.');
 		return undefined;
 	}
 
 	const jarPath = locateJar(folder);
 	if (!jarPath) {
-		vscode.window.showErrorMessage('coverdict: could not find coverdict.jar. Set coverdict.jarPath, or build one at coverdict-cli/target/coverdict.jar.');
+		vscode.window.showErrorMessage('coverdict: coverdict.jar bulunamadı. coverdict.jarPath ayarını yapın veya coverdict-cli/target/coverdict.jar konumunda bir tane derleyin.');
 		return undefined;
 	}
 
 	const reportPath = await vscode.window.showInputBox({
-		prompt: 'JaCoCo XML report path (relative to the workspace root)',
+		prompt: 'JaCoCo XML rapor yolu (workspace köküne göre)',
 		value: 'target/site/jacoco/jacoco.xml',
 	});
 	if (!reportPath) {
@@ -211,7 +212,7 @@ async function runAnalyzeCore(
 			// exit 3 (incomplete) still writes a real document - read it rather
 			// than treating it as a failure (hard rule 3a, mirrored from the CLI).
 			if (result.exitCode !== 0 && result.exitCode !== 3) {
-				vscode.window.showErrorMessage(`coverdict: analyze failed (exit ${result.exitCode}).`);
+				vscode.window.showErrorMessage(`coverdict: analiz başarısız oldu (çıkış kodu ${result.exitCode}).`);
 				return undefined;
 			}
 
@@ -219,13 +220,13 @@ async function runAnalyzeCore(
 			try {
 				raw = await fs.promises.readFile(outUri.fsPath, 'utf8');
 			} catch (e) {
-				vscode.window.showErrorMessage(`coverdict: could not read the verdict file: ${(e as Error).message}`);
+				vscode.window.showErrorMessage(`coverdict: verdict dosyası okunamadı: ${(e as Error).message}`);
 				return undefined;
 			}
 
 			const parsed = parseVerdict(raw);
 			if (!parsed.ok) {
-				vscode.window.showErrorMessage(`coverdict: could not parse the verdict file: ${parsed.error}`);
+				vscode.window.showErrorMessage(`coverdict: verdict dosyası ayrıştırılamadı: ${parsed.error}`);
 				return undefined;
 			}
 
@@ -250,7 +251,7 @@ async function runAnalyzeCore(
 }
 
 function percentText(percent: number | null): string {
-	return percent === null ? 'n/a' : `${percent}%`;
+	return percent === null ? 'yok' : `${percent}%`;
 }
 
 /**
@@ -281,23 +282,46 @@ function publishCoverage(folder: vscode.WorkspaceFolder, sinks: CoverageSinks, f
 }
 
 /**
- * Tries the native path first unless `coverdict.gutter.forceFallback` is
- * set (F7's own manual-test lever); a `false` return from
- * `publishFileCoverage` (unsupported host, or a real runtime failure) falls
- * through to the decoration fallback automatically. A switch away from the
- * native path resets the controller first (see `resetController`) so no
- * stale native marks survive alongside the fallback's.
+ * `coverdict.gutter.showFileCoverage` (Explorer % rozetleri) ve
+ * `coverdict.gutter.showLineGutter` (editördeki satır işaretleri) birbirinden
+ * bağımsız ayarlardır. Native Test Coverage API'si ikisini normalde tek bir
+ * yayından (`FileCoverage.fromDetails`) birlikte üretir; ayrımı sağlamak için
+ * showLineGutter kapalıyken native'e sadece özet sayı (`'summary'` modu,
+ * gutter'da hiçbir şey çizdirmeyen) yayınlanır, showFileCoverage kapalıyken
+ * native hiç kullanılmaz (Explorer'da rozet çıkmasın diye) ve gutter - eğer
+ * isteniyorsa - dekorasyon yedeğiyle çizilir. Native'in devre dışı kaldığı
+ * her durumda controller resetlenir (F4'ün "gerçekten temizler" bulgusu, bkz.
+ * `resetController`) ki eski native izler yedek yolla yan yana kalmasın.
  */
 function paintCoverage(sinks: CoverageSinks, workspaceRoot: string, fileCoverage: FileCoverageBlock): void {
-	const forceFallback = vscode.workspace.getConfiguration('coverdict').get<boolean>('gutter.forceFallback') ?? false;
-	const painted = !forceFallback && publishFileCoverage(sinks.controller, workspaceRoot, fileCoverage);
+	const config = vscode.workspace.getConfiguration('coverdict');
+	const showFileCoverage = config.get<boolean>('gutter.showFileCoverage') ?? true;
+	const showLineGutter = config.get<boolean>('gutter.showLineGutter') ?? true;
+	const forceFallback = config.get<boolean>('gutter.forceFallback') ?? false;
 
-	setUsingFallback(!painted);
-	if (painted) {
-		clearFallbackCoverage(sinks.fallbackDecorationTypes);
-	} else {
+	if (!showFileCoverage && !showLineGutter) {
 		resetController(sinks);
+		clearFallbackCoverage(sinks.fallbackDecorationTypes);
+		setUsingFallback(false);
+		return;
+	}
+
+	const nativeMode: FileCoveragePublishMode = showLineGutter ? 'detailed' : 'summary';
+	const painted = showFileCoverage && !forceFallback && publishFileCoverage(sinks.controller, workspaceRoot, fileCoverage, nativeMode);
+	if (!painted) {
+		resetController(sinks);
+	}
+
+	// Gutter'ın gerçekten native'den geldiği tek durum: dosya rozeti native'ten
+	// yayınlandı VE detaylı moddaydı. Diğer tüm "gutter isteniyor" durumlarında
+	// (native kapalı/başarısız, ya da showFileCoverage kapalı) dekorasyon
+	// yedeği devreye girer.
+	const gutterFromDecorations = showLineGutter && !(painted && nativeMode === 'detailed');
+	setUsingFallback(gutterFromDecorations);
+	if (gutterFromDecorations) {
 		applyFallbackCoverage(sinks.fallbackDecorationTypes, workspaceRoot, fileCoverage, readPartialLineMode());
+	} else {
+		clearFallbackCoverage(sinks.fallbackDecorationTypes);
 	}
 }
 

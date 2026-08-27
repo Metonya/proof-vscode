@@ -68,6 +68,19 @@ export function activate(context: vscode.ExtensionContext): void {
 		// be the "why do I have to keep asking" complaint F1's restore-on-
 		// activation fix already addressed once this session.
 		vscode.window.onDidChangeActiveTextEditor(() => refreshLineTestsPanelForActiveEditor()),
+		// coverdict.gutter.* ayarları (showFileCoverage/showLineGutter/
+		// forceFallback/partialLineMode) canlı: kullanıcı ayarlar sayfasında
+		// değiştirdiği anda son taramadan yeniden boyanır, tekrar analiz veya
+		// aç/kapat yapmasına gerek kalmaz.
+		vscode.workspace.onDidChangeConfiguration((e) => {
+			if (!e.affectsConfiguration('coverdict.gutter')) {
+				return;
+			}
+			const state = getCoverageState();
+			if (state?.fileCoverage && isGutterVisible()) {
+				republishCoverage(sinks, state.workspaceRoot, state.fileCoverage, state.overall);
+			}
+		}),
 	);
 
 	// The CLI's own output is already sitting in extension storage from the
