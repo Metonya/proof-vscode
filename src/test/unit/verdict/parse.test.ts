@@ -13,6 +13,8 @@ function minimalDocument(): unknown {
 		analysis: { status: 'complete', exitCode: 0, incompleteReasons: [] },
 		inputs: { modules: [{ id: 'root', root: '.', sourceRoots: ['src/main/java'], testRoots: ['src/test/java'] }] },
 		coverage: { overall: MINIMAL_METRIC_SET, newCode: { status: 'unavailable_no_vcs' } },
+		changedFiles: [],
+		findings: [],
 		warnings: [],
 	};
 }
@@ -116,6 +118,65 @@ test('a malformed perTest block (a line with no tests array) is rejected', () =>
 	};
 	const result = parseVerdict(JSON.stringify(doc));
 	assert.equal(result.ok, false);
+});
+
+test('coverage.newCode as a real metricSet (a diff that ran fine) parses through', () => {
+	const freshMetric = { numeratorName: 'a', numerator: 1, denominatorName: 'b', denominator: 4, percent: 25 };
+	const doc = minimalDocument() as Record<string, unknown>;
+	(doc.coverage as Record<string, unknown>).newCode = { 'jacoco-line': freshMetric, 'strict-line': freshMetric, 'sonar-compatible': freshMetric };
+	const result = parseVerdict(JSON.stringify(doc));
+	assert.equal(result.ok, true);
+	if (result.ok && 'jacoco-line' in result.value.coverage.newCode) {
+		assert.equal(result.value.coverage.newCode['jacoco-line'].percent, 25);
+	} else {
+		assert.fail('expected a real metricSet, not a status object');
+	}
+});
+
+test('a well-formed finding parses through, including a SUBSUMED_TEST-only field', () => {
+	const doc = minimalDocument() as Record<string, unknown>;
+	doc.findings = [{
+		rule: 'SUBSUMED_TEST', severity: 'INFO', confidence: 'MEDIUM', module: 'root',
+		path: 'src/test/java/CalcTest.java', startLine: 10, endLine: 12,
+		message: 'dominated', suggestedAction: 'consider removing', fingerprint: 'abc123',
+		testMethod: 'narrowCase', relatedTestMethod: 'wideCase',
+	}];
+	const result = parseVerdict(JSON.stringify(doc));
+	assert.equal(result.ok, true);
+	if (result.ok) {
+		assert.equal(result.value.findings[0].rule, 'SUBSUMED_TEST');
+		assert.equal(result.value.findings[0].relatedTestMethod, 'wideCase');
+	}
+});
+
+test('a finding with an unrecognized rule id is rejected', () => {
+	const doc = minimalDocument() as Record<string, unknown>;
+	doc.findings = [{
+		rule: 'NOT_A_REAL_RULE', severity: 'WARNING', confidence: 'HIGH', module: 'root',
+		path: 'x', startLine: 1, endLine: 1, message: 'm', suggestedAction: 's', fingerprint: 'f',
+	}];
+	const result = parseVerdict(JSON.stringify(doc));
+	assert.equal(result.ok, false);
+});
+
+test('a well-formed mapped changedFile with uncoveredNewRanges parses through', () => {
+	const doc = minimalDocument() as Record<string, unknown>;
+	doc.changedFiles = [{
+		path: 'src/main/java/Calc.java', module: 'root', classification: 'mapped',
+		newLines: 14, coveredNewLines: 10, uncoveredNewRanges: [[42, 44], [51, 51]],
+	}];
+	const result = parseVerdict(JSON.stringify(doc));
+	assert.equal(result.ok, true);
+	if (result.ok) {
+		assert.deepEqual(result.value.changedFiles[0].uncoveredNewRanges, [[42, 44], [51, 51]]);
+	}
+});
+
+test('an unmapped changedFile without the mapped-only fields still parses', () => {
+	const doc = minimalDocument() as Record<string, unknown>;
+	doc.changedFiles = [{ path: 'README.md', classification: 'unsupported' }];
+	const result = parseVerdict(JSON.stringify(doc));
+	assert.equal(result.ok, true);
 });
 
 test('warnings carry through with their optional path/module/count fields', () => {

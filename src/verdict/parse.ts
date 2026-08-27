@@ -1,10 +1,13 @@
 import type {
+	ChangedFile,
 	FileCoverageBlock,
 	FileCoverageEntry,
+	Finding,
 	LineTuple,
 	Metric,
 	MetricSet,
 	ModuleInput,
+	NewCodeCoverage,
 	PerTestBlock,
 	PerTestEntry,
 	PerTestLine,
@@ -12,6 +15,15 @@ import type {
 	Reason,
 	VerdictDocument,
 } from './types';
+
+const RULE_IDS = new Set([
+	'NO_RECOGNIZED_ORACLE',
+	'TAUTOLOGICAL_ORACLE',
+	'CATCH_ORACLE_WITHOUT_FAIL',
+	'NULL_CHECK_ONLY',
+	'PSEUDO_TESTED_METHOD',
+	'SUBSUMED_TEST',
+]);
 
 /**
  * `verdict/` never throws (Plan.md Bölüm 2/6) - a malformed or truncated
@@ -48,8 +60,53 @@ function isVerdictDocument(value: unknown): value is VerdictDocument {
 		&& isRecord(value.tool) && typeof value.tool.version === 'string'
 		&& isRecord(value.analysis) && (value.analysis.status === 'complete' || value.analysis.status === 'incomplete')
 		&& isRecord(value.inputs) && Array.isArray(value.inputs.modules) && value.inputs.modules.every(isModuleInput)
-		&& isRecord(value.coverage) && isMetricSet(value.coverage.overall)
+		&& isRecord(value.coverage) && isMetricSet(value.coverage.overall) && isNewCodeCoverage(value.coverage.newCode)
+		&& Array.isArray(value.changedFiles) && value.changedFiles.every(isChangedFile)
+		&& Array.isArray(value.findings) && value.findings.every(isFinding)
 		&& Array.isArray(value.warnings) && value.warnings.every(isReason);
+}
+
+function isNewCodeCoverage(value: unknown): value is NewCodeCoverage {
+	return isMetricSet(value) || (isRecord(value) && typeof value.status === 'string');
+}
+
+function isChangedFile(value: unknown): value is ChangedFile {
+	if (!isRecord(value) || typeof value.path !== 'string') {
+		return false;
+	}
+	if (value.classification !== 'mapped' && value.classification !== 'excluded' && value.classification !== 'non-executable'
+		&& value.classification !== 'unsupported' && value.classification !== 'unknown') {
+		return false;
+	}
+	if (value.module !== undefined && typeof value.module !== 'string') {
+		return false;
+	}
+	if (value.newLines !== undefined && typeof value.newLines !== 'number') {
+		return false;
+	}
+	if (value.coveredNewLines !== undefined && typeof value.coveredNewLines !== 'number') {
+		return false;
+	}
+	return value.uncoveredNewRanges === undefined
+		|| (Array.isArray(value.uncoveredNewRanges) && value.uncoveredNewRanges.every(isLineRange));
+}
+
+function isLineRange(value: unknown): value is readonly [number, number] {
+	return Array.isArray(value) && value.length === 2 && value.every((n) => typeof n === 'number');
+}
+
+function isFinding(value: unknown): value is Finding {
+	return isRecord(value)
+		&& typeof value.rule === 'string' && RULE_IDS.has(value.rule)
+		&& (value.severity === 'INFO' || value.severity === 'WARNING')
+		&& (value.confidence === 'HIGH' || value.confidence === 'MEDIUM' || value.confidence === 'LOW' || value.confidence === 'INCONCLUSIVE')
+		&& typeof value.module === 'string'
+		&& typeof value.path === 'string'
+		&& typeof value.startLine === 'number'
+		&& typeof value.endLine === 'number'
+		&& typeof value.message === 'string'
+		&& typeof value.suggestedAction === 'string'
+		&& typeof value.fingerprint === 'string';
 }
 
 function isModuleInput(value: unknown): value is ModuleInput {

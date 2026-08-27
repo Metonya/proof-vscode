@@ -18,7 +18,8 @@ import {
 	setPerTestState,
 } from '../model/store';
 import { parseVerdict } from '../verdict/parse';
-import type { FileCoverageBlock, MetricSet, VerdictDocument } from '../verdict/types';
+import type { FileCoverageBlock, Finding, MetricSet, VerdictDocument } from '../verdict/types';
+import { publishFindings } from './diagnostics';
 import type { ExplorerBadgeProvider } from './explorerBadges';
 import { applyGutterCoverage, clearGutterCoverage, type GutterDecorationTypes } from './gutterRenderer';
 import { refreshLineTestsPanelIfOpen, showLineTestsPanel, type PanelContent } from './panelView';
@@ -40,6 +41,7 @@ export interface CoverageSinks {
 	gutterTypes: GutterDecorationTypes;
 	explorerBadges: ExplorerBadgeProvider;
 	statusBarItem: vscode.StatusBarItem;
+	diagnostics: vscode.DiagnosticCollection;
 }
 
 export function registerAnalyzeCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
@@ -71,6 +73,11 @@ export function republishCoverage(sinks: CoverageSinks, workspaceRoot: string, f
 	setCoverageState({ workspaceRoot, fileCoverage, overall });
 	paintCoverage(sinks, workspaceRoot, fileCoverage);
 	showCoverageSummary(sinks.statusBarItem, overall, isGutterVisible());
+}
+
+/** Findings are independent of the fileCoverage/toggle machinery - they come from every run (`--file-coverage` not required) and always show while the last run's data is current. */
+export function republishFindings(sinks: CoverageSinks, workspaceRoot: string, findings: readonly Finding[]): void {
+	publishFindings(sinks.diagnostics, workspaceRoot, findings);
 }
 
 function toggleCoverage(sinks: CoverageSinks): void {
@@ -108,6 +115,7 @@ async function runAnalyze(context: vscode.ExtensionContext, output: vscode.Outpu
 		return;
 	}
 	publishCoverage(folder, sinks, parsed.fileCoverage, parsed.coverage.overall);
+	republishFindings(sinks, folder.uri.fsPath, parsed.findings);
 }
 
 /**
@@ -137,6 +145,7 @@ async function runAnalyzePerTest(context: vscode.ExtensionContext, output: vscod
 	}
 
 	publishCoverage(folder, sinks, parsed.fileCoverage, parsed.coverage.overall);
+	republishFindings(sinks, folder.uri.fsPath, parsed.findings);
 	setPerTestState({ moduleId: MODULE_ID, perTest: parsed.perTest, warnings: parsed.warnings });
 	if (!parsed.perTest) {
 		vscode.window.showWarningMessage('coverdict: bu koşuda test bazlı (per-test) kanıt yok - PER_TEST_* uyarıları için çıktı kanalını kontrol edin.');

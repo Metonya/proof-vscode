@@ -9,8 +9,10 @@ import {
 	registerShowLineTestsCommand,
 	registerToggleCoverageCommand,
 	republishCoverage,
+	republishFindings,
 	type CoverageSinks,
 } from './ui/commands';
+import { createDiagnosticCollection } from './ui/diagnostics';
 import { ExplorerBadgeProvider } from './ui/explorerBadges';
 import { applyGutterCoverage, createGutterDecorationTypes } from './ui/gutterRenderer';
 import { createStatusBarItem } from './ui/statusBar';
@@ -29,7 +31,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	const gutterTypes = createGutterDecorationTypes();
 	const explorerBadges = new ExplorerBadgeProvider();
 	const statusBarItem = createStatusBarItem();
-	const sinks: CoverageSinks = { context, gutterTypes, explorerBadges, statusBarItem };
+	const diagnostics = createDiagnosticCollection();
+	const sinks: CoverageSinks = { context, gutterTypes, explorerBadges, statusBarItem, diagnostics };
 
 	context.subscriptions.push(
 		output,
@@ -40,6 +43,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		explorerBadges,
 		vscode.window.registerFileDecorationProvider(explorerBadges),
 		statusBarItem,
+		diagnostics,
 		registerAnalyzeCommand(context, output, sinks),
 		registerAnalyzePerTestCommand(context, output, sinks),
 		registerToggleCoverageCommand(sinks),
@@ -106,6 +110,7 @@ async function restoreLastCoverage(context: vscode.ExtensionContext, sinks: Cove
 	if (parsed.value.fileCoverage) {
 		republishCoverage(sinks, folder.uri.fsPath, parsed.value.fileCoverage, parsed.value.coverage.overall);
 	}
+	republishFindings(sinks, folder.uri.fsPath, parsed.value.findings);
 	// perTest restores independently of fileCoverage - a run can carry one
 	// without the other depending on which command produced it.
 	setPerTestState({ moduleId: MODULE_ID, perTest: parsed.value.perTest, warnings: parsed.value.warnings });
