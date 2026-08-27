@@ -19,7 +19,9 @@
     "ui",
     "workspace"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "configuration": {
@@ -40,6 +42,27 @@
           "items": { "type": "string" },
           "default": [],
           "description": "sonar.coverage.exclusions tarzı glob desenleri (SonarQube'a yapıştıracağınız sözdizimiyle aynı). Her analiz koşusuna --coverage-exclusions olarak geçirilir - tek, elle yazılmış bir liste (D-05), repo'nun kendi coverdict.config.json dosyasıyla asla birleştirilmez."
+        },
+        "coverdict.reportPath": {
+          "type": "string",
+          "default": "target/site/jacoco/jacoco.xml",
+          "description": "JaCoCo XML rapor dosyasının yolu (workspace köküne göre). \"coverdict: Analiz Et\" bu dosyayı okur - dosya yoksa size ayarı düzeltmeniz için bir uyarı gösterilir, her koşuda tekrar sorulmaz."
+        },
+        "coverdict.diffMode": {
+          "type": "string",
+          "enum": ["no-vcs", "uncommitted", "base"],
+          "default": "uncommitted",
+          "description": "\"Yeni kod\" hangi değişikliklere göre hesaplansın. uncommitted (varsayılan): commit beklemekte olan her şey (staged + unstaged), yani şu an dosyada duran değişiklikler. base: coverdict.baseRef'te yazan commit/branch'ten bu yana yapılan değişiklikler (örn. bir feature branch'i main ile kıyaslamak). no-vcs: git hiç kullanılmaz, \"yeni kod\" hesaplanamaz - tüm repo tek bir kapsama olarak gösterilir. \"coverdict: Analiz Et (test bazlı)\" bu mod no-vcs iken çalışmaz, çünkü test bazlı kanıt bir diff gerektirir."
+        },
+        "coverdict.baseRef": {
+          "type": "string",
+          "default": "",
+          "description": "coverdict.diffMode \"base\" iken karşılaştırılacak commit, branch veya tag adı (örn. \"main\" veya \"origin/main\"). Diğer diffMode değerlerinde kullanılmaz."
+        },
+        "coverdict.perTestClasspathPath": {
+          "type": "string",
+          "default": "target/coverdict-classpath.txt",
+          "description": "\"coverdict: Analiz Et (test bazlı)\" komutunun kullanacağı classpath liste dosyasının yolu (workspace köküne göre, satır başına bir jar/çıktı-dizini). Genelde \"mvn dependency:build-classpath\" ile üretilir - coverdict-playground'daki run.ps1 örneğine bakın."
         },
         "coverdict.show.explorerBadges": {
           "type": "boolean",

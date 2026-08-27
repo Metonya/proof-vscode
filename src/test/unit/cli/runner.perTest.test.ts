@@ -26,7 +26,7 @@ import { parseVerdict } from '../../../verdict/parse';
 const PLAYGROUND_ROOT = path.resolve(__dirname, '../../../../../coverdict-playground');
 const JAR_PATH = path.resolve(__dirname, '../../../../../coverdict/coverdict-cli/target/coverdict.jar');
 const REPORT_PATH = path.join(PLAYGROUND_ROOT, 'target', 'site', 'jacoco', 'jacoco.xml');
-const CLASSPATH_PATH = path.join(PLAYGROUND_ROOT, 'mutation-classpath.txt');
+const CLASSPATH_PATH = path.join(PLAYGROUND_ROOT, 'target', 'coverdict-classpath.txt');
 const FIXTURES_PRESENT = fs.existsSync(JAR_PATH) && fs.existsSync(REPORT_PATH) && fs.existsSync(CLASSPATH_PATH) && fs.existsSync(PLAYGROUND_ROOT);
 
 test('a real --per-test-report run: perTest parses, testsForClass finds real lines, testIdentity handles the real id shape', { skip: !FIXTURES_PRESENT }, async () => {

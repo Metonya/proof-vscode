@@ -93,38 +93,46 @@ function toggleCoverage(sinks: CoverageSinks): void {
 }
 
 async function runAnalyze(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
-	const parsed = await runAnalyzeCore(context, output, { kind: 'no-vcs' });
-	if (!parsed) {
-		return;
-	}
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
-		return; // runAnalyzeCore already bailed out for this - unreachable in practice, satisfies the type checker
+		vscode.window.showErrorMessage('coverdict: önce bir klasör açın.');
+		return;
+	}
+	const diffMode = readDiffMode(folder);
+	if (!diffMode) {
+		return;
+	}
+
+	const parsed = await runAnalyzeCore(context, output, folder, diffMode);
+	if (!parsed) {
+		return;
 	}
 	publishCoverage(folder, sinks, parsed.fileCoverage, parsed.coverage.overall);
 }
 
 /**
- * F3: --uncommitted (a diff is required for --per-test-report) plus a
- * prompted --per-test-classpath list file. Still paints coverage with the
- * same fileCoverage data (a superset run, one CLI invocation) and stores L2
- * evidence for the panel.
+ * F3: bir diff modu gerektirir (--per-test-report --no-vcs altında CLI
+ * tarafından reddedilir). Aynı fileCoverage verisiyle kapsamayı da boyar
+ * (tek CLI çağrısı, üst küme koşu) ve panel için L2 kanıtını saklar.
  */
 async function runAnalyzePerTest(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
-	const classpathPath = await vscode.window.showInputBox({
-		prompt: 'Test bazlı classpath liste dosyası (satır başına bir jar/çıktı-dizini yolu, workspace köküne göre)',
-		value: 'mutation-classpath.txt',
-	});
-	if (!classpathPath) {
+	const folder = vscode.workspace.workspaceFolders?.[0];
+	if (!folder) {
+		vscode.window.showErrorMessage('coverdict: önce bir klasör açın.');
+		return;
+	}
+	const diffMode = readDiffMode(folder);
+	if (!diffMode) {
+		return;
+	}
+	if (diffMode.kind === 'no-vcs') {
+		vscode.window.showErrorMessage('coverdict: test bazlı analiz bir diff modu gerektirir, "no-vcs" ile çalışmaz. coverdict.diffMode ayarını "uncommitted" veya "base" yapın.');
 		return;
 	}
 
-	const parsed = await runAnalyzeCore(context, output, { kind: 'uncommitted' }, { classpathModuleId: MODULE_ID, classpathPath });
+	const classpathPath = vscode.workspace.getConfiguration('coverdict', folder).get<string>('perTestClasspathPath') || 'target/coverdict-classpath.txt';
+	const parsed = await runAnalyzeCore(context, output, folder, diffMode, { classpathModuleId: MODULE_ID, classpathPath });
 	if (!parsed) {
-		return;
-	}
-	const folder = vscode.workspace.workspaceFolders?.[0];
-	if (!folder) {
 		return;
 	}
 
@@ -136,43 +144,58 @@ async function runAnalyzePerTest(context: vscode.ExtensionContext, output: vscod
 	showLineTestsPanel(computePanelContent());
 }
 
+/** `coverdict.diffMode` + (base modundaysa) `coverdict.baseRef`'i okur; base seçiliyken baseRef boşsa kullanıcıyı ayara yönlendirip `undefined` döner. */
+function readDiffMode(folder: vscode.WorkspaceFolder): DiffMode | undefined {
+	const config = vscode.workspace.getConfiguration('coverdict', folder);
+	const kind = config.get<string>('diffMode') ?? 'uncommitted';
+	if (kind === 'base') {
+		const ref = config.get<string>('baseRef')?.trim();
+		if (!ref) {
+			void offerToOpenSetting('coverdict: coverdict.diffMode "base" ayarlı ama coverdict.baseRef boş.', 'coverdict.baseRef');
+			return undefined;
+		}
+		return { kind: 'base', ref };
+	}
+	if (kind === 'no-vcs') {
+		return { kind: 'no-vcs' };
+	}
+	return { kind: 'uncommitted' };
+}
+
 /**
- * Shared by both commands: locate the jar, prompt for the report path, spawn
- * the CLI, read and parse `--out`. Returns `undefined` after already showing
- * the user why (hard rule 3a's exit-3-still-writes-a-document handling
- * included) - callers never need their own error UI for this part.
+ * Shared by both commands: locate the jar, spawn the CLI, read and parse
+ * `--out`. Returns `undefined` after already showing the user why (hard
+ * rule 3a's exit-3-still-writes-a-document handling included) - callers
+ * never need their own error UI for this part.
  */
 async function runAnalyzeCore(
 	context: vscode.ExtensionContext,
 	output: vscode.OutputChannel,
+	folder: vscode.WorkspaceFolder,
 	diffMode: DiffMode,
 	perTest?: { classpathModuleId: string; classpathPath: string },
 ): Promise<VerdictDocument | undefined> {
-	const folder = vscode.workspace.workspaceFolders?.[0];
-	if (!folder) {
-		vscode.window.showErrorMessage('coverdict: önce bir klasör açın.');
-		return undefined;
-	}
-
 	const jarPath = locateJar(folder);
 	if (!jarPath) {
 		vscode.window.showErrorMessage('coverdict: coverdict.jar bulunamadı. coverdict.jarPath ayarını yapın veya coverdict-cli/target/coverdict.jar konumunda bir tane derleyin.');
 		return undefined;
 	}
 
-	const reportPath = await vscode.window.showInputBox({
-		prompt: 'JaCoCo XML rapor yolu (workspace köküne göre)',
-		value: 'target/site/jacoco/jacoco.xml',
-	});
-	if (!reportPath) {
+	const config = vscode.workspace.getConfiguration('coverdict', folder);
+	const reportPath = config.get<string>('reportPath') || 'target/site/jacoco/jacoco.xml';
+	if (!fs.existsSync(path.join(folder.uri.fsPath, reportPath))) {
+		void offerToOpenSetting(`coverdict: rapor dosyası bulunamadı: ${reportPath}. Önce testleri JaCoCo ile çalıştırın, ya da coverdict.reportPath ayarını düzeltin.`, 'coverdict.reportPath');
 		return undefined;
 	}
 
-	const storageRoot = context.storageUri ?? context.globalStorageUri;
+	const storageRoot = context.storageUri;
+	if (!storageRoot) {
+		vscode.window.showErrorMessage('coverdict: bu pencerede workspace depolaması yok (bir klasör yerine tek dosya mı açık?) - sonuç kaydedilemez.');
+		return undefined;
+	}
 	await vscode.workspace.fs.createDirectory(storageRoot);
 	const outUri = vscode.Uri.joinPath(storageRoot, 'verdict-current.json');
 
-	const config = vscode.workspace.getConfiguration('coverdict', folder);
 	const javaExecutable = config.get<string>('javaExecutable') || 'java';
 	const coverageExclusions = config.get<string[]>('coverageExclusions') ?? [];
 	const args = buildAnalyzeArgs({
@@ -249,6 +272,14 @@ async function runAnalyzeCore(
 
 function percentText(percent: number | null): string {
 	return percent === null ? 'yok' : `${percent}%`;
+}
+
+/** A blocking configuration problem: shows the reason and a button that opens Settings scrolled to the offending key, instead of a bare error + a manual search. */
+async function offerToOpenSetting(message: string, settingId: string): Promise<void> {
+	const choice = await vscode.window.showErrorMessage(message, 'Ayarı Aç');
+	if (choice === 'Ayarı Aç') {
+		await vscode.commands.executeCommand('workbench.action.openSettings', settingId);
+	}
 }
 
 /**

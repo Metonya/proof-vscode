@@ -24,7 +24,7 @@ const MODULE_ID = 'root';
  * from src/ui/commands.ts and friends as they land; this function stays a
  * short list of `context.subscriptions.push(...)` calls (Plan.md Bölüm 2).
  */
-export function activate(context: vscode.ExtensionContext): void {
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
 	const output = vscode.window.createOutputChannel('coverdict');
 	const gutterTypes = createGutterDecorationTypes();
 	const explorerBadges = new ExplorerBadgeProvider();
@@ -75,12 +75,18 @@ export function activate(context: vscode.ExtensionContext): void {
 	// The CLI's own output is already sitting in extension storage from the
 	// last run (Plan.md Bölüm 5: verdict-current.json, byte-for-byte) - a
 	// window reload should not force a fresh scan just to see it again.
-	void restoreLastCoverage(context, sinks);
+	// Awaited (not fire-and-forget) so `activate()` only resolves once this
+	// is done - otherwise a command dispatched right after activation could
+	// run against empty state and race the restore that was about to fill it.
+	await restoreLastCoverage(context, sinks);
 }
 
 async function restoreLastCoverage(context: vscode.ExtensionContext, sinks: CoverageSinks): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
-	const storageRoot = context.storageUri ?? context.globalStorageUri;
+	// Deliberately not falling back to globalStorageUri: that storage is
+	// shared across every workspace, so a verdict saved there could belong
+	// to a different project entirely and get painted onto this one's files.
+	const storageRoot = context.storageUri;
 	if (!folder || !storageRoot) {
 		return;
 	}
