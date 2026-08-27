@@ -9,9 +9,9 @@ import { registerAnalyzeCommand } from './ui/commands';
  */
 export function activate(context: vscode.ExtensionContext): void {
 	const output = vscode.window.createOutputChannel('coverdict');
-	context.subscriptions.push(output);
-	context.subscriptions.push(registerAnalyzeCommand(context, output));
+	context.subscriptions.push(output, registerAnalyzeCommand(context, output));
 }
 
 export function deactivate(): void {
+	// Nothing to release: every disposable is already in context.subscriptions.
 }

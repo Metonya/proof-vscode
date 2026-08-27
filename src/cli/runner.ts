@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn } from 'node:child_process';
 
 /**
  * Spawns `java -jar <jarPath> <args>`, no `vscode` import (child_process is

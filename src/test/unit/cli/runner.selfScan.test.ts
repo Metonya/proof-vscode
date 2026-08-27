@@ -24,8 +24,9 @@ import { parseVerdict } from '../../../verdict/parse';
 const CLI_REPO_ROOT = path.resolve(__dirname, '../../../../../coverdict/coverdict-cli');
 const JAR_PATH = path.join(CLI_REPO_ROOT, 'target', 'coverdict.jar');
 const REPORT_PATH = path.join(CLI_REPO_ROOT, 'target', 'site', 'jacoco', 'jacoco.xml');
+const FIXTURES_PRESENT = fs.existsSync(JAR_PATH) && fs.existsSync(REPORT_PATH);
 
-test('a real self-scan: JSON jacoco-line percent matches the CLI text report percent', { skip: !fs.existsSync(JAR_PATH) || !fs.existsSync(REPORT_PATH) }, async () => {
+test('a real self-scan: JSON jacoco-line percent matches the CLI text report percent', { skip: !FIXTURES_PRESENT }, async () => {
 	const outPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-vscode-test-')), 'verdict.json');
 	const args = buildAnalyzeArgs({
 		repo: CLI_REPO_ROOT,
@@ -39,13 +40,13 @@ test('a real self-scan: JSON jacoco-line percent matches the CLI text report per
 
 	assert.ok(result.exitCode === 0 || result.exitCode === 3, `unexpected exit code ${result.exitCode}: ${result.stderr}`);
 
-	const stdoutMatch = result.stdout.match(/jacoco-line\s+([\d.]+)%/);
+	const stdoutMatch = /jacoco-line\s+([\d.]+)%/.exec(result.stdout);
 	assert.ok(stdoutMatch, `expected a "jacoco-line NN.N%" line in stdout, got:\n${result.stdout}`);
 	const stdoutPercent = Number(stdoutMatch[1]);
 
 	const raw = fs.readFileSync(outPath, 'utf8');
 	const parsed = parseVerdict(raw);
-	assert.equal(parsed.ok, true, !parsed.ok ? parsed.error : undefined);
+	assert.equal(parsed.ok, true, parsed.ok ? undefined : parsed.error);
 	if (parsed.ok) {
 		assert.equal(parsed.value.coverage.overall['jacoco-line'].percent, stdoutPercent);
 	}

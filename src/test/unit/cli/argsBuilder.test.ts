@@ -51,6 +51,6 @@ test('--out is always the last two args, so a caller can rely on args[args.lengt
 	const args = buildAnalyzeArgs({
 		repo: '/repo', diffMode: { kind: 'no-vcs' }, reportPath: 'jacoco.xml', outPath: '/tmp/out.json',
 	});
-	assert.equal(args[args.length - 2], '--out');
-	assert.equal(args[args.length - 1], '/tmp/out.json');
+	assert.equal(args.at(-2), '--out');
+	assert.equal(args.at(-1), '/tmp/out.json');
 });

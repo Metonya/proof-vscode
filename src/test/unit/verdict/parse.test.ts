@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { parseVerdict } from '../../../verdict/parse';
 
-const MINIMAL_METRIC = { numeratorName: 'a', numerator: 1, denominatorName: 'b', denominator: 2, percent: 50.0 };
+const MINIMAL_METRIC = { numeratorName: 'a', numerator: 1, denominatorName: 'b', denominator: 2, percent: 50 };
 const MINIMAL_METRIC_SET = { 'jacoco-line': MINIMAL_METRIC, 'strict-line': MINIMAL_METRIC, 'sonar-compatible': MINIMAL_METRIC };
 
 function minimalDocument(): unknown {
@@ -19,7 +19,7 @@ test('a real shaped document parses', () => {
 	const result = parseVerdict(JSON.stringify(minimalDocument()));
 	assert.equal(result.ok, true);
 	if (result.ok) {
-		assert.equal(result.value.coverage.overall['jacoco-line'].percent, 50.0);
+		assert.equal(result.value.coverage.overall['jacoco-line'].percent, 50);
 	}
 });
 
