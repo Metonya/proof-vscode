@@ -18,6 +18,8 @@ export interface AnalyzeArgsInput {
 	reportPath: string;
 	outPath: string;
 	fileCoverage?: boolean;
+	/** Sonar-style `sonar.coverage.exclusions` globs (D-05) - passed through verbatim, one authored list, never merged with a repo's own coverdict.config.json. */
+	coverageExclusions?: readonly string[];
 }
 
 export function buildAnalyzeArgs(input: AnalyzeArgsInput): string[] {
@@ -38,6 +40,9 @@ export function buildAnalyzeArgs(input: AnalyzeArgsInput): string[] {
 	args.push('--report', input.reportPath);
 	if (input.fileCoverage) {
 		args.push('--file-coverage');
+	}
+	if (input.coverageExclusions && input.coverageExclusions.length > 0) {
+		args.push('--coverage-exclusions', input.coverageExclusions.join(','));
 	}
 	args.push('--out', input.outPath);
 

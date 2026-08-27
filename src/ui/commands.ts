@@ -4,11 +4,11 @@ import * as vscode from 'vscode';
 import { buildAnalyzeArgs } from '../cli/argsBuilder';
 import { locateJar } from '../cli/jarLocator';
 import { run } from '../cli/runner';
-import { setCoverageState } from '../model/store';
+import { getCoverageState, isGutterVisible, setCoverageState, setGutterVisible } from '../model/store';
 import { parseVerdict } from '../verdict/parse';
-import type { FileCoverageBlock } from '../verdict/types';
+import type { FileCoverageBlock, MetricSet } from '../verdict/types';
 import { applyExcludedDecorations } from './decorationFallback';
-import { publishFileCoverage } from './coverageProvider';
+import { clearCoverage, publishFileCoverage } from './coverageProvider';
 import { showCoverageSummary, showNoFileCoverageWarning, showUnsupportedHostWarning } from './statusBar';
 
 /**
@@ -27,6 +27,32 @@ export interface CoverageSinks {
 
 export function registerAnalyzeCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
 	return vscode.commands.registerCommand('coverdict.analyze', () => runAnalyze(context, output, sinks));
+}
+
+/** F4: toggles the gutter for the last analyze run's data - no re-scan, just republish or clear what is already in model/store. */
+export function registerToggleCoverageCommand(sinks: CoverageSinks): vscode.Disposable {
+	return vscode.commands.registerCommand('coverdict.toggleCoverageGutter', () => toggleCoverageGutter(sinks));
+}
+
+function toggleCoverageGutter(sinks: CoverageSinks): void {
+	const state = getCoverageState();
+	if (!state?.fileCoverage) {
+		vscode.window.showInformationMessage('coverdict: no coverage data yet - run "coverdict: Analyze" first.');
+		return;
+	}
+
+	const nextVisible = !isGutterVisible();
+	setGutterVisible(nextVisible);
+	applyExcludedDecorations(sinks.excludedDecorationType, state.workspaceRoot, nextVisible ? state.fileCoverage.excluded : []);
+
+	if (nextVisible) {
+		const painted = publishFileCoverage(sinks.controller, state.workspaceRoot, state.fileCoverage);
+		showCoverageSummary(sinks.statusBarItem, state.overall, painted);
+	} else {
+		clearCoverage(sinks.controller);
+		sinks.statusBarItem.text = '$(eye-closed) coverdict';
+		sinks.statusBarItem.tooltip = 'coverdict: gutter hidden (click to show)';
+	}
 }
 
 async function runAnalyze(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
@@ -54,13 +80,16 @@ async function runAnalyze(context: vscode.ExtensionContext, output: vscode.Outpu
 	await vscode.workspace.fs.createDirectory(storageRoot);
 	const outUri = vscode.Uri.joinPath(storageRoot, 'verdict-current.json');
 
-	const javaExecutable = vscode.workspace.getConfiguration('coverdict', folder).get<string>('javaExecutable') || 'java';
+	const config = vscode.workspace.getConfiguration('coverdict', folder);
+	const javaExecutable = config.get<string>('javaExecutable') || 'java';
+	const coverageExclusions = config.get<string[]>('coverageExclusions') ?? [];
 	const args = buildAnalyzeArgs({
 		repo: folder.uri.fsPath,
 		diffMode: { kind: 'no-vcs' },
 		reportPath,
 		outPath: outUri.fsPath,
 		fileCoverage: true,
+		coverageExclusions,
 	});
 
 	output.show(true);
@@ -96,13 +125,24 @@ async function runAnalyze(context: vscode.ExtensionContext, output: vscode.Outpu
 				return;
 			}
 
-			const percent = parsed.value.coverage.overall['jacoco-line'].percent;
-			const percentText = percent === null ? 'n/a' : `${percent}%`;
-			vscode.window.showInformationMessage(`coverdict: ${parsed.value.analysis.status} - jacoco-line ${percentText}`);
+			// All three modes (jacoco-line, strict-line, sonar-compatible) are
+			// already in the verdict - zero new analysis to show them side by
+			// side (Plan.md Bölüm 4, 2026-08-27: jacoco-line and sonar-compatible
+			// are genuinely different numbers, not a rounding artifact).
+			const overall = parsed.value.coverage.overall;
+			vscode.window.showInformationMessage(
+				`coverdict: ${parsed.value.analysis.status} - jacoco-line ${percentText(overall['jacoco-line'].percent)}`
+				+ ` · strict-line ${percentText(overall['strict-line'].percent)}`
+				+ ` · sonar-compatible ${percentText(overall['sonar-compatible'].percent)}`,
+			);
 
-			publishCoverage(folder, sinks, parsed.value.fileCoverage, percent);
+			publishCoverage(folder, sinks, parsed.value.fileCoverage, overall);
 		},
 	);
+}
+
+function percentText(percent: number | null): string {
+	return percent === null ? 'n/a' : `${percent}%`;
 }
 
 /**
@@ -112,9 +152,9 @@ async function runAnalyze(context: vscode.ExtensionContext, output: vscode.Outpu
  * painted - hard rule 3a), and the whole block missing shows the status-bar
  * warning instead of leaving the previous run's data looking current.
  */
-function publishCoverage(folder: vscode.WorkspaceFolder, sinks: CoverageSinks, fileCoverage: FileCoverageBlock | undefined, jacocoLinePercent: number | null): void {
+function publishCoverage(folder: vscode.WorkspaceFolder, sinks: CoverageSinks, fileCoverage: FileCoverageBlock | undefined, overall: MetricSet): void {
 	const workspaceRoot = folder.uri.fsPath;
-	setCoverageState({ workspaceRoot, fileCoverage });
+	setCoverageState({ workspaceRoot, fileCoverage, overall });
 
 	if (!fileCoverage) {
 		showNoFileCoverageWarning(sinks.statusBarItem);
@@ -125,7 +165,7 @@ function publishCoverage(folder: vscode.WorkspaceFolder, sinks: CoverageSinks, f
 	const painted = publishFileCoverage(sinks.controller, workspaceRoot, fileCoverage);
 	applyExcludedDecorations(sinks.excludedDecorationType, workspaceRoot, fileCoverage.excluded);
 	if (painted) {
-		showCoverageSummary(sinks.statusBarItem, jacocoLinePercent);
+		showCoverageSummary(sinks.statusBarItem, overall, true);
 	} else {
 		showUnsupportedHostWarning(sinks.statusBarItem);
 	}

@@ -1,4 +1,4 @@
-import type { FileCoverageBlock } from '../verdict/types';
+import type { FileCoverageBlock, MetricSet } from '../verdict/types';
 
 /**
  * The one place the last analyze run's coverage data lives (Plan.md Bölüm
@@ -11,13 +11,16 @@ import type { FileCoverageBlock } from '../verdict/types';
 export interface CoverageState {
 	workspaceRoot: string;
 	fileCoverage: FileCoverageBlock | undefined;
+	overall: MetricSet;
 }
 
 let state: CoverageState | undefined;
+let gutterVisible = true;
 const listeners = new Set<(state: CoverageState) => void>();
 
 export function setCoverageState(next: CoverageState): void {
 	state = next;
+	gutterVisible = true; // a fresh scan always shows - F4's toggle is a per-run choice, not sticky across runs
 	for (const listener of listeners) {
 		listener(next);
 	}
@@ -25,6 +28,15 @@ export function setCoverageState(next: CoverageState): void {
 
 export function getCoverageState(): CoverageState | undefined {
 	return state;
+}
+
+/** F4 (Plan.md Bölüm 4): whether the gutter is currently meant to be shown - `ui/commands.ts`'s toggle command flips this and republishes or clears accordingly. */
+export function isGutterVisible(): boolean {
+	return gutterVisible;
+}
+
+export function setGutterVisible(next: boolean): void {
+	gutterVisible = next;
 }
 
 export function onCoverageStateChanged(listener: (state: CoverageState) => void): () => void {

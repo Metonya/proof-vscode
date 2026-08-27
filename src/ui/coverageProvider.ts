@@ -65,6 +65,20 @@ export function publishFileCoverage(controller: vscode.TestController, workspace
 	}
 }
 
+/**
+ * F4's toggle-off: the native API has no "remove this coverage" call, so an
+ * empty `TestRun` (started and ended with zero `addCoverage` calls) is
+ * published instead - unverified in real VS Code whether this actually
+ * clears the previous run's gutter marks or merely stops adding to them
+ * (Plan.md's open risk 7). If it doesn't, F4 needs a different mechanism.
+ */
+export function clearCoverage(controller: vscode.TestController): void {
+	if (!hasNativeCoverageApi()) {
+		return;
+	}
+	controller.createTestRun(new vscode.TestRunRequest()).end();
+}
+
 function toStatementCoverage(mapped: MappedLine): vscode.StatementCoverage {
 	const position = new vscode.Position(Math.max(0, mapped.line - 1), 0);
 	if (mapped.branches.length === 0) {

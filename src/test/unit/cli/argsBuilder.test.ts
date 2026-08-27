@@ -47,6 +47,23 @@ test('fileCoverage flag is only appended when true', () => {
 	assert.ok(!withoutFlag.includes('--file-coverage'));
 });
 
+test('coverageExclusions is joined with commas into one --coverage-exclusions value', () => {
+	const args = buildAnalyzeArgs({
+		repo: '/repo', diffMode: { kind: 'no-vcs' }, reportPath: 'jacoco.xml', outPath: '/tmp/out.json',
+		coverageExclusions: ['**/generated/**', 'src/main/java/**/*Dto.java'],
+	});
+	const flagIndex = args.indexOf('--coverage-exclusions');
+	assert.ok(flagIndex >= 0);
+	assert.equal(args[flagIndex + 1], '**/generated/**,src/main/java/**/*Dto.java');
+});
+
+test('an empty or absent coverageExclusions never appends the flag', () => {
+	const absent = buildAnalyzeArgs({ repo: '/repo', diffMode: { kind: 'no-vcs' }, reportPath: 'jacoco.xml', outPath: '/tmp/out.json' });
+	const empty = buildAnalyzeArgs({ repo: '/repo', diffMode: { kind: 'no-vcs' }, reportPath: 'jacoco.xml', outPath: '/tmp/out.json', coverageExclusions: [] });
+	assert.ok(!absent.includes('--coverage-exclusions'));
+	assert.ok(!empty.includes('--coverage-exclusions'));
+});
+
 test('--out is always the last two args, so a caller can rely on args[args.length - 1]', () => {
 	const args = buildAnalyzeArgs({
 		repo: '/repo', diffMode: { kind: 'no-vcs' }, reportPath: 'jacoco.xml', outPath: '/tmp/out.json',

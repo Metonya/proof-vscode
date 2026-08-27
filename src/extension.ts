@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 
-import { getCoverageState } from './model/store';
+import { getCoverageState, isGutterVisible } from './model/store';
 import { createCoverageController } from './ui/coverageProvider';
-import { registerAnalyzeCommand } from './ui/commands';
+import { registerAnalyzeCommand, registerToggleCoverageCommand } from './ui/commands';
 import { applyExcludedDecorations, createExcludedDecorationType } from './ui/decorationFallback';
 import { createStatusBarItem } from './ui/statusBar';
 
@@ -16,17 +16,20 @@ export function activate(context: vscode.ExtensionContext): void {
 	const controller = createCoverageController();
 	const excludedDecorationType = createExcludedDecorationType();
 	const statusBarItem = createStatusBarItem();
+	const sinks = { controller, excludedDecorationType, statusBarItem };
 
 	context.subscriptions.push(
 		output,
 		controller,
 		excludedDecorationType,
 		statusBarItem,
-		registerAnalyzeCommand(context, output, { controller, excludedDecorationType, statusBarItem }),
+		registerAnalyzeCommand(context, output, sinks),
+		registerToggleCoverageCommand(sinks),
 		vscode.window.onDidChangeVisibleTextEditors(() => {
 			const state = getCoverageState();
 			if (state) {
-				applyExcludedDecorations(excludedDecorationType, state.workspaceRoot, state.fileCoverage?.excluded ?? []);
+				const excluded = isGutterVisible() ? (state.fileCoverage?.excluded ?? []) : [];
+				applyExcludedDecorations(excludedDecorationType, state.workspaceRoot, excluded);
 			}
 		}),
 	);

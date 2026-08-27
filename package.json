@@ -35,6 +35,12 @@
           "default": "java",
           "description": "Java executable used to run coverdict.jar."
         },
+        "coverdict.coverageExclusions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "sonar.coverage.exclusions-style globs (same syntax you'd paste into SonarQube). Passed as --coverage-exclusions to every analyze run - one authored list (D-05), never merged with a repo's own coverdict.config.json."
+        },
         "coverdict.gutter.partialLineMode": {
           "type": "string",
           "enum": ["branch-approximation", "strict"],
@@ -47,6 +53,10 @@
       {
         "command": "coverdict.analyze",
         "title": "coverdict: Analyze"
+      },
+      {
+        "command": "coverdict.toggleCoverageGutter",
+        "title": "coverdict: Toggle Coverage Gutter"
       }
     ]
   },
