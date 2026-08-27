@@ -8,9 +8,12 @@ real reason to distribute this.
 
 ## Status
 
-Faz 4 (skeleton) of `coverdict/Plan.md`'s M6: the extension activates and
-does nothing visible yet. See that plan for the full feature list and phase
-order.
+Faz 9 done (2026-08-27): the extension runs coverdict, renders Explorer
+coverage badges and an editor gutter through its own decoration types
+(the native VS Code Test Coverage API was dropped - it has no documented
+way to clear or independently control its two rendering surfaces), and
+opens a "which tests cover this line" panel. See `Plan.md` for the full
+feature list and phase order.
 
 ## Layout
 

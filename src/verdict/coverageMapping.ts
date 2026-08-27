@@ -1,77 +1,43 @@
 import type { LineTuple } from './types';
 
 /**
- * Pure: turns coverdict's `[line, mi, ci, mb, cb]` tuples into a shape
- * `ui/coverageProvider.ts` wraps as real `vscode.StatementCoverage`/`vscode.
- * BranchCoverage` instances - kept out of `verdict/` proper only because it
- * is coverage-specific, not because it needs `vscode` (it doesn't; see
- * Plan.md Bölüm 2's first invariant and Bölüm 3's partial-line note).
+ * Pure: turns coverdict's `[line, mi, ci, mb, cb]` tuples into the shape
+ * `ui/gutterRenderer.ts` paints as editor decorations and
+ * `ui/explorerBadges.ts` rolls up into folder percentages. Kept out of
+ * `verdict/` proper only because it is coverage-specific, not because it
+ * needs `vscode` (it doesn't; see Plan.md Bölüm 2's first invariant).
  *
- * VS Code has no "partially covered line" concept of its own - yellow comes
- * only from branch data. A line with real branch counts (mb+cb>0) uses them
- * as-is (real fidelity). A line that is covered but not fully covered
- * (mi>0 && ci>0) with zero real branches has no branch data to report -
- * `branch-approximation` mode (default) synthesizes one covered + one
- * missed branch so it renders yellow instead of green; `strict` mode leaves
- * it branchless (green), the honest-but-less-visible choice. This is a bet
- * on real VS Code rendering, not a validated one - see Plan.md's open risk 3.
+ * A line is `partial` when it executed but not every instruction or branch
+ * on it did (`mi>0 || mb>0`) - this is the same real JaCoCo data the CLI's
+ * own `sonar-compatible` metric already counts (D-04), never a synthesized
+ * approximation.
  */
-export type PartialLineMode = 'branch-approximation' | 'strict';
-
-export type BranchState = 'covered' | 'missed';
 
 export interface MappedLine {
 	line: number;
 	executed: boolean;
-	branches: readonly BranchState[];
-	/** True only for the synthetic branch-approximation pair - lets the caller label real vs. synthesized branches differently in the hover. */
-	branchesAreSynthetic: boolean;
+	partial: boolean;
 }
 
-export function mapLines(lines: readonly LineTuple[], partialLineMode: PartialLineMode): MappedLine[] {
-	return lines.map((tuple) => mapLine(tuple, partialLineMode));
+export function mapLines(lines: readonly LineTuple[]): MappedLine[] {
+	return lines.map(mapLine);
 }
 
 export type LineState = 'covered' | 'partial' | 'uncovered';
 
 /**
- * The single classification both F2 (native `vscode.StatementCoverage`/
- * `BranchCoverage`) and F7 (decoration fallback) render from - both paths
- * call `mapLines` and this function, never their own separate logic, which
- * is what guarantees "İki yol da özdeş durum üretiyor" (Plan.md F7) by
- * construction rather than by two implementations happening to agree.
+ * The single classification `ui/gutterRenderer.ts` renders from - one
+ * implementation, so there is no second renderer that could quietly drift.
  */
 export function classifyLine(mapped: MappedLine): LineState {
 	if (!mapped.executed) {
 		return 'uncovered';
 	}
-	return mapped.branches.includes('missed') ? 'partial' : 'covered';
+	return mapped.partial ? 'partial' : 'covered';
 }
 
-function mapLine([line, missedInstructions, coveredInstructions, missedBranches, coveredBranches]: LineTuple, partialLineMode: PartialLineMode): MappedLine {
+function mapLine([line, missedInstructions, coveredInstructions, missedBranches, _coveredBranches]: LineTuple): MappedLine {
 	const executed = coveredInstructions > 0;
-	const hasRealBranches = missedBranches + coveredBranches > 0;
-	const isPartial = executed && missedInstructions > 0;
-
-	if (hasRealBranches) {
-		// These are exactly the lines that make sonar-compatible read lower
-		// than jacoco-line (D-04's formula counts branches in both terms) -
-		// a real missed branch here, not an approximation.
-		return { line, executed, branches: realBranches(missedBranches, coveredBranches), branchesAreSynthetic: false };
-	}
-	if (isPartial && partialLineMode === 'branch-approximation') {
-		return { line, executed, branches: ['covered', 'missed'], branchesAreSynthetic: true };
-	}
-	return { line, executed, branches: [], branchesAreSynthetic: false };
-}
-
-function realBranches(missedBranches: number, coveredBranches: number): BranchState[] {
-	const branches: BranchState[] = [];
-	for (let i = 0; i < coveredBranches; i++) {
-		branches.push('covered');
-	}
-	for (let i = 0; i < missedBranches; i++) {
-		branches.push('missed');
-	}
-	return branches;
+	const partial = executed && (missedInstructions > 0 || missedBranches > 0);
+	return { line, executed, partial };
 }

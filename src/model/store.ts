@@ -16,42 +16,23 @@ export interface CoverageState {
 
 let state: CoverageState | undefined;
 let gutterVisible = true;
-let usingFallback = false;
-const listeners = new Set<(state: CoverageState) => void>();
 
 export function setCoverageState(next: CoverageState): void {
 	state = next;
 	gutterVisible = true; // a fresh scan always shows - F4's toggle is a per-run choice, not sticky across runs
-	for (const listener of listeners) {
-		listener(next);
-	}
 }
 
 export function getCoverageState(): CoverageState | undefined {
 	return state;
 }
 
-/** F4 (Plan.md Bölüm 4): whether the gutter is currently meant to be shown - `ui/commands.ts`'s toggle command flips this and republishes or clears accordingly. */
+/** F4 (Plan.md Bölüm 4): whether coverage is currently meant to be shown - `ui/commands.ts`'s toggle command flips this and republishes or clears accordingly. */
 export function isGutterVisible(): boolean {
 	return gutterVisible;
 }
 
 export function setGutterVisible(next: boolean): void {
 	gutterVisible = next;
-}
-
-/** F7: whether the last publish used the decoration fallback (unsupported native host, addCoverage failure, or coverdict.gutter.forceFallback) - so the toggle command and editor-visibility listener know which renderer to clear/republish. */
-export function isUsingFallback(): boolean {
-	return usingFallback;
-}
-
-export function setUsingFallback(next: boolean): void {
-	usingFallback = next;
-}
-
-export function onCoverageStateChanged(listener: (state: CoverageState) => void): () => void {
-	listeners.add(listener);
-	return () => listeners.delete(listener);
 }
 
 /** F3: the last run's L2 evidence, set only by `coverdict.analyzePerTest` (a separate command from the main scan - --per-test-report needs a diff mode, D-55). */

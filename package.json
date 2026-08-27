@@ -41,26 +41,21 @@
           "default": [],
           "description": "sonar.coverage.exclusions tarzı glob desenleri (SonarQube'a yapıştıracağınız sözdizimiyle aynı). Her analiz koşusuna --coverage-exclusions olarak geçirilir - tek, elle yazılmış bir liste (D-05), repo'nun kendi coverdict.config.json dosyasıyla asla birleştirilmez."
         },
-        "coverdict.gutter.showFileCoverage": {
+        "coverdict.show.explorerBadges": {
           "type": "boolean",
           "default": true,
-          "description": "Explorer'da dosya/klasörlerin yanında kapsama yüzdesi rozetlerini göster. coverdict.gutter.showLineGutter'dan bağımsız olarak açılıp kapatılabilir."
+          "description": "Dosya Gezgini'nde her dosyanın ve klasörün yanında kapsama yüzdesini bir rozet olarak göster (örn. Calculator.java'nın yanında \"85\"). coverdict.show.lineGutter'dan bağımsızdır: bunu kapatırsanız sadece rozetler gider, editördeki satır renkleri etkilenmez."
         },
-        "coverdict.gutter.showLineGutter": {
+        "coverdict.show.lineGutter": {
           "type": "boolean",
           "default": true,
-          "description": "Editördeki satırların yanında satır bazlı kapsama işaretlerini (gutter) göster. coverdict.gutter.showFileCoverage'dan bağımsız olarak açılıp kapatılabilir."
+          "description": "Açık bir dosyada, her satırın solunda o satırın kapsanıp kapsanmadığını gösteren renkli bir çizgi çiz (yeşil: kapsandı, sarı: kısmen, kırmızı: kapsanmadı). coverdict.show.explorerBadges'ten bağımsızdır: bunu kapatırsanız sadece bu çizgiler gider, Dosya Gezgini'ndeki yüzde rozetleri etkilenmez."
         },
-        "coverdict.gutter.partialLineMode": {
+        "coverdict.badgeMetric": {
           "type": "string",
-          "enum": ["branch-approximation", "strict"],
-          "default": "branch-approximation",
-          "description": "Gerçek dal (branch) verisi olmayan, kapsanmış ama tam kapsanmamış bir satırın nasıl gösterileceği. branch-approximation (varsayılan): VS Code'un satırı kısmi (sarı) göstermesi için bir kapsanan + bir kaçırılan dal uydurur. strict: satırı dalsız bırakır, bu da VS Code'un onu tam kapsanmış (yeşil) göstermesine yol açar."
-        },
-        "coverdict.gutter.forceFallback": {
-          "type": "boolean",
-          "default": false,
-          "description": "Çalışan bir native Test Coverage API'si olan bir ortamda bile dekorasyon tabanlı yedek render motorunu kullan. Eski bir VS Code sürümüne ihtiyaç duymadan yedek yolu (Plan.md F7) test etmek içindir."
+          "enum": ["jacoco-line", "strict-line", "sonar-compatible"],
+          "default": "sonar-compatible",
+          "description": "Dosya Gezgini rozetlerinde ve satır boyamasında hangi kapsama modu kullanılsın. sonar-compatible (varsayılan): SonarQube'un gösterdiği yüzdeyle ±0.1 içinde eşleşir - dal (branch) kapsamını da sayar, bu yüzden jacoco-line'dan genelde daha düşük çıkar. jacoco-line: bir satırdaki herhangi bir komut çalıştıysa o satır kapsanmış sayılır (en yüksek çıkan sayı). strict-line: bir satırın kapsanmış sayılması için o satırdaki HER komutun çalışmış olması gerekir (en katı, genelde en düşük sayı). Durum çubuğu ve tooltip'ler her zaman üçünü birden gösterir; bu ayar sadece rozet/satır rengi için tek bir sayı seçer."
         }
       }
     },
@@ -70,7 +65,7 @@
         "title": "coverdict: Analiz Et"
       },
       {
-        "command": "coverdict.toggleCoverageGutter",
+        "command": "coverdict.toggleCoverage",
         "title": "coverdict: Kapsama Görünümünü Aç/Kapat"
       },
       {

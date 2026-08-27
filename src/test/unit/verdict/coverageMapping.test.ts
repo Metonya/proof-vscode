@@ -2,44 +2,33 @@ import * as assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { mapLines } from '../../../verdict/coverageMapping';
-import type { LineTuple } from '../../../verdict/types';
 
-test('a fully covered line with no branches has no branch data', () => {
-	const [line] = mapLines([[14, 0, 3, 0, 0]], 'branch-approximation');
+test('a fully covered line has no partial flag', () => {
+	const [line] = mapLines([[14, 0, 3, 0, 0]]);
 	assert.equal(line.executed, true);
-	assert.deepEqual(line.branches, []);
+	assert.equal(line.partial, false);
 });
 
-test('an uncovered line is not executed and has no branches', () => {
-	const [line] = mapLines([[14, 2, 0, 0, 0]], 'branch-approximation');
+test('an uncovered line is not executed and not partial', () => {
+	const [line] = mapLines([[14, 2, 0, 0, 0]]);
 	assert.equal(line.executed, false);
-	assert.deepEqual(line.branches, []);
+	assert.equal(line.partial, false);
 });
 
-test('real branch data is used as-is, regardless of partialLineMode, and is never marked synthetic', () => {
-	const tuple: LineTuple = [14, 0, 2, 1, 1];
-	for (const mode of ['branch-approximation', 'strict'] as const) {
-		const [line] = mapLines([tuple], mode);
-		assert.equal(line.executed, true);
-		assert.deepEqual(line.branches, ['covered', 'missed']);
-		assert.equal(line.branchesAreSynthetic, false);
-	}
-});
-
-test('branch-approximation synthesizes a covered+missed pair for a partial line with no real branches, marked synthetic', () => {
-	const [line] = mapLines([[14, 2, 3, 0, 0]], 'branch-approximation');
+test('a real missed branch marks an executed line partial', () => {
+	const [line] = mapLines([[14, 0, 2, 1, 1]]);
 	assert.equal(line.executed, true);
-	assert.deepEqual(line.branches, ['covered', 'missed']);
-	assert.equal(line.branchesAreSynthetic, true);
+	assert.equal(line.partial, true);
 });
 
-test('strict leaves a partial line with no real branches branchless', () => {
-	const [line] = mapLines([[14, 2, 3, 0, 0]], 'strict');
+test('a partial instruction count with no branch data still marks the line partial', () => {
+	const [line] = mapLines([[14, 2, 3, 0, 0]]);
 	assert.equal(line.executed, true);
-	assert.deepEqual(line.branches, []);
+	assert.equal(line.partial, true);
 });
 
-test('multiple covered and missed real branches all round-trip in order (covered first)', () => {
-	const [line] = mapLines([[14, 0, 5, 2, 3]], 'branch-approximation');
-	assert.deepEqual(line.branches, ['covered', 'covered', 'covered', 'missed', 'missed']);
+test('fully covered instructions and branches classify as not partial', () => {
+	const [line] = mapLines([[14, 0, 5, 0, 3]]);
+	assert.equal(line.executed, true);
+	assert.equal(line.partial, false);
 });

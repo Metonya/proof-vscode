@@ -1,8 +1,7 @@
 import * as fs from 'node:fs';
 import * as vscode from 'vscode';
 
-import { getCoverageState, isGutterVisible, isUsingFallback, setPerTestState } from './model/store';
-import { createCoverageController, readPartialLineMode } from './ui/coverageProvider';
+import { getCoverageState, isGutterVisible, setPerTestState } from './model/store';
 import {
 	refreshLineTestsPanelForActiveEditor,
 	registerAnalyzeCommand,
@@ -12,12 +11,8 @@ import {
 	republishCoverage,
 	type CoverageSinks,
 } from './ui/commands';
-import {
-	applyExcludedDecorations,
-	applyFallbackCoverage,
-	createExcludedDecorationType,
-	createFallbackDecorationTypes,
-} from './ui/decorationFallback';
+import { ExplorerBadgeProvider } from './ui/explorerBadges';
+import { applyGutterCoverage, createGutterDecorationTypes } from './ui/gutterRenderer';
 import { createStatusBarItem } from './ui/statusBar';
 import { parseVerdict } from './verdict/parse';
 
@@ -31,36 +26,31 @@ const MODULE_ID = 'root';
  */
 export function activate(context: vscode.ExtensionContext): void {
 	const output = vscode.window.createOutputChannel('coverdict');
-	const controller = createCoverageController();
-	const excludedDecorationType = createExcludedDecorationType();
-	const fallbackDecorationTypes = createFallbackDecorationTypes();
+	const gutterTypes = createGutterDecorationTypes();
+	const explorerBadges = new ExplorerBadgeProvider();
 	const statusBarItem = createStatusBarItem();
-	const sinks: CoverageSinks = { context, controller, excludedDecorationType, fallbackDecorationTypes, statusBarItem };
+	const sinks: CoverageSinks = { context, gutterTypes, explorerBadges, statusBarItem };
 
 	context.subscriptions.push(
 		output,
-		controller,
-		excludedDecorationType,
-		fallbackDecorationTypes.covered,
-		fallbackDecorationTypes.partial,
-		fallbackDecorationTypes.uncovered,
+		gutterTypes.covered,
+		gutterTypes.partial,
+		gutterTypes.uncovered,
+		gutterTypes.excluded,
+		explorerBadges,
+		vscode.window.registerFileDecorationProvider(explorerBadges),
 		statusBarItem,
 		registerAnalyzeCommand(context, output, sinks),
 		registerAnalyzePerTestCommand(context, output, sinks),
 		registerToggleCoverageCommand(sinks),
 		registerShowLineTestsCommand(),
+		// setDecorations is per-editor, not global - a newly-visible editor
+		// needs its gutter marks re-applied by hand (Faz 9: always our own
+		// decorations now, no native path that keeps its own state).
 		vscode.window.onDidChangeVisibleTextEditors(() => {
 			const state = getCoverageState();
-			if (!state) {
-				return;
-			}
-			const visible = isGutterVisible();
-			applyExcludedDecorations(excludedDecorationType, state.workspaceRoot, visible ? (state.fileCoverage?.excluded ?? []) : []);
-			// The native API keeps its own gutter marks across editor changes -
-			// only the decoration fallback needs manual re-application per
-			// newly-visible editor (setDecorations is per-editor, not global).
-			if (visible && isUsingFallback() && state.fileCoverage) {
-				applyFallbackCoverage(fallbackDecorationTypes, state.workspaceRoot, state.fileCoverage, readPartialLineMode());
+			if (state?.fileCoverage && isGutterVisible()) {
+				applyGutterCoverage(gutterTypes, state.workspaceRoot, state.fileCoverage);
 			}
 		}),
 		// F3: an already-open line->tests panel follows the user from file to
@@ -68,16 +58,15 @@ export function activate(context: vscode.ExtensionContext): void {
 		// be the "why do I have to keep asking" complaint F1's restore-on-
 		// activation fix already addressed once this session.
 		vscode.window.onDidChangeActiveTextEditor(() => refreshLineTestsPanelForActiveEditor()),
-		// coverdict.gutter.* ayarları (showFileCoverage/showLineGutter/
-		// forceFallback/partialLineMode) canlı: kullanıcı ayarlar sayfasında
+		// coverdict.show.* ayarları canlı: kullanıcı ayarlar sayfasında
 		// değiştirdiği anda son taramadan yeniden boyanır, tekrar analiz veya
 		// aç/kapat yapmasına gerek kalmaz.
 		vscode.workspace.onDidChangeConfiguration((e) => {
-			if (!e.affectsConfiguration('coverdict.gutter')) {
+			if (!e.affectsConfiguration('coverdict.show') && !e.affectsConfiguration('coverdict.badgeMetric')) {
 				return;
 			}
 			const state = getCoverageState();
-			if (state?.fileCoverage && isGutterVisible()) {
+			if (state?.fileCoverage) {
 				republishCoverage(sinks, state.workspaceRoot, state.fileCoverage, state.overall);
 			}
 		}),

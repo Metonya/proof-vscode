@@ -13,7 +13,7 @@ import type { MetricSet } from '../verdict/types';
 export function createStatusBarItem(): vscode.StatusBarItem {
 	const item = vscode.window.createStatusBarItem('coverdict', vscode.StatusBarAlignment.Left, 100);
 	item.name = 'coverdict';
-	item.command = 'coverdict.toggleCoverageGutter';
+	item.command = 'coverdict.toggleCoverage';
 	return item;
 }
 

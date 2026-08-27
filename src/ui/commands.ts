@@ -5,6 +5,7 @@ import * as vscode from 'vscode';
 import { buildAnalyzeArgs, type DiffMode } from '../cli/argsBuilder';
 import { locateJar } from '../cli/jarLocator';
 import { run } from '../cli/runner';
+import type { BadgeMetric } from '../model/metrics';
 import { detectClassName } from '../model/classNameDetector';
 import { testsForClass } from '../model/lineIndex';
 import { toRepoRelativePath } from '../model/pathIndex';
@@ -15,12 +16,11 @@ import {
 	setCoverageState,
 	setGutterVisible,
 	setPerTestState,
-	setUsingFallback,
 } from '../model/store';
 import { parseVerdict } from '../verdict/parse';
 import type { FileCoverageBlock, MetricSet, VerdictDocument } from '../verdict/types';
-import { applyExcludedDecorations, applyFallbackCoverage, clearFallbackCoverage, type FallbackDecorationTypes } from './decorationFallback';
-import { hasNativeCoverageApi, publishFileCoverage, readPartialLineMode, resetCoverageController, type FileCoveragePublishMode } from './coverageProvider';
+import type { ExplorerBadgeProvider } from './explorerBadges';
+import { applyGutterCoverage, clearGutterCoverage, type GutterDecorationTypes } from './gutterRenderer';
 import { refreshLineTestsPanelIfOpen, showLineTestsPanel, type PanelContent } from './panelView';
 import { showCoverageSummary, showNoFileCoverageWarning } from './statusBar';
 
@@ -28,24 +28,17 @@ import { showCoverageSummary, showNoFileCoverageWarning } from './statusBar';
 const MODULE_ID = 'root';
 
 /**
- * F1/F2 (Plan.md Bölüm 7): the manual "run coverdict on this workspace"
- * gesture - `withProgress` cancellable, `--out` written to extension
- * storage (never the repo, so it can never become an untracked file the
- * next diff sees). Always requests `--file-coverage` - painting the gutter
- * is F2's whole point, and the payload-size reason it is opt-in on the CLI
- * (Plan.md Faz 1) does not apply to a single-workspace, on-demand run here.
- *
- * `controller` is mutable and re-assigned by `resetController` (F4's hide
- * path, verified by hand: an empty `TestRun` does NOT clear a prior run's
- * Explorer file-percentage badges - only disposing and rebuilding the whole
- * `TestController` does). Every read of `sinks.controller` happens at call
- * time, never captured early, so a reset is visible everywhere immediately.
+ * Faz 9: hem gutter (`gutterTypes`) hem Explorer rozetleri
+ * (`explorerBadges`) artık tamamen bizim çizdiğimiz, tam kontrolümüzde iki
+ * ayrı yüzey - native Test Coverage API'sinin "addCoverage sonrası hangi
+ * yüzeyin çizileceğine VS Code karar verir" kısıtı yok (bkz. plan). Her
+ * ikisi de `coverdict.show.*` ayarlarına göre `paintCoverage`'da bağımsız
+ * açılıp kapanıyor.
  */
 export interface CoverageSinks {
 	context: vscode.ExtensionContext;
-	controller: vscode.TestController;
-	excludedDecorationType: vscode.TextEditorDecorationType;
-	fallbackDecorationTypes: FallbackDecorationTypes;
+	gutterTypes: GutterDecorationTypes;
+	explorerBadges: ExplorerBadgeProvider;
 	statusBarItem: vscode.StatusBarItem;
 }
 
@@ -53,14 +46,14 @@ export function registerAnalyzeCommand(context: vscode.ExtensionContext, output:
 	return vscode.commands.registerCommand('coverdict.analyze', () => runAnalyze(context, output, sinks));
 }
 
-/** F3: a diff-mode run with --per-test-report, superset of the plain scan (still paints the gutter with the same fileCoverage data). */
+/** F3: a diff-mode run with --per-test-report, superset of the plain scan (still paints coverage with the same fileCoverage data). */
 export function registerAnalyzePerTestCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
 	return vscode.commands.registerCommand('coverdict.analyzePerTest', () => runAnalyzePerTest(context, output, sinks));
 }
 
-/** F4: toggles the gutter for the last analyze run's data - no re-scan, just republish or clear what is already in model/store. */
+/** F4: toggles both surfaces together for the last analyze run's data - no re-scan, just republish or clear what is already in model/store. */
 export function registerToggleCoverageCommand(sinks: CoverageSinks): vscode.Disposable {
-	return vscode.commands.registerCommand('coverdict.toggleCoverageGutter', () => toggleCoverageGutter(sinks));
+	return vscode.commands.registerCommand('coverdict.toggleCoverage', () => toggleCoverage(sinks));
 }
 
 /** F3: opens (or reveals) the line->tests panel for the currently active editor. */
@@ -77,11 +70,10 @@ export function refreshLineTestsPanelForActiveEditor(): void {
 export function republishCoverage(sinks: CoverageSinks, workspaceRoot: string, fileCoverage: FileCoverageBlock, overall: MetricSet): void {
 	setCoverageState({ workspaceRoot, fileCoverage, overall });
 	paintCoverage(sinks, workspaceRoot, fileCoverage);
-	applyExcludedDecorations(sinks.excludedDecorationType, workspaceRoot, fileCoverage.excluded);
-	showCoverageSummary(sinks.statusBarItem, overall, true);
+	showCoverageSummary(sinks.statusBarItem, overall, isGutterVisible());
 }
 
-function toggleCoverageGutter(sinks: CoverageSinks): void {
+function toggleCoverage(sinks: CoverageSinks): void {
 	const state = getCoverageState();
 	if (!state?.fileCoverage) {
 		vscode.window.showInformationMessage('coverdict: henüz kapsama verisi yok - önce "coverdict: Analiz Et" komutunu çalıştırın.');
@@ -93,15 +85,11 @@ function toggleCoverageGutter(sinks: CoverageSinks): void {
 
 	if (nextVisible) {
 		paintCoverage(sinks, state.workspaceRoot, state.fileCoverage);
-		showCoverageSummary(sinks.statusBarItem, state.overall, true);
 	} else {
-		resetController(sinks);
-		clearFallbackCoverage(sinks.fallbackDecorationTypes);
-		setUsingFallback(false);
-		applyExcludedDecorations(sinks.excludedDecorationType, state.workspaceRoot, []);
-		sinks.statusBarItem.text = '$(eye-closed) coverdict';
-		sinks.statusBarItem.tooltip = 'coverdict: kapsama görünümü gizli (göstermek için tıklayın)';
+		sinks.explorerBadges.clear();
+		clearGutterCoverage(sinks.gutterTypes);
 	}
+	showCoverageSummary(sinks.statusBarItem, state.overall, nextVisible);
 }
 
 async function runAnalyze(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
@@ -118,7 +106,7 @@ async function runAnalyze(context: vscode.ExtensionContext, output: vscode.Outpu
 
 /**
  * F3: --uncommitted (a diff is required for --per-test-report) plus a
- * prompted --per-test-classpath list file. Still paints the gutter with the
+ * prompted --per-test-classpath list file. Still paints coverage with the
  * same fileCoverage data (a superset run, one CLI invocation) and stores L2
  * evidence for the panel.
  */
@@ -197,17 +185,30 @@ async function runAnalyzeCore(
 		perTest,
 	});
 
-	output.show(true);
 	output.appendLine(`coverdict: java -jar ${jarPath} ${args.join(' ')}`);
 
 	return vscode.window.withProgress(
-		{ location: vscode.ProgressLocation.Notification, title: 'coverdict: analyzing', cancellable: true },
+		{ location: vscode.ProgressLocation.Notification, title: 'coverdict: analiz ediliyor', cancellable: true },
 		async (_progress, token) => {
 			const handle = run({ javaExecutable, jarPath, args, onStderrLine: (line) => output.appendLine(line) });
-			token.onCancellationRequested(() => handle.cancel());
+			let cancelled = false;
+			token.onCancellationRequested(() => {
+				cancelled = true;
+				handle.cancel();
+			});
 
-			const result = await handle.result;
+			let result;
+			try {
+				result = await handle.result;
+			} catch (e) {
+				vscode.window.showErrorMessage(`coverdict: "${javaExecutable}" çalıştırılamadı: ${(e as Error).message}`);
+				return undefined;
+			}
 			output.appendLine(result.stdout);
+
+			if (cancelled) {
+				return undefined; // user-initiated cancel - not a failure, say nothing
+			}
 
 			// exit 3 (incomplete) still writes a real document - read it rather
 			// than treating it as a failure (hard rule 3a, mirrored from the CLI).
@@ -240,10 +241,6 @@ async function runAnalyzeCore(
 				+ ` · strict-line ${percentText(overall['strict-line'].percent)}`
 				+ ` · sonar-compatible ${percentText(overall['sonar-compatible'].percent)}`,
 			);
-			// Plan.md Bölüm 6's manual checklist reads this line before trusting
-			// what got painted - "native coverage API: yes|no" is the whole
-			// point, kept as an exact grep-able phrase.
-			output.appendLine(`coverdict: native coverage API: ${hasNativeCoverageApi() ? 'yes' : 'no'}`);
 
 			return parsed.value;
 		},
@@ -255,14 +252,9 @@ function percentText(percent: number | null): string {
 }
 
 /**
- * F2's four states: painted from `fileCoverage.files[]` (native API or,
- * failing/forced, F7's decoration fallback - both read the identical
- * `mapLines`/`classifyLine` classification, Plan.md F7's "İki yol da özdeş
- * durum üretiyor"), `excluded` grayed out (decoration, neither path has a
- * native concept of it), anything absent from the report simply never gets
- * painted at all (hard rule 3a), and the whole block missing shows the
- * status-bar warning instead of leaving the previous run's data looking
- * current.
+ * `fileCoverage.files[]` yoksa (bayrak istenmedi ya da yazılmadan önce bir
+ * hata oldu) durum çubuğu uyarısı gösterir ve her iki yüzeyi de temizler -
+ * hard rule 3a: eski koşunun verisi güncelmiş gibi görünmeye devam etmez.
  */
 function publishCoverage(folder: vscode.WorkspaceFolder, sinks: CoverageSinks, fileCoverage: FileCoverageBlock | undefined, overall: MetricSet): void {
 	const workspaceRoot = folder.uri.fsPath;
@@ -270,64 +262,44 @@ function publishCoverage(folder: vscode.WorkspaceFolder, sinks: CoverageSinks, f
 
 	if (!fileCoverage) {
 		showNoFileCoverageWarning(sinks.statusBarItem);
-		applyExcludedDecorations(sinks.excludedDecorationType, workspaceRoot, []);
-		resetController(sinks);
-		clearFallbackCoverage(sinks.fallbackDecorationTypes);
+		sinks.explorerBadges.clear();
+		clearGutterCoverage(sinks.gutterTypes);
 		return;
 	}
 
 	paintCoverage(sinks, workspaceRoot, fileCoverage);
-	applyExcludedDecorations(sinks.excludedDecorationType, workspaceRoot, fileCoverage.excluded);
-	showCoverageSummary(sinks.statusBarItem, overall, true);
+	showCoverageSummary(sinks.statusBarItem, overall, isGutterVisible());
 }
 
 /**
- * `coverdict.gutter.showFileCoverage` (Explorer % rozetleri) ve
- * `coverdict.gutter.showLineGutter` (editördeki satır işaretleri) birbirinden
- * bağımsız ayarlardır. Native Test Coverage API'si ikisini normalde tek bir
- * yayından (`FileCoverage.fromDetails`) birlikte üretir; ayrımı sağlamak için
- * showLineGutter kapalıyken native'e sadece özet sayı (`'summary'` modu,
- * gutter'da hiçbir şey çizdirmeyen) yayınlanır, showFileCoverage kapalıyken
- * native hiç kullanılmaz (Explorer'da rozet çıkmasın diye) ve gutter - eğer
- * isteniyorsa - dekorasyon yedeğiyle çizilir. Native'in devre dışı kaldığı
- * her durumda controller resetlenir (F4'ün "gerçekten temizler" bulgusu, bkz.
- * `resetController`) ki eski native izler yedek yolla yan yana kalmasın.
+ * `coverdict.show.explorerBadges` ve `coverdict.show.lineGutter` birbirinden
+ * tamamen bağımsız - ikisi de kendi çizim yolumuzdan geliyor (Faz 9), native
+ * API'nin "ikisini birlikte üretir" kısıtı yok. `isGutterVisible()` (F4'ün
+ * genel aç/kapa'sı) `false` ise ikisi de hiç çağrılmaz.
  */
 function paintCoverage(sinks: CoverageSinks, workspaceRoot: string, fileCoverage: FileCoverageBlock): void {
-	const config = vscode.workspace.getConfiguration('coverdict');
-	const showFileCoverage = config.get<boolean>('gutter.showFileCoverage') ?? true;
-	const showLineGutter = config.get<boolean>('gutter.showLineGutter') ?? true;
-	const forceFallback = config.get<boolean>('gutter.forceFallback') ?? false;
-
-	if (!showFileCoverage && !showLineGutter) {
-		resetController(sinks);
-		clearFallbackCoverage(sinks.fallbackDecorationTypes);
-		setUsingFallback(false);
+	if (!isGutterVisible()) {
+		sinks.explorerBadges.clear();
+		clearGutterCoverage(sinks.gutterTypes);
 		return;
 	}
 
-	const nativeMode: FileCoveragePublishMode = showLineGutter ? 'detailed' : 'summary';
-	const painted = showFileCoverage && !forceFallback && publishFileCoverage(sinks.controller, workspaceRoot, fileCoverage, nativeMode);
-	if (!painted) {
-		resetController(sinks);
-	}
+	const config = vscode.workspace.getConfiguration('coverdict', vscode.Uri.file(workspaceRoot));
+	const showExplorerBadges = config.get<boolean>('show.explorerBadges') ?? true;
+	const showLineGutter = config.get<boolean>('show.lineGutter') ?? true;
+	const badgeMetric = config.get<BadgeMetric>('badgeMetric') ?? 'sonar-compatible';
 
-	// Gutter'ın gerçekten native'den geldiği tek durum: dosya rozeti native'ten
-	// yayınlandı VE detaylı moddaydı. Diğer tüm "gutter isteniyor" durumlarında
-	// (native kapalı/başarısız, ya da showFileCoverage kapalı) dekorasyon
-	// yedeği devreye girer.
-	const gutterFromDecorations = showLineGutter && !(painted && nativeMode === 'detailed');
-	setUsingFallback(gutterFromDecorations);
-	if (gutterFromDecorations) {
-		applyFallbackCoverage(sinks.fallbackDecorationTypes, workspaceRoot, fileCoverage, readPartialLineMode());
+	if (showExplorerBadges) {
+		sinks.explorerBadges.update(workspaceRoot, fileCoverage, badgeMetric);
 	} else {
-		clearFallbackCoverage(sinks.fallbackDecorationTypes);
+		sinks.explorerBadges.clear();
 	}
-}
 
-function resetController(sinks: CoverageSinks): void {
-	sinks.controller = resetCoverageController(sinks.controller);
-	sinks.context.subscriptions.push(sinks.controller);
+	if (showLineGutter) {
+		applyGutterCoverage(sinks.gutterTypes, workspaceRoot, fileCoverage);
+	} else {
+		clearGutterCoverage(sinks.gutterTypes);
+	}
 }
 
 /**

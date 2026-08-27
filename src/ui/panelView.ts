@@ -25,10 +25,6 @@ export type PanelContent =
 
 let panel: vscode.WebviewPanel | undefined;
 
-export function isPanelOpen(): boolean {
-	return panel !== undefined;
-}
-
 export function showLineTestsPanel(content: PanelContent): void {
 	if (!panel) {
 		panel = vscode.window.createWebviewPanel('coverdictLineTests', 'coverdict: Satır → Testler', vscode.ViewColumn.Beside, { enableScripts: false });
