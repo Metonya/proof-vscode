@@ -32,6 +32,22 @@ export function mapLines(lines: readonly LineTuple[], partialLineMode: PartialLi
 	return lines.map((tuple) => mapLine(tuple, partialLineMode));
 }
 
+export type LineState = 'covered' | 'partial' | 'uncovered';
+
+/**
+ * The single classification both F2 (native `vscode.StatementCoverage`/
+ * `BranchCoverage`) and F7 (decoration fallback) render from - both paths
+ * call `mapLines` and this function, never their own separate logic, which
+ * is what guarantees "İki yol da özdeş durum üretiyor" (Plan.md F7) by
+ * construction rather than by two implementations happening to agree.
+ */
+export function classifyLine(mapped: MappedLine): LineState {
+	if (!mapped.executed) {
+		return 'uncovered';
+	}
+	return mapped.branches.includes('missed') ? 'partial' : 'covered';
+}
+
 function mapLine([line, missedInstructions, coveredInstructions, missedBranches, coveredBranches]: LineTuple, partialLineMode: PartialLineMode): MappedLine {
 	const executed = coveredInstructions > 0;
 	const hasRealBranches = missedBranches + coveredBranches > 0;

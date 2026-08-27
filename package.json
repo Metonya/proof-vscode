@@ -46,6 +46,11 @@
           "enum": ["branch-approximation", "strict"],
           "default": "branch-approximation",
           "description": "How a covered-but-not-fully-covered line with no real branch data renders. branch-approximation (default): synthesizes one covered + one missed branch so VS Code shows it as partial (yellow). strict: leaves it branchless, which VS Code renders as fully covered (green)."
+        },
+        "coverdict.gutter.forceFallback": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use the decoration-based fallback renderer even on a host with a working native Test Coverage API. For testing the fallback path (Plan.md F7) without needing an old VS Code build."
         }
       }
     },

@@ -23,12 +23,6 @@ export function showNoFileCoverageWarning(item: vscode.StatusBarItem): void {
 	item.show();
 }
 
-export function showUnsupportedHostWarning(item: vscode.StatusBarItem): void {
-	item.text = '$(warning) coverdict: gutter unsupported here';
-	item.tooltip = 'This VS Code build has no working Test Coverage API - coverage data exists but nothing can be painted (F7 will add a decoration fallback).';
-	item.show();
-}
-
 export function showCoverageSummary(item: vscode.StatusBarItem, overall: MetricSet, gutterVisible: boolean): void {
 	const jacocoLine = overall['jacoco-line'].percent;
 	const eyeIcon = gutterVisible ? 'eye' : 'eye-closed';

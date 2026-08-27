@@ -96,7 +96,7 @@ function toStatementCoverage(mapped: MappedLine): vscode.StatementCoverage {
 	return new vscode.StatementCoverage(mapped.executed, position, branches);
 }
 
-function readPartialLineMode(): PartialLineMode {
+export function readPartialLineMode(): PartialLineMode {
 	const configured = vscode.workspace.getConfiguration('coverdict').get<string>('gutter.partialLineMode');
 	return configured === 'strict' ? 'strict' : 'branch-approximation';
 }

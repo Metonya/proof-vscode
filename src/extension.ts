@@ -1,9 +1,14 @@
 import * as vscode from 'vscode';
 
-import { getCoverageState, isGutterVisible } from './model/store';
-import { createCoverageController } from './ui/coverageProvider';
+import { getCoverageState, isGutterVisible, isUsingFallback } from './model/store';
+import { createCoverageController, readPartialLineMode } from './ui/coverageProvider';
 import { registerAnalyzeCommand, registerToggleCoverageCommand } from './ui/commands';
-import { applyExcludedDecorations, createExcludedDecorationType } from './ui/decorationFallback';
+import {
+	applyExcludedDecorations,
+	applyFallbackCoverage,
+	createExcludedDecorationType,
+	createFallbackDecorationTypes,
+} from './ui/decorationFallback';
 import { createStatusBarItem } from './ui/statusBar';
 
 /**
@@ -15,21 +20,32 @@ export function activate(context: vscode.ExtensionContext): void {
 	const output = vscode.window.createOutputChannel('coverdict');
 	const controller = createCoverageController();
 	const excludedDecorationType = createExcludedDecorationType();
+	const fallbackDecorationTypes = createFallbackDecorationTypes();
 	const statusBarItem = createStatusBarItem();
-	const sinks = { controller, excludedDecorationType, statusBarItem };
+	const sinks = { controller, excludedDecorationType, fallbackDecorationTypes, statusBarItem };
 
 	context.subscriptions.push(
 		output,
 		controller,
 		excludedDecorationType,
+		fallbackDecorationTypes.covered,
+		fallbackDecorationTypes.partial,
+		fallbackDecorationTypes.uncovered,
 		statusBarItem,
 		registerAnalyzeCommand(context, output, sinks),
 		registerToggleCoverageCommand(sinks),
 		vscode.window.onDidChangeVisibleTextEditors(() => {
 			const state = getCoverageState();
-			if (state) {
-				const excluded = isGutterVisible() ? (state.fileCoverage?.excluded ?? []) : [];
-				applyExcludedDecorations(excludedDecorationType, state.workspaceRoot, excluded);
+			if (!state) {
+				return;
+			}
+			const visible = isGutterVisible();
+			applyExcludedDecorations(excludedDecorationType, state.workspaceRoot, visible ? (state.fileCoverage?.excluded ?? []) : []);
+			// The native API keeps its own gutter marks across editor changes -
+			// only the decoration fallback needs manual re-application per
+			// newly-visible editor (setDecorations is per-editor, not global).
+			if (visible && isUsingFallback() && state.fileCoverage) {
+				applyFallbackCoverage(fallbackDecorationTypes, state.workspaceRoot, state.fileCoverage, readPartialLineMode());
 			}
 		}),
 	);

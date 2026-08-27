@@ -16,6 +16,7 @@ export interface CoverageState {
 
 let state: CoverageState | undefined;
 let gutterVisible = true;
+let usingFallback = false;
 const listeners = new Set<(state: CoverageState) => void>();
 
 export function setCoverageState(next: CoverageState): void {
@@ -37,6 +38,15 @@ export function isGutterVisible(): boolean {
 
 export function setGutterVisible(next: boolean): void {
 	gutterVisible = next;
+}
+
+/** F7: whether the last publish used the decoration fallback (unsupported native host, addCoverage failure, or coverdict.gutter.forceFallback) - so the toggle command and editor-visibility listener know which renderer to clear/republish. */
+export function isUsingFallback(): boolean {
+	return usingFallback;
+}
+
+export function setUsingFallback(next: boolean): void {
+	usingFallback = next;
 }
 
 export function onCoverageStateChanged(listener: (state: CoverageState) => void): () => void {

@@ -4,12 +4,12 @@ import * as vscode from 'vscode';
 import { buildAnalyzeArgs } from '../cli/argsBuilder';
 import { locateJar } from '../cli/jarLocator';
 import { run } from '../cli/runner';
-import { getCoverageState, isGutterVisible, setCoverageState, setGutterVisible } from '../model/store';
+import { getCoverageState, isGutterVisible, setCoverageState, setGutterVisible, setUsingFallback } from '../model/store';
 import { parseVerdict } from '../verdict/parse';
 import type { FileCoverageBlock, MetricSet } from '../verdict/types';
-import { applyExcludedDecorations } from './decorationFallback';
-import { clearCoverage, publishFileCoverage } from './coverageProvider';
-import { showCoverageSummary, showNoFileCoverageWarning, showUnsupportedHostWarning } from './statusBar';
+import { applyExcludedDecorations, applyFallbackCoverage, clearFallbackCoverage, type FallbackDecorationTypes } from './decorationFallback';
+import { clearCoverage, hasNativeCoverageApi, publishFileCoverage, readPartialLineMode } from './coverageProvider';
+import { showCoverageSummary, showNoFileCoverageWarning } from './statusBar';
 
 /**
  * F1/F2 (Plan.md Bölüm 7): the manual "run coverdict on this workspace"
@@ -22,6 +22,7 @@ import { showCoverageSummary, showNoFileCoverageWarning, showUnsupportedHostWarn
 export interface CoverageSinks {
 	controller: vscode.TestController;
 	excludedDecorationType: vscode.TextEditorDecorationType;
+	fallbackDecorationTypes: FallbackDecorationTypes;
 	statusBarItem: vscode.StatusBarItem;
 }
 
@@ -43,13 +44,14 @@ function toggleCoverageGutter(sinks: CoverageSinks): void {
 
 	const nextVisible = !isGutterVisible();
 	setGutterVisible(nextVisible);
-	applyExcludedDecorations(sinks.excludedDecorationType, state.workspaceRoot, nextVisible ? state.fileCoverage.excluded : []);
 
 	if (nextVisible) {
-		const painted = publishFileCoverage(sinks.controller, state.workspaceRoot, state.fileCoverage);
-		showCoverageSummary(sinks.statusBarItem, state.overall, painted);
+		paintCoverage(sinks, state.workspaceRoot, state.fileCoverage);
+		showCoverageSummary(sinks.statusBarItem, state.overall, true);
 	} else {
 		clearCoverage(sinks.controller);
+		clearFallbackCoverage(sinks.fallbackDecorationTypes);
+		applyExcludedDecorations(sinks.excludedDecorationType, state.workspaceRoot, []);
 		sinks.statusBarItem.text = '$(eye-closed) coverdict';
 		sinks.statusBarItem.tooltip = 'coverdict: gutter hidden (click to show)';
 	}
@@ -137,6 +139,10 @@ async function runAnalyze(context: vscode.ExtensionContext, output: vscode.Outpu
 			);
 
 			publishCoverage(folder, sinks, parsed.value.fileCoverage, overall);
+			// Plan.md Bölüm 6's manual checklist reads this line before trusting
+			// what got painted - "native coverage API: yes|no" is the whole
+			// point, kept as an exact grep-able phrase.
+			output.appendLine(`coverdict: native coverage API: ${hasNativeCoverageApi() ? 'yes' : 'no'}`);
 		},
 	);
 }
@@ -146,11 +152,14 @@ function percentText(percent: number | null): string {
 }
 
 /**
- * F2's four states: painted from `fileCoverage.files[]` (native API),
- * `excluded` grayed out (decoration, native has no such concept), anything
- * absent from the report simply never gets a `FileCoverage` entry (nothing
- * painted - hard rule 3a), and the whole block missing shows the status-bar
- * warning instead of leaving the previous run's data looking current.
+ * F2's four states: painted from `fileCoverage.files[]` (native API or,
+ * failing/forced, F7's decoration fallback - both read the identical
+ * `mapLines`/`classifyLine` classification, Plan.md F7's "İki yol da özdeş
+ * durum üretiyor"), `excluded` grayed out (decoration, neither path has a
+ * native concept of it), anything absent from the report simply never gets
+ * painted at all (hard rule 3a), and the whole block missing shows the
+ * status-bar warning instead of leaving the previous run's data looking
+ * current.
  */
 function publishCoverage(folder: vscode.WorkspaceFolder, sinks: CoverageSinks, fileCoverage: FileCoverageBlock | undefined, overall: MetricSet): void {
 	const workspaceRoot = folder.uri.fsPath;
@@ -159,14 +168,33 @@ function publishCoverage(folder: vscode.WorkspaceFolder, sinks: CoverageSinks, f
 	if (!fileCoverage) {
 		showNoFileCoverageWarning(sinks.statusBarItem);
 		applyExcludedDecorations(sinks.excludedDecorationType, workspaceRoot, []);
+		clearCoverage(sinks.controller);
+		clearFallbackCoverage(sinks.fallbackDecorationTypes);
 		return;
 	}
 
-	const painted = publishFileCoverage(sinks.controller, workspaceRoot, fileCoverage);
+	paintCoverage(sinks, workspaceRoot, fileCoverage);
 	applyExcludedDecorations(sinks.excludedDecorationType, workspaceRoot, fileCoverage.excluded);
+	showCoverageSummary(sinks.statusBarItem, overall, true);
+}
+
+/**
+ * Tries the native path first unless `coverdict.gutter.forceFallback` is
+ * set (F7's own manual-test lever); a `false` return from
+ * `publishFileCoverage` (unsupported host, or a real runtime failure) falls
+ * through to the decoration fallback automatically. Whichever path is NOT
+ * used gets explicitly cleared, so a host that flips between them across
+ * runs (e.g. toggling `forceFallback`) never shows both at once.
+ */
+function paintCoverage(sinks: CoverageSinks, workspaceRoot: string, fileCoverage: FileCoverageBlock): void {
+	const forceFallback = vscode.workspace.getConfiguration('coverdict').get<boolean>('gutter.forceFallback') ?? false;
+	const painted = !forceFallback && publishFileCoverage(sinks.controller, workspaceRoot, fileCoverage);
+
+	setUsingFallback(!painted);
 	if (painted) {
-		showCoverageSummary(sinks.statusBarItem, overall, true);
+		clearFallbackCoverage(sinks.fallbackDecorationTypes);
 	} else {
-		showUnsupportedHostWarning(sinks.statusBarItem);
+		clearCoverage(sinks.controller);
+		applyFallbackCoverage(sinks.fallbackDecorationTypes, workspaceRoot, fileCoverage, readPartialLineMode());
 	}
 }
