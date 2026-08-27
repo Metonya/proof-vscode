@@ -114,8 +114,38 @@ yanında, ya da bildirim yerine sadece durum çubuğuna/ağaçlara
 bırakılıp bu bildirim tamamen kaldırılıp yerine daha sade bir şey
 konması) yeniden tasarlanmalı.
 
+## 10. Üç metrik modunun (jacoco-line/strict-line/sonar-compatible) nasıl hesaplandığını anlatan bir yer yok
+
+Kullanıcı üç sayının neden farklı çıktığını biliyor ama **nasıl**
+hesaplandığını bilmiyor - şu an hiçbir yerde (tooltip, panel, ağaç) bu
+üç modun formülü basitçe anlatılmıyor, sadece sayılar yan yana duruyor.
+Eklenecek kısa, sade bir açıklama (CLI'ın kendi `MetricsEngine.java`'sından,
+D-04/D-19 kararlarından - hesaplama mantığı zaten coverdict'in kendi
+dokümantasyonunda var, sadece kullanıcıya görünür kılınmalı):
+
+- **jacoco-line**: bir satırdaki **herhangi bir** komut çalıştıysa o
+  satır kapsanmış sayılır. En "cömert" sayı, JaCoCo'nun ham satır
+  kapsamasıyla birebir aynı.
+- **strict-line**: bir satırın kapsanmış sayılması için o satırdaki
+  **her** komutun çalışmış olması gerekir (kısmen çalışan satır
+  kapsanmamış sayılır). En "katı" sayı, genelde en düşük çıkar.
+- **sonar-compatible**: JaCoCo'nun satır kapsamasına **dal (branch)
+  kapsamasını da** ekler - `if`/`else` gibi bir satırda birden fazla
+  yol varsa, sadece satırın çalışması yetmez, o dalların da (mb/cb)
+  kapsanmış olması gerekir. SonarQube'un kendi UI'ında gösterdiği
+  yüzdeyle ±0.1 içinde eşleşen formül budur; jacoco-line'dan genelde
+  daha düşük çıkmasının sebebi tam olarak bu (dal verisi olan satırlar
+  jacoco-line'da tam kapsanmış görünse bile sonar-compatible'da
+  kısmi/kapsanmamış sayılabilir).
+
+Nereye eklenebilir: durum çubuğu tooltip'inin altına bir cümlelik özet,
+ya da Kapsama ağacındaki her metrik satırının kendi tooltip'ine (hover
+edince "bu nasıl hesaplanıyor" açıklaması), ya da ayarlardaki
+`coverdict.badgeMetric`'in description'ına zaten kısmen var - ana metin
+görünümüne (tooltip/panel) de taşınmalı.
+
 ---
 
-**Sıra:** yukarıdaki maddeler (1-5, 8, 9) kodda çözülecek, sonra madde
-7'deki branch senaryosuyla gerçek "yeni kod" akışı doğrulanacak, ondan
-sonra Faz 12'ye (mutasyon) geçilecek.
+**Sıra:** yukarıdaki maddeler (1-5, 8, 9, 10) kodda çözülecek, sonra
+madde 7'deki branch senaryosuyla gerçek "yeni kod" akışı doğrulanacak,
+ondan sonra Faz 12'ye (mutasyon) geçilecek.
