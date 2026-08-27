@@ -84,7 +84,15 @@ function toStatementCoverage(mapped: MappedLine): vscode.StatementCoverage {
 	if (mapped.branches.length === 0) {
 		return new vscode.StatementCoverage(mapped.executed, position);
 	}
-	const branches = mapped.branches.map((state) => new vscode.BranchCoverage(state === 'covered', position));
+	// Real branches (mb/cb from JaCoCo) are exactly the lines dragging
+	// sonar-compatible below jacoco-line (D-04) - labeled as such so hovering
+	// the gutter answers "which line, and why" without a separate view.
+	// Synthetic branch-approximation pairs are labeled as the approximation
+	// they are, never presented as if JaCoCo reported them.
+	const label = mapped.branchesAreSynthetic
+		? 'partial line (synthesized - see coverdict.gutter.partialLineMode)'
+		: 'real branch (also counted in coverdict\'s sonar-compatible metric)';
+	const branches = mapped.branches.map((state) => new vscode.BranchCoverage(state === 'covered', position, label));
 	return new vscode.StatementCoverage(mapped.executed, position, branches);
 }
 

@@ -24,6 +24,8 @@ export interface MappedLine {
 	line: number;
 	executed: boolean;
 	branches: readonly BranchState[];
+	/** True only for the synthetic branch-approximation pair - lets the caller label real vs. synthesized branches differently in the hover. */
+	branchesAreSynthetic: boolean;
 }
 
 export function mapLines(lines: readonly LineTuple[], partialLineMode: PartialLineMode): MappedLine[] {
@@ -36,12 +38,15 @@ function mapLine([line, missedInstructions, coveredInstructions, missedBranches,
 	const isPartial = executed && missedInstructions > 0;
 
 	if (hasRealBranches) {
-		return { line, executed, branches: realBranches(missedBranches, coveredBranches) };
+		// These are exactly the lines that make sonar-compatible read lower
+		// than jacoco-line (D-04's formula counts branches in both terms) -
+		// a real missed branch here, not an approximation.
+		return { line, executed, branches: realBranches(missedBranches, coveredBranches), branchesAreSynthetic: false };
 	}
 	if (isPartial && partialLineMode === 'branch-approximation') {
-		return { line, executed, branches: ['covered', 'missed'] };
+		return { line, executed, branches: ['covered', 'missed'], branchesAreSynthetic: true };
 	}
-	return { line, executed, branches: [] };
+	return { line, executed, branches: [], branchesAreSynthetic: false };
 }
 
 function realBranches(missedBranches: number, coveredBranches: number): BranchState[] {

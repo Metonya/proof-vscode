@@ -16,19 +16,21 @@ test('an uncovered line is not executed and has no branches', () => {
 	assert.deepEqual(line.branches, []);
 });
 
-test('real branch data is used as-is, regardless of partialLineMode', () => {
+test('real branch data is used as-is, regardless of partialLineMode, and is never marked synthetic', () => {
 	const tuple: LineTuple = [14, 0, 2, 1, 1];
 	for (const mode of ['branch-approximation', 'strict'] as const) {
 		const [line] = mapLines([tuple], mode);
 		assert.equal(line.executed, true);
 		assert.deepEqual(line.branches, ['covered', 'missed']);
+		assert.equal(line.branchesAreSynthetic, false);
 	}
 });
 
-test('branch-approximation synthesizes a covered+missed pair for a partial line with no real branches', () => {
+test('branch-approximation synthesizes a covered+missed pair for a partial line with no real branches, marked synthetic', () => {
 	const [line] = mapLines([[14, 2, 3, 0, 0]], 'branch-approximation');
 	assert.equal(line.executed, true);
 	assert.deepEqual(line.branches, ['covered', 'missed']);
+	assert.equal(line.branchesAreSynthetic, true);
 });
 
 test('strict leaves a partial line with no real branches branchless', () => {
