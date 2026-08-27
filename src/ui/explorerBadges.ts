@@ -58,15 +58,21 @@ export class ExplorerBadgeProvider implements vscode.FileDecorationProvider, vsc
 			return undefined;
 		}
 		const badge = Math.round(percent).toString();
-		const color = percent >= 80
-			? new vscode.ThemeColor('charts.green')
-			: percent >= 50
-				? new vscode.ThemeColor('charts.yellow')
-				: new vscode.ThemeColor('charts.red');
+		const color = new vscode.ThemeColor(colorIdFor(percent));
 		return new vscode.FileDecoration(badge, `coverdict: ${percent}%`, color);
 	}
 
 	dispose(): void {
 		this.changeEmitter.dispose();
 	}
+}
+
+function colorIdFor(percent: number): string {
+	if (percent >= 80) {
+		return 'charts.green';
+	}
+	if (percent >= 50) {
+		return 'charts.yellow';
+	}
+	return 'charts.red';
 }
