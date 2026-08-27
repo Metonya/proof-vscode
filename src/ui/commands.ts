@@ -382,12 +382,19 @@ function computePanelContent(): PanelContent {
 	}
 
 	const perTestState = getPerTestState();
-	const truncated = perTestState?.warnings.find((w) => w.code === 'PER_TEST_TRUNCATED' && (w.module === undefined || w.module === perTestState.moduleId));
-	if (truncated) {
-		return { kind: 'truncated', message: truncated.message };
+	const warningFor = (code: string) => perTestState?.warnings.find((w) => w.code === code && (w.module === undefined || w.module === perTestState.moduleId));
+	if (warningFor('PER_TEST_TRUNCATED')) {
+		return { kind: 'truncated', message: warningFor('PER_TEST_TRUNCATED')!.message };
 	}
 	if (!perTestState?.perTest) {
 		return { kind: 'noPerTestData' };
+	}
+	// Bu, "hiç kanıt yok" ile "kapsam dışı" ile aynı görünmemesi gereken üçüncü
+	// bir durum: L2 hiçbir sınıfı hedeflemedi çünkü diff'te değişen production
+	// sınıfı yoktu (PerTestCollector.java'nın kendi uyarısı) - kullanıcının
+	// "anlamadım" dediği yer tam olarak burasıydı (2026-08-27).
+	if (warningFor('PER_TEST_NO_CHANGED_TARGETS')) {
+		return { kind: 'noChangedTargets' };
 	}
 
 	const fileName = path.basename(editor.document.fileName, '.java');

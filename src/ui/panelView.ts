@@ -20,6 +20,7 @@ export type PanelContent =
 	| { kind: 'noActiveEditor' }
 	| { kind: 'truncated'; message: string }
 	| { kind: 'noPerTestData' }
+	| { kind: 'noChangedTargets' }
 	| { kind: 'classOutOfScope'; className: string }
 	| { kind: 'lines'; fileName: string; className: string; linesToTests: ReadonlyMap<number, readonly string[]> };
 
@@ -60,6 +61,12 @@ function bodyFor(content: PanelContent): string {
 			return message(`Bu modül için test bazlı (per-test) kanıt düşürüldü: ${escapeHtml(content.message)}. Gösterilenler eksik olabilir - "bu satırı hiçbir test kapsamıyor" anlamına gelmez.`, true);
 		case 'noPerTestData':
 			return message('Son taramada test bazlı kanıt yok. Toplamak için "coverdict: Analiz Et (test bazlı)" komutunu çalıştırın.');
+		case 'noChangedTargets':
+			return message(
+				'Bu koşuda hiçbir sınıf değişmemiş, bu yüzden test bazlı kanıt boş - bu bir hata değil: L2 sadece diff\'te '
+				+ 'değişen production sınıflarını hedefler. Bu dosyada gerçek bir değişiklik yapıp tekrar "Analiz Et (test bazlı)" '
+				+ 'çalıştırın, ya da coverdict.diffMode\'u "base" yapıp coverdict.baseRef\'e bu sınıfın değiştiği bir commit/branch girin.',
+			);
 		case 'classOutOfScope':
 			return message(`${escapeHtml(content.className)} için test bazlı kanıt yok - L2 sadece diff'te değişen sınıfları kapsar, açık olan her dosyayı değil.`);
 		case 'lines':

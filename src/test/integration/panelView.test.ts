@@ -14,6 +14,7 @@ suite('Line tests panel (F3)', () => {
 		assert.doesNotThrow(() => showLineTestsPanel({ kind: 'noActiveEditor' }));
 		assert.doesNotThrow(() => showLineTestsPanel({ kind: 'truncated', message: 'PIT ran out of budget' }));
 		assert.doesNotThrow(() => showLineTestsPanel({ kind: 'noPerTestData' }));
+		assert.doesNotThrow(() => showLineTestsPanel({ kind: 'noChangedTargets' }));
 		assert.doesNotThrow(() => showLineTestsPanel({ kind: 'classOutOfScope', className: 'dev.coverdict.playground.Untouched' }));
 		assert.doesNotThrow(() => showLineTestsPanel({
 			kind: 'lines',
