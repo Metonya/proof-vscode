@@ -39,7 +39,9 @@
         },
         "coverdict.coverageExclusions": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "sonar.coverage.exclusions tarzı glob desenleri (SonarQube'a yapıştıracağınız sözdizimiyle aynı). Her analiz koşusuna --coverage-exclusions olarak geçirilir - tek, elle yazılmış bir liste (D-05), repo'nun kendi coverdict.config.json dosyasıyla asla birleştirilmez."
         },
@@ -50,7 +52,11 @@
         },
         "coverdict.diffMode": {
           "type": "string",
-          "enum": ["no-vcs", "uncommitted", "base"],
+          "enum": [
+            "no-vcs",
+            "uncommitted",
+            "base"
+          ],
           "default": "uncommitted",
           "description": "\"Yeni kod\" hangi değişikliklere göre hesaplansın. uncommitted (varsayılan): commit beklemekte olan her şey (staged + unstaged), yani şu an dosyada duran değişiklikler. base: coverdict.baseRef'te yazan commit/branch'ten bu yana yapılan değişiklikler (örn. bir feature branch'i main ile kıyaslamak). no-vcs: git hiç kullanılmaz, \"yeni kod\" hesaplanamaz - tüm repo tek bir kapsama olarak gösterilir. \"coverdict: Analiz Et (test bazlı)\" bu mod no-vcs iken çalışmaz, çünkü test bazlı kanıt bir diff gerektirir."
         },
@@ -76,7 +82,11 @@
         },
         "coverdict.badgeMetric": {
           "type": "string",
-          "enum": ["jacoco-line", "strict-line", "sonar-compatible"],
+          "enum": [
+            "jacoco-line",
+            "strict-line",
+            "sonar-compatible"
+          ],
           "default": "sonar-compatible",
           "description": "Dosya Gezgini rozetlerinde ve satır boyamasında hangi kapsama modu kullanılsın. sonar-compatible (varsayılan): SonarQube'un gösterdiği yüzdeyle ±0.1 içinde eşleşir - dal (branch) kapsamını da sayar, bu yüzden jacoco-line'dan genelde daha düşük çıkar. jacoco-line: bir satırdaki herhangi bir komut çalıştıysa o satır kapsanmış sayılır (en yüksek çıkan sayı). strict-line: bir satırın kapsanmış sayılması için o satırdaki HER komutun çalışmış olması gerekir (en katı, genelde en düşük sayı). Durum çubuğu ve tooltip'ler her zaman üçünü birden gösterir; bu ayar sadece rozet/satır rengi için tek bir sayı seçer."
         }
@@ -99,7 +109,32 @@
         "command": "coverdict.showLineTests",
         "title": "coverdict: Satır → Testler Göster"
       }
-    ]
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "coverdict",
+          "title": "coverdict",
+          "icon": "media/activity-bar-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "coverdict": [
+        {
+          "id": "coverdict.runView",
+          "name": "Çalıştır"
+        },
+        {
+          "id": "coverdict.coverageView",
+          "name": "Kapsama"
+        },
+        {
+          "id": "coverdict.qualityView",
+          "name": "Test Kalitesi"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
@@ -120,11 +155,11 @@
   "devDependencies": {
     "@eslint/js": "^9.13.0",
     "@stylistic/eslint-plugin": "^2.9.0",
-    "c8": "^10.1.3",
-    "@types/node": "^22",
+    "@types/node": "^22.20.1",
     "@types/vscode": "^1.88.0",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
+    "c8": "^10.1.3",
     "esbuild": "^0.25.0",
     "eslint": "^9.13.0",
     "npm-run-all": "^4.1.5",

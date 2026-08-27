@@ -8,12 +8,14 @@ real reason to distribute this.
 
 ## Status
 
-Faz 9 done (2026-08-27): the extension runs coverdict, renders Explorer
+Faz 11b done (2026-08-27): the extension runs coverdict, renders Explorer
 coverage badges and an editor gutter through its own decoration types
 (the native VS Code Test Coverage API was dropped - it has no documented
-way to clear or independently control its two rendering surfaces), and
-opens a "which tests cover this line" panel. See `Plan.md` for the full
-feature list and phase order.
+way to clear or independently control its two rendering surfaces), opens
+a "which tests cover this line" panel, lists every finding in the
+Problems panel, and has its own Activity Bar container (Çalıştır /
+Kapsama / Test Kalitesi) so no step requires the Command Palette. See
+`Plan.md` for the full feature list and phase order.
 
 ## Layout
 

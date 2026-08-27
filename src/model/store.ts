@@ -1,17 +1,19 @@
-import type { FileCoverageBlock, MetricSet, PerTestBlock, Reason } from '../verdict/types';
+import type { ChangedFile, FileCoverageBlock, Finding, MetricSet, NewCodeCoverage, PerTestBlock, Reason } from '../verdict/types';
 
 /**
- * The one place the last analyze run's coverage data lives (Plan.md Bölüm
- * 2's model/store) - `ui/` reads it to redecorate editors on visibility
- * changes without re-running analyze. A minimal pub-sub of its own rather
- * than `vscode.EventEmitter`, so this file stays `vscode`-free like the
- * rest of `model/`.
+ * The one place the last analyze run's data lives (Plan.md Bölüm 2's
+ * model/store) - `ui/` reads it to redecorate editors on visibility
+ * changes and to feed the sidebar tree views without re-running analyze.
  */
 
 export interface CoverageState {
 	workspaceRoot: string;
 	fileCoverage: FileCoverageBlock | undefined;
 	overall: MetricSet;
+	newCode: NewCodeCoverage;
+	changedFiles: readonly ChangedFile[];
+	findings: readonly Finding[];
+	warnings: readonly Reason[];
 }
 
 let state: CoverageState | undefined;

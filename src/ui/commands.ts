@@ -18,12 +18,15 @@ import {
 	setPerTestState,
 } from '../model/store';
 import { parseVerdict } from '../verdict/parse';
-import type { FileCoverageBlock, Finding, MetricSet, VerdictDocument } from '../verdict/types';
+import type { ChangedFile, FileCoverageBlock, Finding, MetricSet, NewCodeCoverage, Reason, VerdictDocument } from '../verdict/types';
 import { publishFindings } from './diagnostics';
 import type { ExplorerBadgeProvider } from './explorerBadges';
 import { applyGutterCoverage, clearGutterCoverage, type GutterDecorationTypes } from './gutterRenderer';
 import { refreshLineTestsPanelIfOpen, showLineTestsPanel, type PanelContent } from './panelView';
 import { showCoverageSummary, showNoFileCoverageWarning } from './statusBar';
+import type { CoverageTreeProvider } from './treeViews/coverageView';
+import type { QualityTreeProvider } from './treeViews/qualityView';
+import type { RunTreeProvider } from './treeViews/runView';
 
 /** F3's own module id - single-module shorthand only, same scope limit as F1's argsBuilder (multi-module lands with F8). */
 const MODULE_ID = 'root';
@@ -42,6 +45,9 @@ export interface CoverageSinks {
 	explorerBadges: ExplorerBadgeProvider;
 	statusBarItem: vscode.StatusBarItem;
 	diagnostics: vscode.DiagnosticCollection;
+	runView: RunTreeProvider;
+	coverageView: CoverageTreeProvider;
+	qualityView: QualityTreeProvider;
 }
 
 export function registerAnalyzeCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
@@ -68,16 +74,51 @@ export function refreshLineTestsPanelForActiveEditor(): void {
 	refreshLineTestsPanelIfOpen(computePanelContent());
 }
 
-/** Restores the last run's coverage from storage without invoking the CLI - see restoreLastCoverage in extension.ts. */
-export function republishCoverage(sinks: CoverageSinks, workspaceRoot: string, fileCoverage: FileCoverageBlock, overall: MetricSet): void {
-	setCoverageState({ workspaceRoot, fileCoverage, overall });
-	paintCoverage(sinks, workspaceRoot, fileCoverage);
-	showCoverageSummary(sinks.statusBarItem, overall, isGutterVisible());
+/** The subset of a parsed verdict `publishAnalysis` needs - deliberately flat so both a fresh CLI run and a restore from storage can build it without a fake `VerdictDocument`. */
+export interface AnalysisResult {
+	fileCoverage: FileCoverageBlock | undefined;
+	overall: MetricSet;
+	newCode: NewCodeCoverage;
+	changedFiles: readonly ChangedFile[];
+	findings: readonly Finding[];
+	warnings: readonly Reason[];
 }
 
-/** Findings are independent of the fileCoverage/toggle machinery - they come from every run (`--file-coverage` not required) and always show while the last run's data is current. */
-export function republishFindings(sinks: CoverageSinks, workspaceRoot: string, findings: readonly Finding[]): void {
-	publishFindings(sinks.diagnostics, workspaceRoot, findings);
+export function analysisResultFrom(verdict: VerdictDocument): AnalysisResult {
+	return {
+		fileCoverage: verdict.fileCoverage,
+		overall: verdict.coverage.overall,
+		newCode: verdict.coverage.newCode,
+		changedFiles: verdict.changedFiles,
+		findings: verdict.findings,
+		warnings: verdict.warnings,
+	};
+}
+
+/**
+ * The one place a run's result turns into UI: gutter/badges (if
+ * `fileCoverage` is present), Problems panel findings (independent of
+ * `fileCoverage` - they come from every run), and all three sidebar tree
+ * views. Used both by a fresh CLI run and by `restoreLastCoverage`/a
+ * `coverdict.show.*` setting change reading the same state back - every
+ * path renders through this one function so they can never diverge.
+ */
+export function publishAnalysis(sinks: CoverageSinks, workspaceRoot: string, result: AnalysisResult): void {
+	setCoverageState({ workspaceRoot, ...result });
+
+	if (result.fileCoverage) {
+		paintCoverage(sinks, workspaceRoot, result.fileCoverage);
+		showCoverageSummary(sinks.statusBarItem, result.overall, isGutterVisible());
+	} else {
+		showNoFileCoverageWarning(sinks.statusBarItem);
+		sinks.explorerBadges.clear();
+		clearGutterCoverage(sinks.gutterTypes);
+	}
+
+	publishFindings(sinks.diagnostics, workspaceRoot, result.findings);
+	sinks.runView.refresh();
+	sinks.coverageView.refresh();
+	sinks.qualityView.refresh();
 }
 
 function toggleCoverage(sinks: CoverageSinks): void {
@@ -114,8 +155,7 @@ async function runAnalyze(context: vscode.ExtensionContext, output: vscode.Outpu
 	if (!parsed) {
 		return;
 	}
-	publishCoverage(folder, sinks, parsed.fileCoverage, parsed.coverage.overall);
-	republishFindings(sinks, folder.uri.fsPath, parsed.findings);
+	publishAnalysis(sinks, folder.uri.fsPath, analysisResultFrom(parsed));
 }
 
 /**
@@ -144,8 +184,7 @@ async function runAnalyzePerTest(context: vscode.ExtensionContext, output: vscod
 		return;
 	}
 
-	publishCoverage(folder, sinks, parsed.fileCoverage, parsed.coverage.overall);
-	republishFindings(sinks, folder.uri.fsPath, parsed.findings);
+	publishAnalysis(sinks, folder.uri.fsPath, analysisResultFrom(parsed));
 	setPerTestState({ moduleId: MODULE_ID, perTest: parsed.perTest, warnings: parsed.warnings });
 	if (!parsed.perTest) {
 		vscode.window.showWarningMessage('coverdict: bu koşuda test bazlı (per-test) kanıt yok - PER_TEST_* uyarıları için çıktı kanalını kontrol edin.');
@@ -289,26 +328,6 @@ async function offerToOpenSetting(message: string, settingId: string): Promise<v
 	if (choice === 'Ayarı Aç') {
 		await vscode.commands.executeCommand('workbench.action.openSettings', settingId);
 	}
-}
-
-/**
- * `fileCoverage.files[]` yoksa (bayrak istenmedi ya da yazılmadan önce bir
- * hata oldu) durum çubuğu uyarısı gösterir ve her iki yüzeyi de temizler -
- * hard rule 3a: eski koşunun verisi güncelmiş gibi görünmeye devam etmez.
- */
-function publishCoverage(folder: vscode.WorkspaceFolder, sinks: CoverageSinks, fileCoverage: FileCoverageBlock | undefined, overall: MetricSet): void {
-	const workspaceRoot = folder.uri.fsPath;
-	setCoverageState({ workspaceRoot, fileCoverage, overall });
-
-	if (!fileCoverage) {
-		showNoFileCoverageWarning(sinks.statusBarItem);
-		sinks.explorerBadges.clear();
-		clearGutterCoverage(sinks.gutterTypes);
-		return;
-	}
-
-	paintCoverage(sinks, workspaceRoot, fileCoverage);
-	showCoverageSummary(sinks.statusBarItem, overall, isGutterVisible());
 }
 
 /**

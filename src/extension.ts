@@ -3,19 +3,22 @@ import * as vscode from 'vscode';
 
 import { getCoverageState, isGutterVisible, setPerTestState } from './model/store';
 import {
+	analysisResultFrom,
+	publishAnalysis,
 	refreshLineTestsPanelForActiveEditor,
 	registerAnalyzeCommand,
 	registerAnalyzePerTestCommand,
 	registerShowLineTestsCommand,
 	registerToggleCoverageCommand,
-	republishCoverage,
-	republishFindings,
 	type CoverageSinks,
 } from './ui/commands';
 import { createDiagnosticCollection } from './ui/diagnostics';
 import { ExplorerBadgeProvider } from './ui/explorerBadges';
 import { applyGutterCoverage, createGutterDecorationTypes } from './ui/gutterRenderer';
 import { createStatusBarItem } from './ui/statusBar';
+import { CoverageTreeProvider } from './ui/treeViews/coverageView';
+import { QualityTreeProvider } from './ui/treeViews/qualityView';
+import { RunTreeProvider } from './ui/treeViews/runView';
 import { parseVerdict } from './verdict/parse';
 
 /** F3's module id, same single-module-shorthand scope as everywhere else until F8's config UI adds real multi-module support. */
@@ -32,7 +35,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	const explorerBadges = new ExplorerBadgeProvider();
 	const statusBarItem = createStatusBarItem();
 	const diagnostics = createDiagnosticCollection();
-	const sinks: CoverageSinks = { context, gutterTypes, explorerBadges, statusBarItem, diagnostics };
+	const runView = new RunTreeProvider();
+	const coverageView = new CoverageTreeProvider();
+	const qualityView = new QualityTreeProvider();
+	const sinks: CoverageSinks = { context, gutterTypes, explorerBadges, statusBarItem, diagnostics, runView, coverageView, qualityView };
 
 	context.subscriptions.push(
 		output,
@@ -44,6 +50,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		vscode.window.registerFileDecorationProvider(explorerBadges),
 		statusBarItem,
 		diagnostics,
+		vscode.window.registerTreeDataProvider('coverdict.runView', runView),
+		vscode.window.registerTreeDataProvider('coverdict.coverageView', coverageView),
+		vscode.window.registerTreeDataProvider('coverdict.qualityView', qualityView),
 		registerAnalyzeCommand(context, output, sinks),
 		registerAnalyzePerTestCommand(context, output, sinks),
 		registerToggleCoverageCommand(sinks),
@@ -70,8 +79,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 				return;
 			}
 			const state = getCoverageState();
-			if (state?.fileCoverage) {
-				republishCoverage(sinks, state.workspaceRoot, state.fileCoverage, state.overall);
+			if (state) {
+				republishFromState(sinks, state.workspaceRoot);
 			}
 		}),
 	);
@@ -107,13 +116,18 @@ async function restoreLastCoverage(context: vscode.ExtensionContext, sinks: Cove
 	if (!parsed.ok) {
 		return;
 	}
-	if (parsed.value.fileCoverage) {
-		republishCoverage(sinks, folder.uri.fsPath, parsed.value.fileCoverage, parsed.value.coverage.overall);
-	}
-	republishFindings(sinks, folder.uri.fsPath, parsed.value.findings);
+	publishAnalysis(sinks, folder.uri.fsPath, analysisResultFrom(parsed.value));
 	// perTest restores independently of fileCoverage - a run can carry one
 	// without the other depending on which command produced it.
 	setPerTestState({ moduleId: MODULE_ID, perTest: parsed.value.perTest, warnings: parsed.value.warnings });
+}
+
+/** `coverdict.show.*`/`coverdict.badgeMetric` changed while a run's data is still current - repaint from `model/store`'s own state, no re-parse needed. */
+function republishFromState(sinks: CoverageSinks, workspaceRoot: string): void {
+	const state = getCoverageState();
+	if (state) {
+		publishAnalysis(sinks, workspaceRoot, state);
+	}
 }
 
 export function deactivate(): void {
