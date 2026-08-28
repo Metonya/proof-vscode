@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 
 import { toAbsolutePath } from './model/pathIndex';
@@ -154,11 +155,20 @@ async function restoreLastCoverage(context: vscode.ExtensionContext, sinks: Cove
 	if (!folder || !storageRoot) {
 		return;
 	}
+	await restoreLastCoverageFrom(storageRoot.fsPath, folder.uri.fsPath, sinks);
+}
 
-	const outUri = vscode.Uri.joinPath(storageRoot, 'verdict-current.json');
+/**
+ * The `vscode.workspace`/`vscode.ExtensionContext`-free half of the restore -
+ * split out from `restoreLastCoverage` so a test can drive it with a plain
+ * temp directory instead of a real open workspace folder (`context.storageUri`
+ * only exists when one is open, which the integration test host does not
+ * have by default).
+ */
+export async function restoreLastCoverageFrom(storageDir: string, workspaceRoot: string, sinks: CoverageSinks): Promise<void> {
 	let raw: string;
 	try {
-		raw = await fs.promises.readFile(outUri.fsPath, 'utf8');
+		raw = await fs.promises.readFile(path.join(storageDir, 'verdict-current.json'), 'utf8');
 	} catch {
 		return; // nothing saved yet - the normal first-run shape, not an error
 	}
@@ -167,10 +177,16 @@ async function restoreLastCoverage(context: vscode.ExtensionContext, sinks: Cove
 	if (!parsed.ok) {
 		return;
 	}
-	publishAnalysis(sinks, folder.uri.fsPath, analysisResultFrom(parsed.value));
+	publishAnalysis(sinks, workspaceRoot, analysisResultFrom(parsed.value));
 	// perTest restores independently of fileCoverage - a run can carry one
 	// without the other depending on which command produced it.
 	setPerTestState({ moduleId: MODULE_ID, perTest: parsed.value.perTest, warnings: parsed.value.warnings });
+	// Faz 23: publishAnalysis kendi refresh()'lerini setPerTestState/
+	// setMutationState çağrılmadan ÖNCE tetikliyor (bu fonksiyonun
+	// içinde), yani TreeView'lar eski/boş state ile bir kez yenileniyor.
+	// setPerTestState/setMutationState düz değişken ataması - kendi
+	// event'ini ateşlemiyor - o yüzden burada elle refresh() şart.
+	sinks.lineTestsView.refresh();
 	// Faz 20: mutasyon da geri yüklenir - ama yalnızca blok gerçekten
 	// varsa. Blok yoksa `setMutationState` çağrılmaz, böylece görünüm
 	// "henüz çalıştırılmadı" der; boş bir durum yazmak "çalıştırıldı ama
@@ -179,6 +195,7 @@ async function restoreLastCoverage(context: vscode.ExtensionContext, sinks: Cove
 	// bilinmiyor - CLI'ın çıktısı zaman damgası taşımaz (Faz 22).
 	if (parsed.value.mutation) {
 		setMutationState({ moduleId: MODULE_ID, mutation: parsed.value.mutation, warnings: parsed.value.warnings, targets: [], ranAt: undefined });
+		sinks.mutationView.refresh();
 	}
 }
 

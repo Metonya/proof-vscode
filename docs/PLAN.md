@@ -1,6 +1,6 @@
 # coverdict-vscode — devir belgesi ve ileri plan
 
-**Son güncelleme:** 2026-08-28, Faz 21 sonrası (mutasyon arayüzü dahil).
+**Son güncelleme:** 2026-08-28, Faz 24 sonrası (pencere yenileme düzeltmesi dahil).
 
 ---
 
@@ -412,14 +412,9 @@ sağ tık, Java) · `coverdict.copyItem` (ağaçlarda sağ tık → Kopyala) ·
 - Coverage dışı bırakılmış dosya gri **`–`** rozeti alır.
 - Rule kodları ham enum olarak da görünür, ama başlık okunabilir Türkçedir.
 
-**Bilinen kırık davranış:** pencere yenilenince (Reload Window) Coverage
-ve Test Kalitesi son taramadan doğru geri gelir, ama **Satır → Testler**
-ve **Mutasyon** boş kalır — disk verisi orada, ekrana yansımıyor. Kök
-nedeni bulundu, düzeltilmedi. Ayrıntı ve hazır düzeltme: §7.0.
-
 ### Sağlık
 
-142 unit + 31 integration test geçiyor. SonarQube (`coverdict-vscode`,
+142 unit + 32 integration test geçiyor. SonarQube (`coverdict-vscode`,
 `http://localhost:9001`) sıfır açık bulgu.
 
 ---
@@ -540,7 +535,7 @@ dolayısıyla Sonar tüm UI kodunu "kapsanmamış" görüyor. Yani bu ERROR
 
 ## 7. Açık işler (öncelik sırasıyla)
 
-### 7.0 — EN ÖNCELİKLİ: pencere yenilenince "Satır → Testler" ve "Mutasyon" geri yüklenmiyor (Faz 23, kök neden bulundu, düzeltilmedi)
+### 7.0 ~~pencere yenilenince "Satır → Testler" ve "Mutasyon" geri yüklenmiyor~~ — **KAPANDI (Faz 24)**
 
 **Kullanıcının bulduğu, henüz dokunulmamış gerçek hata (2026-08-28).**
 Repro: Derin Tarama ve Mutasyon Testi çalıştırılıp gerçek sonuçlar
@@ -641,6 +636,31 @@ altına yazılıp `activate()` çağrılsın, sonra `lineTestsView`/
 `mutationView`'ın **gerçekten** dolu döndüğü doğrulansın (bugünkü haliyle
 bu test **kırmızı** başlar, düzeltmeden sonra yeşile döner — klasik
 regresyon kilidi).
+
+**Kapatıldı (Faz 24).** Önerilen iki satır uygulandı — `extension.ts`'te
+`restoreLastCoverage`'ın gövdesi `restoreLastCoverageFrom(storageDir,
+workspaceRoot, sinks)` adında ayrı, `export`'lu bir fonksiyona taşındı
+(yalnızca `vscode.workspace.workspaceFolders`/`context.storageUri`'ye
+bağımlı kısım sarmalayıcıda kaldı) — entegrasyon test host'unda gerçek
+bir workspace klasörü açık olmadığı için `context.storageUri` hep
+`undefined` geliyor, dolayısıyla asıl mantığı test edebilmek için bu
+ayrım gerekti.
+
+Yeni test: `src/test/integration/extension.restoreLastCoverage.test.ts`.
+Gerçek playground alan adlarıyla (`dev.coverdict.playground.Calculator`,
+`square` metodu, gerçek PIT mutator sınıf adı) bir `verdict-current.json`
+temp dizine yazılıyor, `lineTestsView`/`mutationView`'ın `refresh()`
+metotları casus (spy) ile sarılıp her çağrıda `getChildren()`'ın o anki
+görüntüsü kaydediliyor — gerçek `TreeView`'ın `onDidChangeTreeData`
+event'ine tam olarak ne zaman ve hangi veriyle tepki vereceğinin birebir
+modeli bu. Düzeltmeden önce testin **kırmızı** başladığı elle doğrulandı:
+`sinks.mutationView.refresh()` hiç çağrılmadığı için `mutationSnapshots`
+boş kalıyor. Düzeltmeyle **yeşile döndüğü** de doğrulandı: her iki
+görünümün son yakaladığı görüntü artık geri yüklenen veriyi taşıyor
+(`prodLine` / `header`), boş başlangıç durumunu değil.
+
+Doğrulama: `npm run check-types && npm run lint`, temiz koşu (142 unit +
+32 integration, hepsi geçti), SonarQube taraması sıfır açık bulgu.
 
 ---
 
