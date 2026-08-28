@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { testsForClass, testsToLines } from '../../../model/lineIndex';
+import { groupConsecutiveLines, testsForClass, testsToLines } from '../../../model/lineIndex';
 import type { PerTestBlock } from '../../../verdict/types';
 
 const BLOCK: PerTestBlock = {
@@ -87,4 +87,65 @@ test('testsToLines: a nested-class entry is reported under its outer class name'
 
 test('testsToLines: a module id not present in the block returns an empty map, not an error', () => {
 	assert.equal(testsToLines(BLOCK, 'nope').size, 0);
+});
+
+/**
+ * Faz 17a: the real regression this exists for - a constructor/notify
+ * method whose body is entirely covered by one single test showed up as
+ * 6 separate "Satır N" nodes in the sidebar, each expanding to the exact
+ * same one test (NotifyingCalculator.java, real playground data). Ardışık
+ * satırların aynı test kümesiyle kapsanması tek bir aralığa toplanmalı,
+ * `coverageView.ts`'in `uncoveredNewRanges` için zaten kullandığı desenle
+ * aynı fikir.
+ */
+test('groupConsecutiveLines: consecutive lines with the exact same test set merge into one range', () => {
+	const linesToTests = new Map([
+		[9, ['NotifyingCalculatorMockitoTest#addAndNotifySendsTheComputedResult()']],
+		[10, ['NotifyingCalculatorMockitoTest#addAndNotifySendsTheComputedResult()']],
+		[11, ['NotifyingCalculatorMockitoTest#addAndNotifySendsTheComputedResult()']],
+	]);
+	const groups = groupConsecutiveLines(linesToTests);
+	assert.deepEqual(groups, [{ startLine: 9, endLine: 11, tests: ['NotifyingCalculatorMockitoTest#addAndNotifySendsTheComputedResult()'] }]);
+});
+
+test('groupConsecutiveLines: a differently-tested line in the middle splits the range', () => {
+	const linesToTests = new Map([
+		[9, ['TestA#a()']],
+		[10, ['TestB#b()']],
+		[11, ['TestA#a()']],
+	]);
+	const groups = groupConsecutiveLines(linesToTests);
+	assert.deepEqual(groups, [
+		{ startLine: 9, endLine: 9, tests: ['TestA#a()'] },
+		{ startLine: 10, endLine: 10, tests: ['TestB#b()'] },
+		{ startLine: 11, endLine: 11, tests: ['TestA#a()'] },
+	]);
+});
+
+test('groupConsecutiveLines: a non-consecutive line number (a gap) never merges even with the same test set', () => {
+	const linesToTests = new Map([
+		[9, ['TestA#a()']],
+		[15, ['TestA#a()']],
+	]);
+	const groups = groupConsecutiveLines(linesToTests);
+	assert.deepEqual(groups, [
+		{ startLine: 9, endLine: 9, tests: ['TestA#a()'] },
+		{ startLine: 15, endLine: 15, tests: ['TestA#a()'] },
+	]);
+});
+
+test('groupConsecutiveLines: the same test set in a different order still merges (order-independent comparison)', () => {
+	const linesToTests = new Map([
+		[9, ['TestA#a()', 'TestB#b()']],
+		[10, ['TestB#b()', 'TestA#a()']],
+	]);
+	const groups = groupConsecutiveLines(linesToTests);
+	assert.equal(groups.length, 1);
+	assert.equal(groups[0].startLine, 9);
+	assert.equal(groups[0].endLine, 10);
+});
+
+test('groupConsecutiveLines: a lone line is its own group with startLine === endLine', () => {
+	const groups = groupConsecutiveLines(new Map([[7, ['CalcTest#addsTwoNumbers()']]]));
+	assert.deepEqual(groups, [{ startLine: 7, endLine: 7, tests: ['CalcTest#addsTwoNumbers()'] }]);
 });

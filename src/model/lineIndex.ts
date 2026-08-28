@@ -96,6 +96,47 @@ export function testsToLines(perTest: PerTestBlock, moduleId: string): ReadonlyM
 	return result;
 }
 
+/** One or more consecutive production lines covered by the exact same set of tests. */
+export interface LineGroup {
+	startLine: number;
+	endLine: number;
+	tests: readonly string[];
+}
+
+/**
+ * Faz 17a: `ui/treeViews/lineTestsView.ts`'in per-satır listesi, aynı tek
+ * testin kapsadığı ardışık satırları (ör. bir constructor'ın gövdesi) ayrı
+ * ayrı düğümler olarak basıyordu - gerçek bir örnekte 6 ardışık satır, her
+ * biri aynı tek testi tekrar tekrar açan 6 ayrı düğüm demekti.
+ * `ui/treeViews/coverageView.ts`'in `uncoveredNewRanges` için zaten
+ * kullandığı "aralık" deseniyle aynı fikir - sırasız test kümesi eşitliğine
+ * göre bitişik satırları birleştirir.
+ */
+export function groupConsecutiveLines(linesToTests: ReadonlyMap<number, readonly string[]>): LineGroup[] {
+	const sortedLines = [...linesToTests.keys()].sort((a, b) => a - b);
+	const groups: LineGroup[] = [];
+	for (const line of sortedLines) {
+		const tests = linesToTests.get(line)!;
+		const last = groups.at(-1);
+		if (last && last.endLine === line - 1 && sameTestSet(last.tests, tests)) {
+			last.endLine = line;
+		} else {
+			groups.push({ startLine: line, endLine: line, tests });
+		}
+	}
+	return groups;
+}
+
+/** Order-independent set equality over raw test ids - two lines "have the same tests" regardless of the order `perTest` happened to list them in. */
+function sameTestSet(a: readonly string[], b: readonly string[]): boolean {
+	if (a.length !== b.length) {
+		return false;
+	}
+	const sortedA = [...a].sort();
+	const sortedB = [...b].sort();
+	return sortedA.every((test, i) => test === sortedB[i]);
+}
+
 function addTestLineRef(result: Map<string, TestLineRef[]>, rawTestId: string, outerClassName: string, line: number): void {
 	const identity = parseTestIdentity(rawTestId);
 	if (identity.className === null || identity.methodName === null) {

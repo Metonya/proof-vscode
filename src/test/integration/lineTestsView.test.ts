@@ -84,6 +84,56 @@ suite('Line tests view (Faz 15c)', () => {
 		assert.equal(provider.nodeForLine(999), undefined);
 	});
 
+	/**
+	 * Faz 17a: the real regression this test pins down - real
+	 * NotifyingCalculator.java data (2026-08-28) had 6 lines (9-11, 14-16)
+	 * all covered by the exact same one test, and the tree used to show 6
+	 * separate "Satır N" nodes for it. Now it must be one range per
+	 * contiguous run, split where the test set actually changes.
+	 */
+	test('production file: consecutive lines covered by the same test merge into one range node', async () => {
+		const notifyingCalculatorPerTest: PerTestBlock = {
+			engine: 'pitest',
+			engineVersion: '1.15.8',
+			modules: [{
+				id: 'root',
+				entries: [{
+					className: 'dev.coverdict.playground.NotifyingCalculator',
+					methodName: 'addAndNotify',
+					lines: [9, 10, 11, 14, 15, 16].map((line) => ({
+						line, tests: ['[class:dev.coverdict.playground.NotifyingCalculatorMockitoTest]/[method:addAndNotifySendsTheComputedResult()]'],
+					})),
+				}],
+				ambient: [],
+			}],
+		};
+		setPerTestState({ moduleId: 'root', perTest: notifyingCalculatorPerTest, warnings: [] });
+		setCoverageState({ ...STATE, findings: [] });
+
+		const document = await openJavaFile('dev.coverdict.playground', 'NotifyingCalculator');
+		const provider = new LineTestsTreeProvider();
+		provider.setActiveDocument(document);
+
+		const roots = provider.getChildren();
+		assert.equal(roots.length, 2, 'two contiguous runs (9-11 and 14-16), not six separate line nodes');
+		assert.equal(roots[0].kind, 'prodLine');
+		if (roots[0].kind === 'prodLine') {
+			assert.equal(roots[0].startLine, 9);
+			assert.equal(roots[0].endLine, 11);
+		}
+		assert.equal(roots[1].kind, 'prodLine');
+		if (roots[1].kind === 'prodLine') {
+			assert.equal(roots[1].startLine, 14);
+			assert.equal(roots[1].endLine, 16);
+		}
+		assert.doesNotThrow(() => provider.getTreeItem(roots[0]));
+
+		const testsInFirstRange = provider.getChildren(roots[0]);
+		assert.equal(testsInFirstRange.length, 1, 'the same test appears once, not once per merged line');
+		assert.deepEqual(provider.getParent(testsInFirstRange[0]), roots[0]);
+		assert.deepEqual(provider.nodeForLine(10), roots[0], 'a cursor anywhere inside the merged range resolves to the same range node');
+	});
+
 	test('test file (reverse direction): test-method node -> production-line leaf', async () => {
 		setPerTestState({ moduleId: 'root', perTest: PER_TEST, warnings: [] });
 		setCoverageState(STATE);

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 
 import { detectClassName } from '../../model/classNameDetector';
-import { testsForClass, testsToLines, type TestLineRef } from '../../model/lineIndex';
+import { groupConsecutiveLines, testsForClass, testsToLines, type TestLineRef } from '../../model/lineIndex';
 import { toAbsolutePath } from '../../model/pathIndex';
 import { buildProductionClassIndex } from '../../model/productionClassIndex';
 import { getCoverageState, getPerTestState } from '../../model/store';
@@ -30,8 +30,8 @@ const DEFAULT_SOURCE_ROOTS = ['src/main/java'];
 export type LineTestsNode =
 	| { kind: 'empty'; message: string }
 	| { kind: 'collectHint' }
-	| { kind: 'prodLine'; line: number; tests: readonly string[] }
-	| { kind: 'prodTest'; line: number; rawTestId: string; verdict: TestVerdict; finding: Finding | undefined }
+	| { kind: 'prodLine'; startLine: number; endLine: number; tests: readonly string[] }
+	| { kind: 'prodTest'; startLine: number; endLine: number; rawTestId: string; verdict: TestVerdict; finding: Finding | undefined }
 	| { kind: 'testMethod'; methodName: string; refs: readonly TestLineRef[] }
 	| { kind: 'testLine'; methodName: string; ref: TestLineRef };
 
@@ -57,8 +57,8 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 		if (view?.kind !== 'production') {
 			return undefined;
 		}
-		const tests = view.linesToTests.get(line1Based);
-		return tests ? { kind: 'prodLine', line: line1Based, tests } : undefined;
+		const group = groupConsecutiveLines(view.linesToTests).find((g) => g.startLine <= line1Based && line1Based <= g.endLine);
+		return group ? { kind: 'prodLine', startLine: group.startLine, endLine: group.endLine, tests: group.tests } : undefined;
 	}
 
 	getTreeItem(node: LineTestsNode): vscode.TreeItem {
@@ -89,7 +89,9 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 		if (node.kind === 'prodLine') {
 			const findingsByTestMethod = indexFindingsByTestMethod(getCoverageState()?.findings ?? []);
 			const quality = lineQuality(node.tests, findingsByTestMethod);
-			return quality.tests.map((t): LineTestsNode => ({ kind: 'prodTest', line: node.line, rawTestId: t.rawTestId, verdict: t.verdict, finding: t.finding }));
+			return quality.tests.map((t): LineTestsNode => ({
+				kind: 'prodTest', startLine: node.startLine, endLine: node.endLine, rawTestId: t.rawTestId, verdict: t.verdict, finding: t.finding,
+			}));
 		}
 		if (node.kind === 'testMethod') {
 			return node.refs
@@ -103,8 +105,7 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 	getParent(node: LineTestsNode): LineTestsNode | undefined {
 		const view = this.computeView();
 		if (view?.kind === 'production' && node.kind === 'prodTest') {
-			const tests = view.linesToTests.get(node.line);
-			return tests ? { kind: 'prodLine', line: node.line, tests } : undefined;
+			return { kind: 'prodLine', startLine: node.startLine, endLine: node.endLine, tests: view.linesToTests.get(node.startLine) ?? [] };
 		}
 		if (view?.kind === 'test' && node.kind === 'testLine') {
 			const refs = view.reverse.get(`${view.className}#${node.methodName}()`);
@@ -122,9 +123,8 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 			return [{ kind: 'empty', message: noPerTestDataMessage() }, { kind: 'collectHint' }];
 		}
 		if (view.kind === 'production') {
-			return [...view.linesToTests.keys()]
-				.sort((a, b) => a - b)
-				.map((line): LineTestsNode => ({ kind: 'prodLine', line, tests: view.linesToTests.get(line)! }));
+			return groupConsecutiveLines(view.linesToTests)
+				.map((group): LineTestsNode => ({ kind: 'prodLine', startLine: group.startLine, endLine: group.endLine, tests: group.tests }));
 		}
 		// test file: group the reverse index's flat refs back into per-method nodes for this class
 		const methods = [...view.reverse.entries()]
@@ -173,7 +173,8 @@ function prodLineItem(node: Extract<LineTestsNode, { kind: 'prodLine' }>): vscod
 	const findingsByTestMethod = indexFindingsByTestMethod(getCoverageState()?.findings ?? []);
 	const quality = lineQuality(node.tests, findingsByTestMethod);
 	const weak = quality.byVerdict.noOracle + quality.byVerdict.weak;
-	const item = new vscode.TreeItem(`Satır ${node.line}`, vscode.TreeItemCollapsibleState.Collapsed);
+	const label = node.startLine === node.endLine ? `Satır ${node.startLine}` : `Satır ${node.startLine}-${node.endLine}`;
+	const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Collapsed);
 	item.description = weak > 0 ? `${node.tests.length} test (${weak} oracle'sız/zayıf)` : `${node.tests.length} test`;
 	item.iconPath = new vscode.ThemeIcon(quality.isFalseGreen ? 'warning' : 'circle-filled', quality.isFalseGreen ? new vscode.ThemeColor('editorWarning.foreground') : undefined);
 	if (quality.isFalseGreen) {
