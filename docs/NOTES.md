@@ -4,6 +4,10 @@ Kullanıcı testinde (2026-08-27, Faz 11 sonrası) çıkan gerçek kullanım
 sorunları. Mutasyon görünümüne (Faz 12) geçmeden önce bunlar kapatılmalı —
 kullanıcının kendi önceliği bu.
 
+**Faz 13 (2026-08-28) durumu:** 1-5, 9, 10 kodlandı. Madde 8 araştırıldı ve
+**kod hatası değil** olduğu doğrulandı (aşağıdaki madde 8'in sonuna bakın).
+Kalan: madde 6/7 (kullanıcının playground'da kendi yapacağı adım).
+
 ## 1. Toggle'ın geri bildirimi yok
 
 "Kapsama Görünümünü Aç/Kapat" tıklanınca (durum çubuğundan ya da "Çalıştır"
@@ -102,6 +106,22 @@ inceleyip hangi dosyaların hiç girmediğini doğrula, sonra native'in eski
 davranışıyla kıyasla - kasıtlı bir fark mı (JaCoCo'da olmayan dosya
 gerçekten "veri yok" demektir, hard rule 3a'ya göre boyanmaması doğru
 olabilir) yoksa gerçek bir regresyon mu, karar ver.
+
+**Sonuç (2026-08-28, Faz 13):** kod hatası değil. Playground'a karşı gerçek
+bir `analyze --file-coverage` koşusu çalıştırıldı: `Notifier.java` saf bir
+arayüz (`void notify(String)`, gövdesiz) - üç metrik modunda da
+`denominator: 0` / `percent: null` veriyor, çünkü çalıştırılabilir hiç
+satırı yok. `Calculator.java` (sonar-compatible %80) ve
+`NotifyingCalculator.java` (sonar-compatible %100) ikisi de gerçek veriyle
+geldi. `src/test/integration/explorerBadges.test.ts`'e bu tam üç dosyalık
+gerçek veri fixture'ıyla bir regresyon testi eklendi: ikisi de doğru rozeti
+alıyor, `Notifier.java` haklı olarak rozetsiz kalıyor (hard rule 3a - "veri
+yok" ile "kapsanmadı" aynı görünmemeli). Eski native API'nin `Notifier.java`
+için gösterdiği "%100" aslında **yanıltıcıydı** (çalıştırılabilir kod
+olmadığı hâlde "tam kapsandı" diyordu) - Faz 9'da onu bırakmak bilinçli bir
+karardı, bu bir regresyon değil. Kullanıcının elle testinde sadece
+Calculator.java'yı görmesi muhtemelen daha eski bir build'e (Faz 9 öncesi
+ya da ara bir commit) denk geldi.
 
 ## 9. Analiz sonrası sağ alttan çıkan bildirim mesajının formatı kötü
 
