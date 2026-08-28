@@ -6,6 +6,7 @@ import { toAbsolutePath } from './model/pathIndex';
 import { getCoverageState, getStaleFiles, isGutterVisible, setMutationState, setPerTestState } from './model/store';
 import {
 	analysisResultFrom,
+	MUTATION_STORAGE_FILE,
 	publishAnalysis,
 	registerAnalyzeCommand,
 	registerAnalyzePerTestCommand,
@@ -15,6 +16,7 @@ import {
 	registerQualityMutationBridgeCommands,
 	registerToggleCoverageCommand,
 	type CoverageSinks,
+	type MutationSnapshot,
 } from './ui/commands';
 import { createDiagnosticCollection } from './ui/diagnostics';
 import { ExplorerBadgeProvider } from './ui/explorerBadges';
@@ -26,7 +28,7 @@ import { LineTestsTreeProvider, type LineTestsNode } from './ui/treeViews/lineTe
 import { MutationTreeProvider } from './ui/treeViews/mutationView';
 import { QualityTreeProvider } from './ui/treeViews/qualityView';
 import { RunTreeProvider } from './ui/treeViews/runView';
-import { parseVerdict } from './verdict/parse';
+import { isMutationBlock, parseVerdict } from './verdict/parse';
 
 /** F3's module id, same single-module-shorthand scope as everywhere else until F8's config UI adds real multi-module support. */
 const MODULE_ID = 'root';
@@ -187,6 +189,12 @@ async function restoreLastCoverage(context: vscode.ExtensionContext, sinks: Cove
  * have by default).
  */
 export async function restoreLastCoverageFrom(storageDir: string, workspaceRoot: string, sinks: CoverageSinks): Promise<void> {
+	// Faz 25 (§7.5): kendi dosyasında yaşıyor artık, `verdict-current.json`'dan
+	// tamamen bağımsız olarak geri yüklenir - biri bozuksa/yoksa diğeri yine
+	// de geri gelsin diye ayrı bir adım, aşağıdaki erken `return`'lerden
+	// etkilenmez.
+	await restoreMutationSnapshot(storageDir, sinks);
+
 	let raw: string;
 	try {
 		raw = await fs.promises.readFile(path.join(storageDir, 'verdict-current.json'), 'utf8');
@@ -202,22 +210,54 @@ export async function restoreLastCoverageFrom(storageDir: string, workspaceRoot:
 	// perTest restores independently of fileCoverage - a run can carry one
 	// without the other depending on which command produced it.
 	setPerTestState({ moduleId: MODULE_ID, perTest: parsed.value.perTest, warnings: parsed.value.warnings });
-	// Faz 23: publishAnalysis kendi refresh()'lerini setPerTestState/
-	// setMutationState çağrılmadan ÖNCE tetikliyor (bu fonksiyonun
-	// içinde), yani TreeView'lar eski/boş state ile bir kez yenileniyor.
-	// setPerTestState/setMutationState düz değişken ataması - kendi
-	// event'ini ateşlemiyor - o yüzden burada elle refresh() şart.
+	// Faz 23: publishAnalysis kendi refresh()'ini setPerTestState çağrılmadan
+	// ÖNCE tetikliyor (bu fonksiyonun içinde), yani TreeView eski/boş
+	// state ile bir kez yenileniyor. setPerTestState düz değişken ataması -
+	// kendi event'ini ateşlemiyor - o yüzden burada elle refresh() şart.
 	sinks.lineTestsView.refresh();
-	// Faz 20: mutasyon da geri yüklenir - ama yalnızca blok gerçekten
-	// varsa. Blok yoksa `setMutationState` çağrılmaz, böylece görünüm
-	// "henüz çalıştırılmadı" der; boş bir durum yazmak "çalıştırıldı ama
-	// sonuç yok" demek olurdu, ki bu farklı bir iddia (hard rule 3a).
-	// `targets` bilinmiyor: kaydedilen verdict onu taşımıyor. `ranAt` da
-	// bilinmiyor - CLI'ın çıktısı zaman damgası taşımaz (Faz 22).
-	if (parsed.value.mutation) {
-		setMutationState({ moduleId: MODULE_ID, mutation: parsed.value.mutation, warnings: parsed.value.warnings, targets: [], ranAt: undefined });
-		sinks.mutationView.refresh();
+}
+
+/**
+ * Faz 25 (§7.5): `mutation-current.json`'ı okur - `ui/commands.ts`'in
+ * `writeMutationSnapshot`'ının yazdığı, kendi gerçek zaman damgamızı
+ * taşıyan format (CLI'ın çıktısı hiç taşımaz, D-xx). Dosya yok/bozuksa
+ * (eski bir eklenti sürümünden kalma farklı bir şekil dahil) sessizce
+ * hiçbir şey yapmaz - "henüz mutasyon testi çalıştırılmadı" ilk hâli
+ * zaten doğru varsayılan (hard rule 3a).
+ */
+async function restoreMutationSnapshot(storageDir: string, sinks: CoverageSinks): Promise<void> {
+	let raw: string;
+	try {
+		raw = await fs.promises.readFile(path.join(storageDir, MUTATION_STORAGE_FILE), 'utf8');
+	} catch {
+		return;
 	}
+	const snapshot = parseMutationSnapshot(raw);
+	if (!snapshot) {
+		return;
+	}
+	setMutationState({ moduleId: snapshot.moduleId, mutation: snapshot.mutation, warnings: snapshot.warnings, targets: snapshot.targets, ranAt: snapshot.ranAtMs });
+	sinks.mutationView.refresh();
+}
+
+function parseMutationSnapshot(raw: string): MutationSnapshot | undefined {
+	let json: unknown;
+	try {
+		json = JSON.parse(raw);
+	} catch {
+		return undefined;
+	}
+	if (
+		typeof json !== 'object' || json === null
+		|| !('moduleId' in json) || typeof json.moduleId !== 'string'
+		|| !('mutation' in json) || !isMutationBlock(json.mutation)
+		|| !('warnings' in json) || !Array.isArray(json.warnings)
+		|| !('targets' in json) || !Array.isArray(json.targets) || !json.targets.every((t) => typeof t === 'string')
+		|| !('ranAtMs' in json) || typeof json.ranAtMs !== 'number'
+	) {
+		return undefined;
+	}
+	return json as unknown as MutationSnapshot;
 }
 
 /** `coverdict.show.*`/`coverdict.badgeMetric` changed while a run's data is still current - repaint from `model/store`'s own state, no re-parse needed. */

@@ -24,7 +24,7 @@ import {
 } from '../model/store';
 import { parseVerdict } from '../verdict/parse';
 import { parseTestIdentity } from '../verdict/testIdentity';
-import type { ChangedFile, FileCoverageBlock, Finding, MetricSet, ModuleInput, NewCodeCoverage, Reason, VerdictDocument } from '../verdict/types';
+import type { ChangedFile, FileCoverageBlock, Finding, MetricSet, ModuleInput, MutationBlock, NewCodeCoverage, Reason, VerdictDocument } from '../verdict/types';
 import { publishFindings } from './diagnostics';
 import type { ExplorerBadgeProvider } from './explorerBadges';
 import { applyGutterCoverage, clearGutterCoverage, type GutterDecorationTypes } from './gutterRenderer';
@@ -40,6 +40,42 @@ const DEFAULT_SOURCE_ROOTS = ['src/main/java'];
 
 /** F3's own module id - single-module shorthand only, same scope limit as F1's argsBuilder (multi-module lands with F8). */
 const MODULE_ID = 'root';
+
+/**
+ * Faz 25 (§7.5): `verdict-current.json` her koşu üzerine yazılır - bir
+ * Hızlı/Derin Tarama mutation bloğu taşımadığı için mutasyon sonucunu
+ * orada saklamak onu bir sonraki taramada sessizce siliyordu (kullanıcının
+ * kendi bulduğu gerçek durum, 2026-08-28: mutasyon çalıştırıldı, sonra
+ * Derin Tarama yapıldı, pencere yenilenince mutasyon sonucu gitmişti).
+ * Artık kendi dosyasında, kendi gerçek zaman damgasıyla ayrı yaşıyor -
+ * CLI'ın çıktısı zaman damgası taşımadığı için (D-xx) bunu biz, yazdığımız
+ * anda ekliyoruz; restoreLastCoverageFrom bunu geri okuyunca "ne zaman
+ * çalıştı" artık tahmin değil gerçek bir değer.
+ */
+export const MUTATION_STORAGE_FILE = 'mutation-current.json';
+
+export interface MutationSnapshot {
+	moduleId: string;
+	mutation: MutationBlock;
+	warnings: readonly Reason[];
+	targets: readonly string[];
+	ranAtMs: number;
+}
+
+/** Best-effort: bir mutasyon koşusunun sonucunu diske yazamamak koşunun kendisini başarısız saymaz - sonuç zaten ekranda, yalnızca bir sonraki pencere yenilemesinde kaybolur. Sebep Output kanalına gider, kullanıcıyı bir hata diyaloğuyla kesmez. */
+async function writeMutationSnapshot(context: vscode.ExtensionContext, output: vscode.OutputChannel, snapshot: MutationSnapshot): Promise<void> {
+	const storageRoot = context.storageUri;
+	if (!storageRoot) {
+		return;
+	}
+	try {
+		await vscode.workspace.fs.createDirectory(storageRoot);
+		const outUri = vscode.Uri.joinPath(storageRoot, MUTATION_STORAGE_FILE);
+		await fs.promises.writeFile(outUri.fsPath, JSON.stringify(snapshot), 'utf8');
+	} catch (e) {
+		output.appendLine(`coverdict: mutasyon sonucu kalıcı depolamaya yazılamadı (pencere yenilenince kaybolur): ${(e as Error).message}`);
+	}
+}
 
 /**
  * Faz 9: hem gutter (`gutterTypes`) hem Explorer rozetleri
@@ -495,9 +531,15 @@ async function runMutation(
 	}
 
 	publishAnalysis(sinks, folder.uri.fsPath, analysisResultFrom(parsed));
-	setMutationState({ moduleId: MODULE_ID, mutation: parsed.mutation, warnings: parsed.warnings, targets, ranAt: Date.now() });
+	const ranAtMs = Date.now();
+	setMutationState({ moduleId: MODULE_ID, mutation: parsed.mutation, warnings: parsed.warnings, targets, ranAt: ranAtMs });
 	sinks.mutationView.refresh();
 	void vscode.commands.executeCommand('coverdict.mutationView.focus');
+	// Faz 25: yalnızca blok gerçekten varsa yazılır - yoksa (bütçe aşıldı vb.)
+	// eski bir sonucu yeni ama boş bir "koşu" ile ezmemek için hiç dokunulmaz.
+	if (parsed.mutation) {
+		await writeMutationSnapshot(context, output, { moduleId: MODULE_ID, mutation: parsed.mutation, warnings: parsed.warnings, targets, ranAtMs });
+	}
 }
 
 function readMutationTimeout(folder: vscode.WorkspaceFolder): number {

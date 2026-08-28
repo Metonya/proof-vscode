@@ -168,7 +168,14 @@ function noMutationEvidenceMessage(): string {
 	return 'Bu koşu mutasyon kanıtı üretmedi. MUTATION_* uyarıları için Output → coverdict kanalına bakın.';
 }
 
-/** Faz 22: "Hedef: Calculator · 5 dakika önce" ya da diskten geri yüklenmiş bir sonuçta "Hedef: Calculator · kaydedilmiş sonuç". */
+/**
+ * Faz 22: "Hedef: Calculator · 5 dakika önce" ya da `ranAt` bilinmiyorsa
+ * "Hedef: Calculator · kaydedilmiş sonuç". Faz 25'ten beri pencere
+ * yenilemesi de gerçek bir `ranAt` taşıyor (`mutation-current.json` kendi
+ * zaman damgasını tutuyor) - bu dal artık yalnızca eski bir eklenti
+ * sürümünden kalma damgasız bir dosya gibi gerçekten bilinmeyen durumlar
+ * için var.
+ */
 function headerText(state: NonNullable<ReturnType<typeof getMutationState>>): string {
 	const target = targetSummary(state.targets);
 	const when = state.ranAt === undefined ? 'kaydedilmiş sonuç - bu pencerede ne zaman çalıştığı bilinmiyor' : formatRelativeTime(state.ranAt, Date.now());

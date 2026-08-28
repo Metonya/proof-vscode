@@ -423,7 +423,7 @@ eşleşen bir bulgu varsa - §7.6 madde 5) ·
 
 ### Sağlık
 
-157 unit + 47 integration test geçiyor. SonarQube (`coverdict-vscode`,
+157 unit + 51 integration test geçiyor. SonarQube (`coverdict-vscode`,
 `http://localhost:9001`) sıfır açık bulgu.
 
 ---
@@ -748,17 +748,39 @@ kendisi bu maddeye kadar ERROR kalacak.
 Faz 20 ile temel arayüz geldi (§8). Bilerek yapılmayanlar:
 - **Gutter'a mutasyon durumu eklenmedi** (7. durum yok). Önce ağacın
   gerçek kullanımda oturması bekleniyor.
-- **Mutasyon sonucu bir sonraki taramada kayboluyor.** Doğrusu şu:
-  `verdict-current.json` (workspace depolamasında) mutasyon bloğunu da
-  taşıyor ve `restoreLastCoverage` onu geri yüklüyor — yani pencereyi
-  kapatıp açmak sonucu **korur**. Ama o dosyayı **her** koşu üzerine
-  yazıyor; bir Hızlı Tarama `mutation` bloğu olmayan bir verdict yazınca
-  mutasyon sonucu diskten silinmiş oluyor (ağaçta duran kopya bellekte
-  kalır, pencere kapanınca gider). Ayrı bir dosya
-  (`mutation-current.json`) gerekiyorsa ayrı bir karar — ve o zaman
-  "bu sonuç ne kadar eski" sorusunu da cevaplamak gerekir.
-- **`SUBSUMED_TEST` ve `PSEUDO_TESTED_METHOD` bulguları** Test Kalitesi
-  görünümünde çıkıyor ama mutasyon ağacıyla çapraz bağlanmadı.
+- ~~**Mutasyon sonucu bir sonraki taramada kayboluyor.**~~ — **KAPANDI
+  (Faz 25).** Kullanıcının canlı kullanımda bizzat yakaladığı gerçek
+  hata (2026-08-28): mutasyon testi çalıştırıldı, sonra bir Derin Tarama
+  yapıldı, pencere yenilenince mutasyon sonucu gitmişti - tam olarak
+  burada tahmin edilen senaryo.
+
+  Çözüm: mutasyon sonucu artık kendi dosyasında,
+  `mutation-current.json` (`ui/commands.ts`'in `writeMutationSnapshot`'ı,
+  yalnızca `parsed.mutation` gerçekten varsa yazıyor - bütçe aşımı gibi
+  boş bir koşu eskiyi ezmiyor). `verdict-current.json`'dan tamamen
+  bağımsız: `extension.ts`'in `restoreMutationSnapshot`'ı onu ayrı,
+  erken `return`'lerden etkilenmeyen bir adımda okuyor. "Bu sonuç ne
+  kadar eski" sorusu da bedavaya çözüldü - CLI'ın çıktısı zaman damgası
+  taşımadığı için önceden bilinmiyordu, ama artık dosyayı biz yazdığımız
+  için kendi gerçek `Date.now()`'ımızı ekliyoruz; pencere yenilemesi
+  sonrası "5 dakika önce" gibi doğru bir süre gösteriliyor (önceden
+  hep "kaydedilmiş sonuç - ne zaman çalıştığı bilinmiyor" diyordu).
+
+  Şema kendi icadımız (CLI'ın değil), `verdict/parse.ts`'in
+  `isMutationBlock`'u dışa açılıp doğrulamada yeniden kullanıldı; bozuk/
+  eksik alanlı bir dosya sessizce yok sayılıyor (hard rule 3a) - ne
+  atıyor ne yarım veriyle güveniyor.
+
+  Doğrulama: gerçek senaryoyu birebir kuran entegrasyon testleri
+  (`extension.restoreLastCoverage.test.ts`) - `verdict-current.json`'da
+  hiç `mutation` bloğu yokken `mutation-current.json`'dan doğru geri
+  yükleniyor, gerçek zaman damgası doğru "N dakika önce" üretiyor,
+  eksik dosya/bozuk JSON/eksik alan üç ayrı durumda da sessizce yok
+  sayılıyor. `npm run check-types && npm run lint`, temiz koşu (157 unit
+  + 51 integration), SonarQube sıfır açık bulgu.
+- **`SUBSUMED_TEST` bulgusu** Test Kalitesi görünümünde çıkıyor ama
+  mutasyon ağacıyla çapraz bağlanmadı (`PSEUDO_TESTED_METHOD` için bu
+  köprü Faz 24'te kuruldu, §7.6 madde 5).
 
 ### 7.6 Faz 22 — elle inceleme bulguları (2026-08-28, iki ekran görüntüsüyle)
 

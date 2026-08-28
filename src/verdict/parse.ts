@@ -174,7 +174,8 @@ function isPerTestLine(value: unknown): value is PerTestLine {
 		&& Array.isArray(value.tests) && value.tests.every((t) => typeof t === 'string');
 }
 
-function isMutationBlock(value: unknown): value is MutationBlock {
+/** Faz 25 (§7.5): `extension.ts`'in kendi `mutation-current.json`'ını doğrularken de kullanılıyor - CLI'ın `mutation` bloğuyla aynı şema, iki ayrı validator tutmamak için dışa açıldı. */
+export function isMutationBlock(value: unknown): value is MutationBlock {
 	return isRecord(value)
 		&& typeof value.engine === 'string'
 		&& typeof value.engineVersion === 'string'
