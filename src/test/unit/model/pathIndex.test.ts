@@ -2,7 +2,7 @@ import * as assert from 'node:assert/strict';
 import * as path from 'node:path';
 import { test } from 'node:test';
 
-import { toAbsolutePath, toRepoRelativePath } from '../../../model/pathIndex';
+import { classNameFromPath, fqcnToRootRelativePath, toAbsolutePath, toRepoRelativePath } from '../../../model/pathIndex';
 
 const WORKSPACE_ROOT = path.join('C:', 'repo');
 
@@ -19,4 +19,26 @@ test('toRepoRelativePath is the inverse of toAbsolutePath', () => {
 test('a path outside the workspace root is undefined, not a guessed ../ relative path', () => {
 	const outside = path.join('C:', 'elsewhere', 'Calc.java');
 	assert.equal(toRepoRelativePath(WORKSPACE_ROOT, outside), undefined);
+});
+
+/** Faz 15b: mirrors coverdict-cli's ChangedClassTargets.forEachMappedFile, just run in the opposite direction. */
+test('fqcnToRootRelativePath joins a root and dotted FQCN into a repo-relative .java path', () => {
+	assert.equal(fqcnToRootRelativePath('src/test/java', 'dev.coverdict.playground.CalcTest'), 'src/test/java/dev/coverdict/playground/CalcTest.java');
+});
+
+test('fqcnToRootRelativePath tolerates a root with a trailing slash', () => {
+	assert.equal(fqcnToRootRelativePath('src/test/java/', 'dev.example.CalcTest'), 'src/test/java/dev/example/CalcTest.java');
+});
+
+test('classNameFromPath is the inverse of fqcnToRootRelativePath for a path under one of the given sourceRoots', () => {
+	const path2 = fqcnToRootRelativePath('src/main/java', 'dev.coverdict.playground.Calculator');
+	assert.equal(classNameFromPath(path2, ['src/main/java']), 'dev.coverdict.playground.Calculator');
+});
+
+test('classNameFromPath returns undefined for a path under none of the given sourceRoots (never guesses)', () => {
+	assert.equal(classNameFromPath('other/Calc.java', ['src/main/java']), undefined);
+});
+
+test('classNameFromPath returns undefined for a non-.java path', () => {
+	assert.equal(classNameFromPath('src/main/java/Calc.txt', ['src/main/java']), undefined);
 });

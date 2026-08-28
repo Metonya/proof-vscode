@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { testsForClass } from '../../../model/lineIndex';
+import { testsForClass, testsToLines } from '../../../model/lineIndex';
 import type { PerTestBlock } from '../../../verdict/types';
 
 const BLOCK: PerTestBlock = {
@@ -58,4 +58,33 @@ test('a module id not present in the block is reported distinctly from a missing
 test('a class with no matching entries is classNotFound - "L2 sadece değişen sınıflar için"', () => {
 	const result = testsForClass(BLOCK, 'root', 'dev.coverdict.playground.NotAChangedClass');
 	assert.equal(result.kind, 'classNotFound');
+});
+
+/**
+ * Faz 15a: `testsForClass`'ın tersi - "bu test hangi satırları çalıştırıyor".
+ * Anahtar `parseTestIdentity`'nin `Class#method()` biçimi, `model/
+ * testQuality.ts`'in `finding.testMethod` eşleştirmesiyle aynı sözleşme.
+ */
+test('testsToLines: a test appears once per production line it covers, keyed by Class#method()', () => {
+	const reverse = testsToLines(BLOCK, 'root');
+	const refs = reverse.get('CalcTest#addsTwoNumbers()');
+	assert.ok(refs);
+	assert.deepEqual([...refs!].sort((a, b) => a.line - b.line), [{ outerClassName: 'dev.coverdict.playground.Calculator', line: 7 }]);
+});
+
+test('testsToLines: ambient (<clinit>-only) evidence is excluded - a test does not "run" a line it only reached indirectly', () => {
+	const reverse = testsToLines(BLOCK, 'root');
+	const refs = reverse.get('CalcTest#addsTwoNumbers()');
+	assert.ok(refs);
+	assert.ok(!refs!.some((r) => r.line === 3), 'line 3 is ambient-only, must not appear in the reverse index');
+});
+
+test('testsToLines: a nested-class entry is reported under its outer class name', () => {
+	const reverse = testsToLines(BLOCK, 'root');
+	const refs = reverse.get('CalcTest#innerHelperTest()');
+	assert.deepEqual(refs, [{ outerClassName: 'dev.coverdict.playground.Calculator', line: 40 }]);
+});
+
+test('testsToLines: a module id not present in the block returns an empty map, not an error', () => {
+	assert.equal(testsToLines(BLOCK, 'nope').size, 0);
 });

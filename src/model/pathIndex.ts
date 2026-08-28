@@ -19,3 +19,39 @@ export function toRepoRelativePath(workspaceRoot: string, absolutePath: string):
 	}
 	return relative.split(path.sep).join('/');
 }
+
+/**
+ * Faz 15b: an outer FQCN (nested-class suffix already stripped by the
+ * caller) to a repo-relative `.java` path under one `sourceRoot`/`testRoot` -
+ * mirrors coverdict-cli's `ChangedClassTargets.forEachMappedFile` exactly
+ * (dot-to-slash, `.java` suffix). Used to locate a test's own source file
+ * when no `Finding` already carries its path (a test with no coverdict
+ * finding at all) - the caller tries each declared root and keeps the
+ * first one that exists on disk (`ui/testFileLocator.ts`, since existence
+ * checks need `vscode.workspace.fs`, not this pure module).
+ */
+export function fqcnToRootRelativePath(root: string, fqcn: string): string {
+	const prefix = root.endsWith('/') ? root : `${root}/`;
+	return `${prefix}${fqcn.replace(/\./g, '/')}.java`;
+}
+
+/**
+ * The reverse of {@link fqcnToRootRelativePath}: a repo-relative `.java`
+ * path to its FQCN, given the module's `sourceRoots`. Used to build a
+ * `className -> path` index straight from `fileCoverage.files[]` (a
+ * complete, already-filtered listing of production files) so a test's
+ * hover can jump to the exact production file it covers without a
+ * filesystem probe.
+ */
+export function classNameFromPath(repoRelativePath: string, sourceRoots: readonly string[]): string | undefined {
+	if (!repoRelativePath.endsWith('.java')) {
+		return undefined;
+	}
+	for (const sourceRoot of sourceRoots) {
+		const prefix = sourceRoot.endsWith('/') ? sourceRoot : `${sourceRoot}/`;
+		if (repoRelativePath.startsWith(prefix)) {
+			return repoRelativePath.slice(prefix.length, -'.java'.length).replace(/\//g, '.');
+		}
+	}
+	return undefined;
+}
