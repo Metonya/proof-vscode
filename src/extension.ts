@@ -8,6 +8,7 @@ import {
 	refreshLineTestsPanelForActiveEditor,
 	registerAnalyzeCommand,
 	registerAnalyzePerTestCommand,
+	registerPerTestForFileCommand,
 	registerShowLineTestsCommand,
 	registerToggleCoverageCommand,
 	type CoverageSinks,
@@ -55,6 +56,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		vscode.window.registerTreeDataProvider('coverdict.qualityView', qualityView),
 		registerAnalyzeCommand(context, output, sinks),
 		registerAnalyzePerTestCommand(context, output, sinks),
+		registerPerTestForFileCommand(context, output, sinks),
 		registerToggleCoverageCommand(sinks),
 		registerShowLineTestsCommand(),
 		// setDecorations is per-editor, not global - a newly-visible editor

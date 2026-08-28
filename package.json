@@ -108,8 +108,21 @@
       {
         "command": "coverdict.showLineTests",
         "title": "coverdict: Satır → Testler Göster"
+      },
+      {
+        "command": "coverdict.perTestForFile",
+        "title": "coverdict: Bu Sınıf İçin Hangi Test Hangi Satırı Kapsıyor"
       }
     ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "coverdict.perTestForFile",
+          "when": "resourceLangId == java",
+          "group": "coverdict"
+        }
+      ]
+    },
     "viewsContainers": {
       "activitybar": [
         {

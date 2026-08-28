@@ -46,6 +46,7 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 		items.push(
 			new RunItem('Kapsama Görünümünü Aç/Kapat', `şu an ${gutterVisible ? 'açık' : 'kapalı'}`, 'coverdict.toggleCoverage', gutterVisible ? 'eye' : 'eye-closed'),
 			new RunItem('Satır → Testler Göster', undefined, 'coverdict.showLineTests', 'list-tree'),
+			new RunItem('Bu Sınıf İçin Hangi Test Hangi Satırı Kapsıyor', 'açık dosya için - diff/değişiklik gerektirmez (--per-test-target)', 'coverdict.perTestForFile', 'target'),
 		);
 		return items;
 	}

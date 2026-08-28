@@ -20,8 +20,14 @@ export interface AnalyzeArgsInput {
 	fileCoverage?: boolean;
 	/** Sonar-style `sonar.coverage.exclusions` globs (D-05) - passed through verbatim, one authored list, never merged with a repo's own coverdict.config.json. */
 	coverageExclusions?: readonly string[];
-	/** F3 (Plan.md Bölüm 4): L2 per-test evidence. Requires a diff mode (rejected under --no-vcs on the CLI side) and perTestClasspathPath - both or neither, never one alone. */
-	perTest?: { classpathModuleId: string; classpathPath: string };
+	/**
+	 * F3 (Plan.md Bölüm 4): L2 per-test evidence. Requires perTestClasspathPath
+	 * - both or neither, never one alone. `targets` (Faz 14b) names explicit
+	 * FQCNs via `--per-test-target`, the CLI's diff-free entry point (Faz
+	 * 14a) - when given, it lifts the CLI's own --no-vcs rejection, so this
+	 * builder does not need to know or enforce the diff-mode rule itself.
+	 */
+	perTest?: { classpathModuleId: string; classpathPath: string; targets?: readonly string[] };
 }
 
 export function buildAnalyzeArgs(input: AnalyzeArgsInput): string[] {
@@ -48,6 +54,9 @@ export function buildAnalyzeArgs(input: AnalyzeArgsInput): string[] {
 	}
 	if (input.perTest) {
 		args.push('--per-test-report', '--per-test-classpath', `${input.perTest.classpathModuleId}=${input.perTest.classpathPath}`);
+		for (const target of input.perTest.targets ?? []) {
+			args.push('--per-test-target', `${input.perTest.classpathModuleId}=${target}`);
+		}
 	}
 	args.push('--out', input.outPath);
 

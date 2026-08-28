@@ -81,6 +81,25 @@ test('an absent perTest never appends either flag', () => {
 	assert.ok(!args.includes('--per-test-classpath'));
 });
 
+test('perTest.targets appends one --per-test-target per FQCN, even under no-vcs (Faz 14b)', () => {
+	const args = buildAnalyzeArgs({
+		repo: '/repo', diffMode: { kind: 'no-vcs' }, reportPath: 'jacoco.xml', outPath: '/tmp/out.json',
+		perTest: { classpathModuleId: 'root', classpathPath: 'coverdict-classpath.txt', targets: ['dev.example.Calculator'] },
+	});
+	const flagIndex = args.indexOf('--per-test-target');
+	assert.ok(flagIndex >= 0);
+	assert.equal(args[flagIndex + 1], 'root=dev.example.Calculator');
+	assert.ok(args.includes('--no-vcs'), 'the builder itself does not reject no-vcs + a target - the CLI decides that');
+});
+
+test('perTest without targets never appends --per-test-target', () => {
+	const args = buildAnalyzeArgs({
+		repo: '/repo', diffMode: { kind: 'uncommitted' }, reportPath: 'jacoco.xml', outPath: '/tmp/out.json',
+		perTest: { classpathModuleId: 'root', classpathPath: 'coverdict-classpath.txt' },
+	});
+	assert.ok(!args.includes('--per-test-target'));
+});
+
 test('--out is always the last two args, so a caller can rely on args[args.length - 1]', () => {
 	const args = buildAnalyzeArgs({
 		repo: '/repo', diffMode: { kind: 'no-vcs' }, reportPath: 'jacoco.xml', outPath: '/tmp/out.json',

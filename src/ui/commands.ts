@@ -69,6 +69,11 @@ export function registerShowLineTestsCommand(): vscode.Disposable {
 	return vscode.commands.registerCommand('coverdict.showLineTests', () => showLineTestsPanel(computePanelContent()));
 }
 
+/** Faz 14b: diff'siz L2 kanıtı, tek bir açık dosya için (`--per-test-target`, Faz 14a). */
+export function registerPerTestForFileCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
+	return vscode.commands.registerCommand('coverdict.perTestForFile', () => runPerTestForFile(context, output, sinks));
+}
+
 /** Called from extension.ts on active-editor change, to keep an already-open panel in sync without a new command invocation. */
 export function refreshLineTestsPanelForActiveEditor(): void {
 	refreshLineTestsPanelIfOpen(computePanelContent());
@@ -196,6 +201,47 @@ async function runAnalyzePerTest(context: vscode.ExtensionContext, output: vscod
 	showLineTestsPanel(computePanelContent());
 }
 
+/**
+ * Faz 14b: aktif Java dosyasının FQCN'i doğrudan `--per-test-target` olarak
+ * geçirilir (Faz 14a'nın CLI'a eklediği diff'siz L2 girişi) - dosyada
+ * değişiklik yapmaya ya da diff'te görünmesine gerek yok. `readDiffMode`
+ * yine de çağrılır çünkü CLI her koşuda tam olarak bir diff modu bekler
+ * (--no-vcs dahil, artık hedef verildiği için reddedilmiyor) - ama hangi
+ * mod seçilirse seçilsin sonuç aynıdır, sadece "yeni kod" hesaplaması
+ * etkilenir.
+ */
+async function runPerTestForFile(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
+	const folder = vscode.workspace.workspaceFolders?.[0];
+	if (!folder) {
+		vscode.window.showErrorMessage('coverdict: önce bir klasör açın.');
+		return;
+	}
+	const editor = vscode.window.activeTextEditor;
+	if (editor?.document.languageId !== 'java') {
+		vscode.window.showErrorMessage('coverdict: bu sınıf için test bazlı kanıt toplamak üzere bir Java dosyası açın.');
+		return;
+	}
+	const diffMode = readDiffMode(folder);
+	if (!diffMode) {
+		return;
+	}
+
+	const fileName = path.basename(editor.document.fileName, '.java');
+	const className = detectClassName(editor.document.getText(), fileName);
+	const classpathPath = vscode.workspace.getConfiguration('coverdict', folder).get<string>('perTestClasspathPath') || 'target/coverdict-classpath.txt';
+	const parsed = await runAnalyzeCore(context, output, folder, diffMode, { classpathModuleId: MODULE_ID, classpathPath, targets: [className] });
+	if (!parsed) {
+		return;
+	}
+
+	publishAnalysis(sinks, folder.uri.fsPath, analysisResultFrom(parsed));
+	setPerTestState({ moduleId: MODULE_ID, perTest: parsed.perTest, warnings: parsed.warnings });
+	if (!parsed.perTest) {
+		vscode.window.showWarningMessage(`coverdict: ${className} için test bazlı kanıt yok - PER_TEST_* uyarıları için çıktı kanalını kontrol edin.`);
+	}
+	showLineTestsPanel(computePanelContent());
+}
+
 /** `coverdict.diffMode` + (base modundaysa) `coverdict.baseRef`'i okur; base seçiliyken baseRef boşsa kullanıcıyı ayara yönlendirip `undefined` döner. */
 function readDiffMode(folder: vscode.WorkspaceFolder): DiffMode | undefined {
 	const config = vscode.workspace.getConfiguration('coverdict', folder);
@@ -225,7 +271,7 @@ async function runAnalyzeCore(
 	output: vscode.OutputChannel,
 	folder: vscode.WorkspaceFolder,
 	diffMode: DiffMode,
-	perTest?: { classpathModuleId: string; classpathPath: string },
+	perTest?: { classpathModuleId: string; classpathPath: string; targets?: readonly string[] },
 ): Promise<VerdictDocument | undefined> {
 	const jarPath = locateJar(folder);
 	if (!jarPath) {
