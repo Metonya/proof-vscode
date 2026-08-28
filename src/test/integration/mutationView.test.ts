@@ -71,6 +71,11 @@ const MUTATION: MutationBlock = {
 	}],
 };
 
+/** Root children always start with a `header` node once a mutation result exists (Faz 22) - this skips past it to the class list. */
+function classNodes(provider: MutationTreeProvider) {
+	return provider.getChildren().filter((n) => n.kind === 'class');
+}
+
 suite('Mutation view (Faz 20)', () => {
 	test('with no run at all, offers to run rather than claiming there is nothing to find', () => {
 		const provider = new MutationTreeProvider();
@@ -81,15 +86,16 @@ suite('Mutation view (Faz 20)', () => {
 		assert.doesNotThrow(() => provider.getTreeItem(roots[1]));
 	});
 
-	/** Hard rule 3a: "the run failed" and "the run found nothing" must not look identical. */
+	/** Hard rule 3a: "the run failed" and "the run found nothing" must not look identical. No mutation block -> no header either, there is nothing to date-stamp. */
 	test('an empty result explains the specific warning that caused it', () => {
 		setCoverageState(STATE);
 		setMutationState({
-			moduleId: 'root', mutation: undefined, targets: [],
+			moduleId: 'root', mutation: undefined, targets: [], ranAt: undefined,
 			warnings: [{ code: 'MUTATION_BUDGET_EXCEEDED', message: 'budget exhausted', module: 'root' }],
 		});
 		const provider = new MutationTreeProvider();
 		const roots = provider.getChildren();
+		assert.equal(roots.length, 2, 'no header when there is no result to date-stamp');
 		assert.equal(roots[0].kind, 'empty');
 		if (roots[0].kind === 'empty') {
 			assert.match(roots[0].message, /bütçe/i);
@@ -97,12 +103,41 @@ suite('Mutation view (Faz 20)', () => {
 		}
 	});
 
-	test('class -> method -> mutant -> killing test, with test classes filtered out', () => {
+	/**
+	 * Faz 22: kullanıcının bulduğu gerçek kafa karışıklığı - panel dosyadan
+	 * dosyaya geçince değişmiyordu, hangi koşuya bakıldığı belli değildi.
+	 * Şimdi kökler her zaman "Hedef: ... · ..." başlığıyla başlıyor.
+	 */
+	test('a fresh run shows a header naming the target and "az önce"', () => {
 		setCoverageState(STATE);
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: ['dev.coverdict.playground.Calculator'] });
+		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: ['dev.coverdict.playground.Calculator'], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
-		const classes = provider.getChildren();
+		const roots = provider.getChildren();
+		assert.equal(roots[0].kind, 'header');
+		const headerItem = provider.getTreeItem(roots[0]);
+		assert.match(String(headerItem.label), /Hedef: Calculator/);
+		assert.match(String(headerItem.label), /az önce/);
+	});
+
+	/** A result restored from disk (extension.ts on window reload) has no `ranAt` - the header must say so, not guess a time. */
+	test('a restored result (no ranAt) says so instead of guessing a time', () => {
+		setCoverageState(STATE);
+		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: undefined });
+		const provider = new MutationTreeProvider();
+
+		const header = provider.getChildren()[0];
+		const item = provider.getTreeItem(header);
+		assert.match(String(item.label), /kaydedilmiş sonuç/);
+		assert.match(String(item.label), /diff'teki değişen sınıflar/, 'empty targets = module-wide, diff-derived');
+	});
+
+	test('class -> method -> mutant -> killing test, with test classes filtered out', () => {
+		setCoverageState(STATE);
+		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: ['dev.coverdict.playground.Calculator'], ranAt: Date.now() });
+		const provider = new MutationTreeProvider();
+
+		const classes = classNodes(provider);
 		assert.equal(classes.length, 1, 'CalculatorSubsumedTest is a test class - its own mutants must not be reported');
 		assert.equal(classes[0].kind, 'class');
 		const classItem = provider.getTreeItem(classes[0]);
@@ -130,10 +165,10 @@ suite('Mutation view (Faz 20)', () => {
 	/** A NO_COVERAGE mutant is not evidence of a bad test - it is evidence of no test at all. */
 	test('an indeterminate mutant is labelled with its own status, never as killed or survived', () => {
 		setCoverageState(STATE);
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [] });
+		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
-		const methods = provider.getChildren(provider.getChildren()[0]);
+		const methods = provider.getChildren(classNodes(provider)[0]);
 		const negate = methods.find((m) => m.kind === 'method' && m.method.methodName === 'negate')!;
 		const item = provider.getTreeItem(provider.getChildren(negate)[0]);
 		assert.match(String(item.description), /belirsiz/);
@@ -145,17 +180,19 @@ suite('Mutation view (Faz 20)', () => {
 
 	test('survivors-only filter keeps the methods worth looking at and can be turned back off', () => {
 		setCoverageState(STATE);
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [] });
+		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
 		assert.equal(provider.isSurvivorsOnly(), false, 'default: hide nothing');
-		assert.equal(provider.getChildren(provider.getChildren()[0]).length, 3);
+		assert.equal(provider.getChildren(classNodes(provider)[0]).length, 3);
 
 		assert.equal(provider.toggleSurvivorsOnly(), true);
-		const filtered = provider.getChildren(provider.getChildren()[0]);
+		const filtered = provider.getChildren(classNodes(provider)[0]);
 		assert.deepEqual(filtered.map((m) => (m.kind === 'method' ? m.method.methodName : '')), ['square']);
+		// The header must survive the filter too - it is not one of the filtered class nodes.
+		assert.equal(provider.getChildren()[0].kind, 'header');
 
 		provider.toggleSurvivorsOnly();
-		assert.equal(provider.getChildren(provider.getChildren()[0]).length, 3);
+		assert.equal(provider.getChildren(classNodes(provider)[0]).length, 3);
 	});
 });

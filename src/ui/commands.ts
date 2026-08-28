@@ -422,7 +422,7 @@ async function runMutation(
 	}
 
 	publishAnalysis(sinks, folder.uri.fsPath, analysisResultFrom(parsed));
-	setMutationState({ moduleId: MODULE_ID, mutation: parsed.mutation, warnings: parsed.warnings, targets });
+	setMutationState({ moduleId: MODULE_ID, mutation: parsed.mutation, warnings: parsed.warnings, targets, ranAt: Date.now() });
 	sinks.mutationView.refresh();
 	void vscode.commands.executeCommand('coverdict.mutationView.focus');
 }

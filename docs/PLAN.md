@@ -414,7 +414,7 @@ sağ tık, Java) · `coverdict.copyItem` (ağaçlarda sağ tık → Kopyala) ·
 
 ### Sağlık
 
-136 unit + 27 integration test geçiyor. SonarQube (`coverdict-vscode`,
+142 unit + 31 integration test geçiyor. SonarQube (`coverdict-vscode`,
 `http://localhost:9001`) sıfır açık bulgu.
 
 ---
@@ -610,13 +610,73 @@ kendisi bu maddeye kadar ERROR kalacak.
 Faz 20 ile temel arayüz geldi (§8). Bilerek yapılmayanlar:
 - **Gutter'a mutasyon durumu eklenmedi** (7. durum yok). Önce ağacın
   gerçek kullanımda oturması bekleniyor.
-- **Mutasyon sonucu diske kaydedilip geri yüklenmiyor** — pencere
-  kapanınca gider. Verdict dosyası zaten yazılıyor, `restoreLastCoverage`
-  onu okuyor; ama kaydedilen dosya son *herhangi* bir koşununki olduğu
-  için eski bir mutasyon sonucunu yeni bir taramadan sonra göstermek
-  yanıltıcı olurdu. Ayrı bir dosya gerekiyorsa ayrı bir karar.
+- **Mutasyon sonucu bir sonraki taramada kayboluyor.** Doğrusu şu:
+  `verdict-current.json` (workspace depolamasında) mutasyon bloğunu da
+  taşıyor ve `restoreLastCoverage` onu geri yüklüyor — yani pencereyi
+  kapatıp açmak sonucu **korur**. Ama o dosyayı **her** koşu üzerine
+  yazıyor; bir Hızlı Tarama `mutation` bloğu olmayan bir verdict yazınca
+  mutasyon sonucu diskten silinmiş oluyor (ağaçta duran kopya bellekte
+  kalır, pencere kapanınca gider). Ayrı bir dosya
+  (`mutation-current.json`) gerekiyorsa ayrı bir karar — ve o zaman
+  "bu sonuç ne kadar eski" sorusunu da cevaplamak gerekir.
 - **`SUBSUMED_TEST` ve `PSEUDO_TESTED_METHOD` bulguları** Test Kalitesi
   görünümünde çıkıyor ama mutasyon ağacıyla çapraz bağlanmadı.
+
+### 7.6 Faz 22 — elle inceleme bulguları (2026-08-28, iki ekran görüntüsüyle)
+
+Kullanıcı gerçek bir Derin Tarama + Mutasyon Testi koşusundan sonra iki
+ekran görüntüsünü karşılaştırmalı inceledi. Sayılar doğrulandı (JSON'la
+tek tek karşılaştırıldı, hepsi tutarlı). Yedi madde bulundu, **1-3
+kapandı**, 4-7 açık — öncelik kullanıcının kendi sıralaması.
+
+**Kapandı:**
+1. **Editördeki satır içi mesaj iki dilli ve kesiliyordu.**
+   `diagnostics.ts`'in `message`'ı Türkçe başlık + CLI'ın ham İngilizce
+   cümlesi + `suggestedAction`'ı tek satırda birleştiriyordu; bazı VS
+   Code çatallarında satır sonuna aynen basılan bu metin ekranın dışına
+   taşıyordu. Artık yalnızca `<Türkçe başlık>: <metot adı>` (metot yoksa
+   sadece başlık). Tam detay zaten Test Kalitesi ağacının tooltip'inde
+   aynı katalogdan geliyordu — burada tekrarlamak sadece tutarsızlık
+   riski ekliyordu.
+2. **Mutasyon panelinde "bu sonuç neyin, ne zaman?" yoktu.** Dosyadan
+   dosyaya geçince panel değişmiyordu. Artık kökler her zaman bir
+   `header` düğümüyle başlıyor: `Hedef: Calculator · 5 dakika önce`.
+   Diskten geri yüklenmiş bir sonuçta (`ranAt` bilinmiyor, CLI zaman
+   damgası taşımaz) `"kaydedilmiş sonuç - ne zaman çalıştığı bilinmiyor"`
+   yazıyor — tahmini bir süre göstermek gerçek süreden daha yanıltıcı
+   olurdu (hard rule 3a). `model/mutationModel.ts`'e `targetSummary`/
+   `formatRelativeTime` (saf, test edilebilir) eklendi.
+3. **"Kapsama" terminoloji kuralını çiğniyordu.** `package.json`'daki
+   `coverdict.toggleCoverage` komut başlığı ve `coverdict.coverageView`
+   görünüm adı hâlâ Türkçe "Kapsama" diyordu; `statusBar.ts` zaten
+   İngilizce "coverage" kullanıyordu (Faz 19'un terminoloji geçişi
+   `package.json`'ı atlamış). İkisi de "Coverage" oldu.
+   `coverdict.show.oraclelessLines`'ın açıklaması da eski komut adlarına
+   ("Kapsama + Hangi Test...") atıfta bulunuyordu — Faz 18'den beri
+   geçerli olan "Derin Tarama"/"Bu Sınıf İçin Hangi Test Hangi Satırı
+   Kapsıyor" adlarına güncellendi.
+
+**Açık — öncelik kullanıcının belirlediği sıra:**
+4. **`Satır 4 · 14 test` gürültü.** JaCoCo örtük constructor'ı sınıf
+   bildirim satırına (`public class Calculator {`) yazıyor; Satır →
+   Testler listesinin en tepesinde en kalabalık ve en anlamsız madde
+   duruyor. Tartışmalı: gizlemek veri saklamaktır (hard rule 3a'ya
+   aykırı olabilir), muhtemelen doğrusu **etiketlemek** ("örtük
+   constructor" gibi), gizlemek değil.
+5. **Test Kalitesi ve Mutasyon aynı kanıtı bağlantısız söylüyor.**
+   `PSEUDO_TESTED_METHOD` bulgusu ile mutasyon ağacındaki "HAYATTA KALDI"
+   aynı olgunun iki görünümü ama aralarında tıklanabilir bir bağ yok.
+6. **Gerçek bir çelişki arayüzde sessiz kalıyor.**
+   `CalculatorUnresolvedOracleTest#addCheckedViaLocalSoftAssertions()`
+   Satır → Testler'de `NO_RECOGNIZED_ORACLE` (INCONCLUSIVE) damgalı, ama
+   Mutasyon'da `add()`'in mutantını öldüren testler arasında — yani
+   mutasyon kanıtı statik analizin belirsiz kararını çürütüyor, test
+   gerçekten davranışı gözlüyor. Bunu birleştirmek (L0 bulgusu + L3
+   kanıtı) aracın en değerli anı olurdu; bugün iki ayrı görünümde,
+   birbirinden habersiz duruyor.
+7. **`negate()` "skor yok" fazla kapalı.** Bütün mutantları `NO_COVERAGE`
+   ise sebep bellidir: hiçbir test bu metoda uğramıyor. Bu bir tahmin
+   değil, veriden çıkarım — açıkça yazılabilir.
 
 ---
 

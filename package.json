@@ -88,7 +88,7 @@
         "coverdict.show.oraclelessLines": {
           "type": "boolean",
           "default": true,
-          "description": "Bir satır JaCoCo'ya göre kapsanmış olsa bile, onu kapsayan HİÇBİR testin gerçek bir doğrulaması (oracle'ı) yoksa - hepsi NO_RECOGNIZED_ORACLE/TAUTOLOGICAL_ORACLE/CATCH_ORACLE_WITHOUT_FAIL bulgularından biriyse - o satırı yeşil yerine turuncu göster (\"yalancı yeşil\"). Test bazlı kanıt (coverdict: Kapsama + Hangi Test Hangi Satırı Kapsıyor) toplanmamışsa hiçbir satır bu şekilde işaretlenmez - kanıt yokken suçlama yok."
+          "description": "Bir satır JaCoCo'ya göre kapsanmış olsa bile, onu kapsayan HİÇBİR testin gerçek bir doğrulaması (oracle'ı) yoksa - hepsi NO_RECOGNIZED_ORACLE/TAUTOLOGICAL_ORACLE/CATCH_ORACLE_WITHOUT_FAIL bulgularından biriyse - o satırı yeşil yerine turuncu göster (\"yalancı yeşil\"). Test bazlı kanıt (coverdict: Derin Tarama ya da Bu Sınıf İçin Hangi Test Hangi Satırı Kapsıyor) toplanmamışsa hiçbir satır bu şekilde işaretlenmez - kanıt yokken suçlama yok."
         },
         "coverdict.badgeMetric": {
           "type": "string",
@@ -115,7 +115,7 @@
       },
       {
         "command": "coverdict.toggleCoverage",
-        "title": "coverdict: Kapsama Görünümünü Aç/Kapat"
+        "title": "coverdict: Coverage Görünümünü Aç/Kapat"
       },
       {
         "command": "coverdict.analyzePerTest",
@@ -224,7 +224,7 @@
         },
         {
           "id": "coverdict.coverageView",
-          "name": "Kapsama"
+          "name": "Coverage"
         },
         {
           "id": "coverdict.qualityView",

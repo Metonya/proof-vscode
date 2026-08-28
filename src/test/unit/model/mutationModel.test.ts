@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { bucketOf, classesOf, methodLabel, mutatorLabel, scoreOf } from '../../../model/mutationModel';
+import { bucketOf, classesOf, formatRelativeTime, methodLabel, mutatorLabel, scoreOf, targetSummary } from '../../../model/mutationModel';
 import type { MutatedMethod, MutationBlock, Mutant } from '../../../verdict/types';
 
 const mutant = (status: string, line = 10, killingTests: string[] = []): Mutant => ({
@@ -109,4 +109,35 @@ test('methodLabel yalnızca gerçekten aşırı yüklenmiş metotta descriptor g
 	const a = method('C', 'add', 1, [], '(II)I');
 	const b = method('C', 'add', 5, [], '(DD)D');
 	assert.equal(methodLabel(a, [a, b]), 'add(II)I');
+});
+
+/** Faz 22: mutasyon panelinin "bu sonuç neyin?" başlığı için hedef özeti. */
+test('targetSummary: tek hedef sınıfın kısa adını gösterir', () => {
+	assert.equal(targetSummary(['dev.coverdict.playground.Calculator']), 'Calculator');
+});
+
+test('targetSummary: birden çok hedefte sayı gösterir, tek tek listelemez', () => {
+	assert.equal(targetSummary(['a.B', 'a.C', 'a.D']), '3 sınıf');
+});
+
+test('targetSummary: hedef boşsa (modül geneli, diff\'ten türetilmiş) bunu söyler', () => {
+	assert.equal(targetSummary([]), "diff'teki değişen sınıflar");
+});
+
+/** Faz 22: "ne kadar önce" - CLI zaman damgası taşımadığı için bu tamamen eklentinin kendi saatiyle hesaplanır. */
+test('formatRelativeTime: bir dakikadan az "az önce"', () => {
+	const now = Date.parse('2026-08-28T12:00:00Z');
+	assert.equal(formatRelativeTime(now - 30_000, now), 'az önce');
+});
+
+test('formatRelativeTime: dakika, saat, gün eşikleri', () => {
+	const now = Date.parse('2026-08-28T12:00:00Z');
+	assert.equal(formatRelativeTime(now - 5 * 60_000, now), '5 dakika önce');
+	assert.equal(formatRelativeTime(now - 90 * 60_000, now), '2 saat önce', '90 dakika en yakın saate yuvarlanır');
+	assert.equal(formatRelativeTime(now - 50 * 3600_000, now), '2 gün önce');
+});
+
+test('formatRelativeTime: gelecekteki bir zaman (saat kayması) negatif süreye düşmez', () => {
+	const now = Date.parse('2026-08-28T12:00:00Z');
+	assert.equal(formatRelativeTime(now + 10_000, now), 'az önce');
 });

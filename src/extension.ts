@@ -175,9 +175,10 @@ async function restoreLastCoverage(context: vscode.ExtensionContext, sinks: Cove
 	// varsa. Blok yoksa `setMutationState` çağrılmaz, böylece görünüm
 	// "henüz çalıştırılmadı" der; boş bir durum yazmak "çalıştırıldı ama
 	// sonuç yok" demek olurdu, ki bu farklı bir iddia (hard rule 3a).
-	// `targets` bilinmiyor: kaydedilen verdict onu taşımıyor.
+	// `targets` bilinmiyor: kaydedilen verdict onu taşımıyor. `ranAt` da
+	// bilinmiyor - CLI'ın çıktısı zaman damgası taşımaz (Faz 22).
 	if (parsed.value.mutation) {
-		setMutationState({ moduleId: MODULE_ID, mutation: parsed.value.mutation, warnings: parsed.value.warnings, targets: [] });
+		setMutationState({ moduleId: MODULE_ID, mutation: parsed.value.mutation, warnings: parsed.value.warnings, targets: [], ranAt: undefined });
 	}
 }
 

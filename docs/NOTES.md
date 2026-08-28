@@ -10,6 +10,13 @@
 > güncel hâli `PLAN.md` §8'de) ve Faz 16 madde 1'in ters yön hatası
 > gerçek veriyle kök nedeni bulunup düzeltildi (`PLAN.md` §7.1).
 >
+> **Faz 22 (2026-08-28) ile kapananlar:** kullanıcının Derin Tarama +
+> Mutasyon Testi ekran görüntülerini karşılaştırmalı incelemesinden çıkan
+> 7 maddenin 3'ü (editördeki iki dilli/taşan bulgu mesajı, mutasyon
+> panelinde "bu sonuç neyin, ne zaman?" eksikliği, "Kapsama" terminoloji
+> tutarsızlığı) kapandı. Kalan 4'ü `PLAN.md` §7.6'da açık işler olarak
+> duruyor.
+>
 > Projeye yeni giriyorsan **önce `docs/PLAN.md`'yi oku**: bugün ne çalıştığı,
 > hangi kuralların çiğnenmediği ve **açık işlerin güncel listesi** oradadır.
 > Bu iki dosya çelişirse `PLAN.md` geçerlidir.

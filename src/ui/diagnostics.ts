@@ -45,10 +45,19 @@ function toDiagnostic(finding: Finding): vscode.Diagnostic {
 	// (still greppable, still the docs link's anchor) - same catalogue the
 	// Test Kalitesi tree reads, so the two can never describe a rule
 	// differently.
+	//
+	// Faz 22: bu satır düzenleyicide (bazı VS Code çatallarında) satır
+	// sonuna aynen basılıyor - eskiden CLI'ın ham İngilizce `message`'ı ve
+	// `suggestedAction`'ı da eklendiği için tek satırda üç dil karışıyor ve
+	// ekranın dışına taşıyordu. Türkçe başlık + varsa metot adı yeterli;
+	// CLI'ın tam cümlesi ve "ne yapmalı" zaten Test Kalitesi ağacının
+	// tooltip'inde birebir aynı katalogdan geliyor - burada tekrarlamaya
+	// gerek yok, sadece tutarsızlık riski ekler.
 	const info = ruleInfo(finding.rule);
+	const hint = methodHint(finding);
 	const diagnostic = new vscode.Diagnostic(
 		range,
-		`${info.title}: ${finding.message} ${finding.suggestedAction}`,
+		hint ? `${info.title}: ${hint}` : info.title,
 		finding.severity === 'WARNING' ? vscode.DiagnosticSeverity.Warning : vscode.DiagnosticSeverity.Information,
 	);
 	diagnostic.source = 'coverdict';
@@ -57,4 +66,13 @@ function toDiagnostic(finding: Finding): vscode.Diagnostic {
 		target: vscode.Uri.parse(ruleDocsUrl(finding.rule)),
 	};
 	return diagnostic;
+}
+
+/** `productionMethod`/`testMethod` `FQCN#method(...)` biçiminde - kısa etiket için sadece `#`'ten sonrası. İkisi de yoksa `undefined`, uydurulmaz. */
+function methodHint(finding: Finding): string | undefined {
+	const raw = finding.productionMethod ?? finding.testMethod;
+	if (!raw) {
+		return undefined;
+	}
+	return raw.split('#').pop();
 }

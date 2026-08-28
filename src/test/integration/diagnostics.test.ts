@@ -43,4 +43,35 @@ suite('Diagnostics (Faz 11a)', () => {
 			collection.dispose();
 		}
 	});
+
+	/**
+	 * Faz 22: eskiden `message` CLI'ın ham İngilizce cümlesini ve
+	 * `suggestedAction`'ı da içeriyordu - bazı VS Code çatallarında satır
+	 * sonuna aynen basılan bu metin üç dil karışıp ekranın dışına
+	 * taşıyordu. Artık yalnızca Türkçe başlık + varsa metot adı.
+	 */
+	test('diagnostic message is the short Turkish title plus the method, not the raw English CLI text', () => {
+		const collection = createDiagnosticCollection();
+		try {
+			publishFindings(collection, 'C:/repo', [FINDING]);
+			const uri = vscode.Uri.file('C:/repo/src/test/java/CalcTest.java');
+			const message = (collection.get(uri) ?? [])[0].message;
+			assert.equal(message, 'Doğrulama yok: subtractHasNoAssertion');
+			assert.ok(!message.includes(FINDING.message), 'the raw CLI sentence must not be duplicated here - it already lives in the Test Kalitesi tree tooltip');
+			assert.ok(!message.includes(FINDING.suggestedAction), 'suggestedAction must not be duplicated here either');
+		} finally {
+			collection.dispose();
+		}
+	});
+
+	test('a finding with neither productionMethod nor testMethod still gets a diagnostic - the short title alone', () => {
+		const collection = createDiagnosticCollection();
+		try {
+			publishFindings(collection, 'C:/repo', [{ ...FINDING, testMethod: undefined }]);
+			const uri = vscode.Uri.file('C:/repo/src/test/java/CalcTest.java');
+			assert.equal((collection.get(uri) ?? [])[0].message, 'Doğrulama yok');
+		} finally {
+			collection.dispose();
+		}
+	});
 });

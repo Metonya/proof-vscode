@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-import { bucketOf, classesOf, methodLabel, mutatorLabel, scoreOf, scoreOfMethods, type MutantBucket, type MutationScore } from '../../model/mutationModel';
+import { bucketOf, classesOf, formatRelativeTime, methodLabel, mutatorLabel, scoreOf, scoreOfMethods, targetSummary, type MutantBucket, type MutationScore } from '../../model/mutationModel';
 import { toAbsolutePath } from '../../model/pathIndex';
 import { buildProductionClassIndex, productionSourceRoots } from '../../model/productionClassIndex';
 import { getCoverageState, getMutationState } from '../../model/store';
@@ -25,6 +25,8 @@ import type { MutatedMethod, Mutant } from '../../verdict/types';
 export type MutationNode =
 	| { kind: 'empty'; message: string }
 	| { kind: 'runHint' }
+	/** Faz 22: "bu sonuç neyin, ne zaman?" - dosyadan dosyaya geçince panel değişmediği için hangi koşuya baktığı belli değildi. */
+	| { kind: 'header'; text: string }
 	| { kind: 'class'; className: string; methods: readonly MutatedMethod[] }
 	| { kind: 'method'; className: string; method: MutatedMethod; siblings: readonly MutatedMethod[] }
 	| { kind: 'mutant'; className: string; mutant: Mutant }
@@ -57,6 +59,8 @@ export class MutationTreeProvider implements vscode.TreeDataProvider<MutationNod
 				return leaf(node.message, 'info');
 			case 'runHint':
 				return runHintItem();
+			case 'header':
+				return headerItem(node.text);
 			case 'class':
 				return classItem(node.className, node.methods);
 			case 'method':
@@ -98,19 +102,20 @@ export class MutationTreeProvider implements vscode.TreeDataProvider<MutationNod
 			return [{ kind: 'empty', message: noMutationEvidenceMessage() }, { kind: 'runHint' }];
 		}
 
+		const header: MutationNode = { kind: 'header', text: headerText(state) };
 		const classes = classesOf(state.mutation, state.moduleId, productionClassFilter())
 			.map((c) => ({ ...c, methods: this.visibleMethods(c.methods) }))
 			.filter((c) => c.methods.length > 0);
 
 		if (classes.length === 0) {
-			return [{
+			return [header, {
 				kind: 'empty',
 				message: this.survivorsOnly
 					? 'Hayatta kalan mutant yok - üretilen her mutantı en az bir test yakaladı. (Süzgeci kaldırmak için başlıktaki filtreye tıklayın.)'
 					: 'Bu koşuda hiçbir production metodu için mutant üretilmedi. Hedeflenen sınıflar mutasyona uygun kod içermiyor olabilir. (Test sınıflarının kendi mutantları kasten gösterilmiyor.)',
 			}];
 		}
-		return classes.map((c): MutationNode => ({ kind: 'class', className: c.className, methods: c.methods }));
+		return [header, ...classes.map((c): MutationNode => ({ kind: 'class', className: c.className, methods: c.methods }))];
 	}
 
 	private visibleMethods(methods: readonly MutatedMethod[]): readonly MutatedMethod[] {
@@ -148,6 +153,20 @@ function noMutationEvidenceMessage(): string {
 		return 'Mutant kayıtları üst sınıra takıldı - gösterilenler eksik. Daha dar bir hedefle tekrar çalıştırın.';
 	}
 	return 'Bu koşu mutasyon kanıtı üretmedi. MUTATION_* uyarıları için Output → coverdict kanalına bakın.';
+}
+
+/** Faz 22: "Hedef: Calculator · 5 dakika önce" ya da diskten geri yüklenmiş bir sonuçta "Hedef: Calculator · kaydedilmiş sonuç". */
+function headerText(state: NonNullable<ReturnType<typeof getMutationState>>): string {
+	const target = targetSummary(state.targets);
+	const when = state.ranAt === undefined ? 'kaydedilmiş sonuç - bu pencerede ne zaman çalıştığı bilinmiyor' : formatRelativeTime(state.ranAt, Date.now());
+	return `Hedef: ${target} · ${when}`;
+}
+
+function headerItem(text: string): vscode.TreeItem {
+	const item = new vscode.TreeItem(text, vscode.TreeItemCollapsibleState.None);
+	item.iconPath = new vscode.ThemeIcon('history');
+	item.contextValue = 'coverdict.mutationHeader';
+	return item;
 }
 
 function runHintItem(): vscode.TreeItem {

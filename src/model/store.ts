@@ -95,6 +95,14 @@ export interface MutationState {
 	mutation: MutationBlock | undefined;
 	warnings: readonly Reason[];
 	targets: readonly string[];
+	/**
+	 * Faz 22: bu koşunun bittiği an (`Date.now()`), mutasyon panelinin
+	 * "ne kadar önce" başlığı için. Diskten geri yüklenen bir sonuçta
+	 * `undefined` - CLI'ın çıktısı zaman damgası taşımaz (byte-deterministik
+	 * kalması için), o yüzden bir dosya mtime'ından "koşu bitti" anını
+	 * tahmin etmek yanıltıcı olurdu (hard rule 3a).
+	 */
+	ranAt: number | undefined;
 }
 
 let mutationState: MutationState | undefined;

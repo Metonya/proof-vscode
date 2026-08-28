@@ -122,6 +122,51 @@ export function classesOf(
  * atılmaz; ama etiketi kirletmemesi için yalnızca gerçekten gerektiğinde
  * (aynı sınıfta aynı isim birden fazla kez geçiyorsa) gösterilir.
  */
+/**
+ * Faz 22: mutasyon panelinin "bu sonuç neyin, ne zamanki?" başlığı için.
+ * Kullanıcı geri bildirimi: dosyadan dosyaya geçince panel aynı kalıyor,
+ * hangi sınıfın sonucuna baktığı belli değil. Saf - `vscode` import etmez,
+ * çağıran (`ui/treeViews/mutationView.ts`) render anındaki `nowMs`'i verir.
+ */
+export function targetSummary(targets: readonly string[]): string {
+	if (targets.length === 0) {
+		return "diff'teki değişen sınıflar";
+	}
+	if (targets.length === 1) {
+		return shortClassName(targets[0]);
+	}
+	return `${targets.length} sınıf`;
+}
+
+function shortClassName(fqcn: string): string {
+	const dot = fqcn.lastIndexOf('.');
+	return dot < 0 ? fqcn : fqcn.slice(dot + 1);
+}
+
+/**
+ * `fromMs` bilinmiyorsa (diskten geri yüklenmiş bir sonuç - CLI'ın kendi
+ * çıktısı D-xx'e göre zaman damgası taşımaz, "ne zaman çalıştı" bilgisi
+ * yalnızca eklentinin o oturumdaki hafızasında vardır) çağıran bunu hiç
+ * çağırmamalı - tahmini bir süre göstermek gerçek bir süreden daha
+ * yanıltıcıdır (hard rule 3a).
+ */
+export function formatRelativeTime(fromMs: number, nowMs: number): string {
+	const diffSeconds = Math.max(0, Math.round((nowMs - fromMs) / 1000));
+	if (diffSeconds < 60) {
+		return 'az önce';
+	}
+	const minutes = Math.round(diffSeconds / 60);
+	if (minutes < 60) {
+		return `${minutes} dakika önce`;
+	}
+	const hours = Math.round(minutes / 60);
+	if (hours < 24) {
+		return `${hours} saat önce`;
+	}
+	const days = Math.round(hours / 24);
+	return `${days} gün önce`;
+}
+
 export function methodLabel(method: MutatedMethod, siblings: readonly MutatedMethod[]): string {
 	const overloaded = siblings.filter((m) => m.methodName === method.methodName).length > 1;
 	return overloaded ? `${method.methodName}${method.methodDescription}` : `${method.methodName}()`;
