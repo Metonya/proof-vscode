@@ -2,8 +2,8 @@ import * as vscode from 'vscode';
 
 import { detectClassName } from '../model/classNameDetector';
 import { testsForClass, testsToLines, type TestLineRef } from '../model/lineIndex';
-import { toAbsolutePath } from '../model/pathIndex';
-import { buildProductionClassIndex } from '../model/productionClassIndex';
+import { classifySourcePath, toAbsolutePath, toRepoRelativePath } from '../model/pathIndex';
+import { buildProductionClassIndex, productionSourceRoots } from '../model/productionClassIndex';
 import { getCoverageState, getPerTestState } from '../model/store';
 import { indexFindingsByTestMethod, lineQuality, type LineQuality } from '../model/testQuality';
 import { parseTestIdentity } from '../verdict/testIdentity';
@@ -25,7 +25,6 @@ import { locateTestFile } from './testFileLocator';
  * defaults, not read from a config the extension does not yet model.
  */
 const MODULE_ID = 'root';
-const DEFAULT_SOURCE_ROOTS = ['src/main/java'];
 const DEFAULT_TEST_ROOTS = ['src/test/java'];
 
 export function registerHoverProvider(): vscode.Disposable {
@@ -42,6 +41,20 @@ async function provideHover(document: vscode.TextDocument, position: vscode.Posi
 	const fileBaseName = baseNameWithoutExtension(document.fileName);
 	const className = detectClassName(document.getText(), fileBaseName);
 	const findingsByTestMethod = indexFindingsByTestMethod(coverageState.findings);
+
+	// Faz 21: yön, "bu sınıfın satır kaydı var mı" ile değil, CLI'ın kendi
+	// kök beyanıyla seçilir. PIT'in L2 toplayıcısı test sınıflarını da
+	// `entries`'e yazdığı için (gerçek veriyle doğrulandı) eski sıra bir
+	// test dosyasında hep production dalına düşüyor, ters yön hover'ı hiç
+	// çalışmıyordu - `ui/treeViews/lineTestsView.ts` ile aynı hata, aynı
+	// düzeltme, çünkü iki yüzeyin ayrışmaması bu dosyanın sözleşmesi.
+	const sourceKind = classifySourcePath(
+		toRepoRelativePath(coverageState.workspaceRoot, document.fileName) ?? '',
+		coverageState.modules,
+	);
+	if (sourceKind === 'test') {
+		return testMethodHover(document, position, perTestState.perTest, coverageState.workspaceRoot, className);
+	}
 
 	const lineNumber = position.line + 1;
 	const productionLookup = testsForClass(perTestState.perTest, perTestState.moduleId, className);
@@ -103,7 +116,10 @@ async function testMethodHover(document: vscode.TextDocument, position: vscode.P
 	}
 	const methodName = document.getText(wordRange);
 	const key = `${className}#${methodName}()`;
-	const reverse = testsToLines(perTest, MODULE_ID).get(key);
+	// Faz 21: test sınıflarının kendi satırları elenir - `entries` onları da
+	// içeriyor, süzülmezse test kendi gövdesini "çalıştırdığı production
+	// satırı" diye gösterirdi (`ui/treeViews/lineTestsView.ts` ile aynı süzgeç).
+	const reverse = testsToLines(perTest, MODULE_ID, productionClassFilter()).get(key);
 	if (!reverse || reverse.length === 0) {
 		return undefined; // not a known test method - no hover, not a guess
 	}
@@ -132,7 +148,13 @@ function buildProductionClassIndexFor(): ReadonlyMap<string, string> | undefined
 	if (!state?.fileCoverage) {
 		return undefined;
 	}
-	return buildProductionClassIndex(state.fileCoverage, DEFAULT_SOURCE_ROOTS);
+	return buildProductionClassIndex(state.fileCoverage, productionSourceRoots(state.modules));
+}
+
+/** Faz 21: hangi sınıflar production - `fileCoverage.files[]` bu koşunun yetkili listesi; blok yoksa süzgeç de yok (eksik bilgiyle elemek kanıt yok eder). */
+function productionClassFilter(): ((outerClassName: string) => boolean) | undefined {
+	const index = buildProductionClassIndexFor();
+	return index ? (outerClassName) => index.has(outerClassName) : undefined;
 }
 
 function groupByClass(refs: readonly TestLineRef[]): Map<string, number[]> {

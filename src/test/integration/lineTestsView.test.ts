@@ -6,10 +6,15 @@ import * as vscode from 'vscode';
 
 import { setCoverageState, setPerTestState, type CoverageState } from '../../model/store';
 import { LineTestsTreeProvider } from '../../ui/treeViews/lineTestsView';
-import type { Finding, MetricSet, PerTestBlock } from '../../verdict/types';
+import type { FileCoverageBlock, Finding, MetricSet, ModuleInput, PerTestBlock } from '../../verdict/types';
 
 const METRIC = { numeratorName: 'a', numerator: 1, denominatorName: 'b', denominator: 1, percent: 100 };
 const METRIC_SET: MetricSet = { 'jacoco-line': METRIC, 'strict-line': METRIC, 'sonar-compatible': METRIC };
+
+/** Exactly the shape a real single-module run emits (`inputs.modules[0]`, verified 2026-08-28) - roots are repo-relative, not module-relative. */
+const MODULES: readonly ModuleInput[] = [{
+	id: 'root', root: '.', sourceRoots: ['src/main/java'], testRoots: ['src/test/java'],
+}];
 
 /** Real shape from a live --per-test-target run (Faz 15 session): one production line, one test with a real oracle-quality finding against it. */
 const PER_TEST: PerTestBlock = {
@@ -33,17 +38,41 @@ const FINDINGS: readonly Finding[] = [{
 	testMethod: 'dev.coverdict.playground.CalculatorPseudoTestedTest#squareHasNoAssertion()',
 }];
 
-const STATE: CoverageState = {
-	workspaceRoot: 'C:/repo', fileCoverage: undefined, overall: METRIC_SET,
-	newCode: { status: 'unavailable_no_vcs' }, changedFiles: [], findings: FINDINGS, warnings: [],
+/** `fileCoverage.files[]` only ever lists production files - that is what makes it the authority on "is this class production". */
+const PRODUCTION_ONLY_FILE_COVERAGE: FileCoverageBlock = {
+	files: [{ module: 'root', path: 'src/main/java/dev/coverdict/playground/Calculator.java', metrics: METRIC_SET, lines: [] }],
+	excluded: [],
 };
 
-/** Opens a real temp .java file on disk - `document.fileName` needs a real `.java` basename for `detectClassName` to resolve correctly, which a pure in-memory untitled document does not provide. */
-async function openJavaFile(packageName: string, className: string): Promise<vscode.TextDocument> {
-	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-lineTestsView-'));
+const STATE: Omit<CoverageState, 'workspaceRoot'> = {
+	fileCoverage: undefined, overall: METRIC_SET,
+	newCode: { status: 'unavailable_no_vcs' }, changedFiles: [], findings: FINDINGS, warnings: [],
+	modules: MODULES,
+};
+
+/**
+ * Builds a throwaway workspace root with the real Maven layout and opens one
+ * `.java` file inside it. A real path under a real root matters now: since
+ * Faz 21 the view picks its direction from `inputs.modules[].testRoots`, so a
+ * document sitting in a bare tmpdir would exercise the `'unknown'` fallback
+ * instead of the production/test decision under test. `document.fileName`
+ * also needs a real `.java` basename for `detectClassName` to resolve.
+ */
+async function openJavaFile(rootRelativeDir: string, packageName: string, className: string): Promise<{ document: vscode.TextDocument; workspaceRoot: string }> {
+	const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-lineTestsView-'));
+	const dir = path.join(workspaceRoot, ...rootRelativeDir.split('/'), ...packageName.split('.'));
+	fs.mkdirSync(dir, { recursive: true });
 	const filePath = path.join(dir, `${className}.java`);
 	fs.writeFileSync(filePath, `package ${packageName};\n\npublic class ${className} {\n}\n`, 'utf8');
-	return vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
+	return { document: await vscode.workspace.openTextDocument(vscode.Uri.file(filePath)), workspaceRoot };
+}
+
+async function openProductionFile(className: string) {
+	return openJavaFile('src/main/java', 'dev.coverdict.playground', className);
+}
+
+async function openTestFile(className: string) {
+	return openJavaFile('src/test/java', 'dev.coverdict.playground', className);
 }
 
 /**
@@ -63,9 +92,9 @@ suite('Line tests view (Faz 15c)', () => {
 
 	test('production file: line node -> test leaf -> getParent round-trip', async () => {
 		setPerTestState({ moduleId: 'root', perTest: PER_TEST, warnings: [] });
-		setCoverageState(STATE);
+		const { document, workspaceRoot } = await openProductionFile('Calculator');
+		setCoverageState({ ...STATE, workspaceRoot });
 
-		const document = await openJavaFile('dev.coverdict.playground', 'Calculator');
 		const provider = new LineTestsTreeProvider();
 		provider.setActiveDocument(document);
 
@@ -108,9 +137,9 @@ suite('Line tests view (Faz 15c)', () => {
 			}],
 		};
 		setPerTestState({ moduleId: 'root', perTest: notifyingCalculatorPerTest, warnings: [] });
-		setCoverageState({ ...STATE, findings: [] });
+		const { document, workspaceRoot } = await openProductionFile('NotifyingCalculator');
+		setCoverageState({ ...STATE, workspaceRoot, findings: [] });
 
-		const document = await openJavaFile('dev.coverdict.playground', 'NotifyingCalculator');
 		const provider = new LineTestsTreeProvider();
 		provider.setActiveDocument(document);
 
@@ -155,9 +184,9 @@ suite('Line tests view (Faz 15c)', () => {
 			}],
 		};
 		setPerTestState({ moduleId: 'root', perTest: mixedPerTest, warnings: [] });
-		setCoverageState(STATE);
+		const { document, workspaceRoot } = await openProductionFile('Calculator');
+		setCoverageState({ ...STATE, workspaceRoot });
 
-		const document = await openJavaFile('dev.coverdict.playground', 'Calculator');
 		const provider = new LineTestsTreeProvider();
 		provider.setActiveDocument(document);
 
@@ -178,9 +207,9 @@ suite('Line tests view (Faz 15c)', () => {
 
 	test('test file (reverse direction): test-method node -> production-line leaf', async () => {
 		setPerTestState({ moduleId: 'root', perTest: PER_TEST, warnings: [] });
-		setCoverageState(STATE);
+		const { document, workspaceRoot } = await openTestFile('CalculatorPseudoTestedTest');
+		setCoverageState({ ...STATE, workspaceRoot });
 
-		const document = await openJavaFile('dev.coverdict.playground', 'CalculatorPseudoTestedTest');
 		const provider = new LineTestsTreeProvider();
 		provider.setActiveDocument(document);
 
@@ -196,11 +225,91 @@ suite('Line tests view (Faz 15c)', () => {
 		assert.deepEqual(provider.getParent(lines[0]), roots[0]);
 	});
 
+	/**
+	 * Faz 21 - the regression Faz 16 madde 1 reported and Faz 17/18/19 never
+	 * closed. The fixture below is verbatim real data from a live
+	 * `--per-test-target root=dev.coverdict.playground.Calculator` run
+	 * (2026-08-28): PIT's L2 collector writes **test classes into `entries`
+	 * too**, each covering its own lines with its own test method. Every
+	 * synthetic fixture in this file omitted that, which is exactly why the
+	 * bug survived three phases of tests.
+	 *
+	 * With such data `testsForClass('...CalculatorPseudoTestedTest')` returns
+	 * `found`, so the old "try production first" order rendered a test file
+	 * in the production direction - the test file appeared to cover itself.
+	 * Direction is now decided from `inputs.modules[].testRoots` instead.
+	 */
+	test('test file whose own lines are in perTest.entries still renders the reverse direction (Faz 16 madde 1)', async () => {
+		const realPerTest: PerTestBlock = {
+			engine: 'pitest',
+			engineVersion: '1.15.8',
+			modules: [{
+				id: 'root',
+				entries: [
+					{
+						className: 'dev.coverdict.playground.Calculator',
+						methodName: 'square',
+						lines: [{ line: 37, tests: ['dev.coverdict.playground.CalculatorPseudoTestedTest.[engine:junit-jupiter]/[class:dev.coverdict.playground.CalculatorPseudoTestedTest]/[method:squareHasNoAssertion()]'] }],
+					},
+					{
+						className: 'dev.coverdict.playground.CalculatorPseudoTestedTest',
+						methodName: '<init>',
+						lines: [12, 14].map((line) => ({ line, tests: ['dev.coverdict.playground.CalculatorPseudoTestedTest.[engine:junit-jupiter]/[class:dev.coverdict.playground.CalculatorPseudoTestedTest]/[method:squareHasNoAssertion()]'] })),
+					},
+					{
+						className: 'dev.coverdict.playground.CalculatorPseudoTestedTest',
+						methodName: 'squareHasNoAssertion',
+						lines: [18, 19].map((line) => ({ line, tests: ['dev.coverdict.playground.CalculatorPseudoTestedTest.[engine:junit-jupiter]/[class:dev.coverdict.playground.CalculatorPseudoTestedTest]/[method:squareHasNoAssertion()]'] })),
+					},
+				],
+				ambient: [],
+			}],
+		};
+		setPerTestState({ moduleId: 'root', perTest: realPerTest, warnings: [] });
+		const { document, workspaceRoot } = await openTestFile('CalculatorPseudoTestedTest');
+		// A real run always carries fileCoverage (the extension passes
+		// --file-coverage on every scan) - it is the authoritative listing of
+		// which classes are production, and what lets the reverse index drop
+		// the test class's own self-covering entries.
+		setCoverageState({ ...STATE, workspaceRoot, fileCoverage: PRODUCTION_ONLY_FILE_COVERAGE });
+
+		const provider = new LineTestsTreeProvider();
+		provider.setActiveDocument(document);
+
+		const roots = provider.getChildren();
+		assert.ok(roots.every((n) => n.kind !== 'prodLine'), 'a test file must never render production-direction "Satır N" nodes');
+		assert.equal(roots.length, 1);
+		assert.equal(roots[0].kind, 'testMethod');
+		if (roots[0].kind === 'testMethod') {
+			assert.equal(roots[0].methodName, 'squareHasNoAssertion');
+			// Only the production line it ran - never the test's own 12/14/18/19.
+			assert.deepEqual(roots[0].refs.map((r) => r.line), [37]);
+			assert.ok(roots[0].refs.every((r) => r.outerClassName === 'dev.coverdict.playground.Calculator'));
+		}
+
+		// The cursor-follow path must agree: there is no production line node to reveal in a test file.
+		assert.equal(provider.nodeForLine(18), undefined);
+	});
+
+	/** The same fixture from the other side: opening the production class must still give the forward direction. */
+	test('production file under sourceRoots renders the production direction even when test classes are in entries', async () => {
+		setPerTestState({ moduleId: 'root', perTest: PER_TEST, warnings: [] });
+		const { document, workspaceRoot } = await openProductionFile('Calculator');
+		setCoverageState({ ...STATE, workspaceRoot });
+
+		const provider = new LineTestsTreeProvider();
+		provider.setActiveDocument(document);
+
+		const roots = provider.getChildren();
+		assert.equal(roots.length, 1);
+		assert.equal(roots[0].kind, 'prodLine');
+	});
+
 	test('a Java file with no per-test evidence at all shows the collect hint, not a bare empty message', async () => {
 		setPerTestState({ moduleId: 'root', perTest: PER_TEST, warnings: [] });
-		setCoverageState(STATE);
+		const { document, workspaceRoot } = await openProductionFile('Untouched');
+		setCoverageState({ ...STATE, workspaceRoot });
 
-		const document = await openJavaFile('dev.coverdict.playground', 'Untouched');
 		const provider = new LineTestsTreeProvider();
 		provider.setActiveDocument(document);
 

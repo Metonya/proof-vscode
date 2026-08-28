@@ -2,8 +2,8 @@ import * as vscode from 'vscode';
 
 import { detectClassName } from '../../model/classNameDetector';
 import { groupConsecutiveLines, testsForClass, testsToLines, type TestLineRef } from '../../model/lineIndex';
-import { toAbsolutePath } from '../../model/pathIndex';
-import { buildProductionClassIndex } from '../../model/productionClassIndex';
+import { classifySourcePath, toAbsolutePath, toRepoRelativePath, type SourceKind } from '../../model/pathIndex';
+import { buildProductionClassIndex, productionSourceRoots } from '../../model/productionClassIndex';
 import { getCoverageState, getPerTestState } from '../../model/store';
 import { indexFindingsByTestMethod, lineQuality, type TestVerdict } from '../../model/testQuality';
 import { parseTestIdentity } from '../../verdict/testIdentity';
@@ -25,7 +25,6 @@ import type { Finding } from '../../verdict/types';
  * a production file lists its lines with test-quality counts; a test file
  * lists its methods with the production lines they run (reverse, Faz 15a).
  */
-const DEFAULT_SOURCE_ROOTS = ['src/main/java'];
 
 export type LineTestsNode =
 	| { kind: 'empty'; message: string }
@@ -139,6 +138,13 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 			return [{ kind: 'empty', message: 'Önce bir Java dosyası açın.' }];
 		}
 		if (view.kind === 'noPerTestData') {
+			// Faz 21: bir test dosyasında "topla" düğmesi test sınıfının
+			// kendisini hedeflerdi - ters yön için gereken şey o değil,
+			// production sınıflarını hedefleyen bir koşu. Yanlış düğmeye
+			// yönlendirmektense ne yapılacağını söylüyoruz.
+			if (this.activeDocument && this.classifyActiveDocument(this.activeDocument) === 'test') {
+				return [{ kind: 'empty', message: 'Bu test sınıfının bu koşuda çalıştırdığı production satırı kaydı yok. Ters yön ancak production sınıfları hedeflenmiş bir koşuda dolar: bir production dosyası açıp "Bu Sınıf İçin Topla" deyin ya da Derin Tarama çalıştırın.' }];
+			}
 			return [{ kind: 'empty', message: noPerTestDataMessage() }, { kind: 'collectHint' }];
 		}
 		if (view.kind === 'production') {
@@ -159,6 +165,24 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 			: methods;
 	}
 
+	/**
+	 * Faz 21 - Faz 16 madde 1'in düzeltmesi.
+	 *
+	 * Eskiden yön, "bu sınıfın `perTest.entries`'te satır kaydı var mı"
+	 * sorusuyla seçiliyordu: önce `testsForClass` denenip `'found'`
+	 * gelirse production yönü çiziliyordu. Bu yanlıştı, çünkü PIT tabanlı
+	 * L2 toplayıcısı **test sınıflarını da** `entries`'e yazıyor (gerçek
+	 * playground koşusunda doğrulandı, 2026-08-28: 10 test sınıfının onu
+	 * da kendi satırlarını kendi test metotlarıyla "kapsıyor" olarak
+	 * listeleniyordu). Sonuç: bir test dosyası açıldığında ters yön yerine
+	 * "kendi kendini kapsıyor" görünümü çıkıyordu.
+	 *
+	 * Yön artık yol tabanlı, CLI'ın kendi `inputs.modules[]` beyanından
+	 * (`classifySourcePath`). Beyan yoksa (`'unknown'`) yön **tahmin
+	 * edilmez**: hangi yönde gerçek kanıt varsa o gösterilir, ikisi de
+	 * varsa production yönü seçilip kullanıcıya bunun bir varsayım olduğu
+	 * söylenir (hard rule 3a).
+	 */
 	private computeView():
 		| { kind: 'production'; linesToTests: ReadonlyMap<number, readonly string[]> }
 		| { kind: 'test'; className: string; reverse: ReadonlyMap<string, readonly TestLineRef[]> }
@@ -171,19 +195,57 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 		}
 		const fileBaseName = document.fileName.split(/[\\/]/).pop()!.replace(/\.java$/, '');
 		const className = detectClassName(document.getText(), fileBaseName);
+		const kind = this.classifyActiveDocument(document);
 
-		const production = testsForClass(perTestState.perTest, perTestState.moduleId, className);
-		if (production.kind === 'found') {
-			return { kind: 'production', linesToTests: production.linesToTests };
-		}
+		const reverseView = () => {
+			const reverse = testsToLines(perTestState.perTest!, perTestState.moduleId, productionClassFilter());
+			return [...reverse.keys()].some((key) => key.startsWith(`${className}#`))
+				? { kind: 'test' as const, className, reverse }
+				: undefined;
+		};
+		const productionView = () => {
+			const production = testsForClass(perTestState.perTest!, perTestState.moduleId, className);
+			return production.kind === 'found'
+				? { kind: 'production' as const, linesToTests: production.linesToTests }
+				: undefined;
+		};
 
-		const reverse = testsToLines(perTestState.perTest, perTestState.moduleId);
-		const hasAnyForClass = [...reverse.keys()].some((key) => key.startsWith(`${className}#`));
-		if (hasAnyForClass) {
-			return { kind: 'test', className, reverse };
+		if (kind === 'test') {
+			return reverseView() ?? { kind: 'noPerTestData' };
 		}
-		return { kind: 'noPerTestData' };
+		if (kind === 'production') {
+			return productionView() ?? { kind: 'noPerTestData' };
+		}
+		// 'unknown': modül beyanı yok ya da dosya beyan edilmiş hiçbir kökün
+		// altında değil. Uydurmak yerine kanıtın kendisine bakılır.
+		return productionView() ?? reverseView() ?? { kind: 'noPerTestData' };
 	}
+
+	/** Aktif dosyanın CLI beyanına göre test mi production mı olduğu; workspace kökü ya da modül listesi yoksa `'unknown'`. */
+	private classifyActiveDocument(document: vscode.TextDocument): SourceKind {
+		const state = getCoverageState();
+		if (!state || state.modules.length === 0) {
+			return 'unknown';
+		}
+		const relative = toRepoRelativePath(state.workspaceRoot, document.fileName);
+		return relative === undefined ? 'unknown' : classifySourcePath(relative, state.modules);
+	}
+}
+
+/**
+ * Faz 21: ters yönde "bu test hangi production satırlarını çalıştırıyor"
+ * sorusunun cevabından test sınıflarının kendi satırlarını eler.
+ * `fileCoverage.files[]` bu koşunun production dosyalarının tam listesi -
+ * hangi sınıfın production olduğunun tek yetkili kaynağı o. Blok yoksa
+ * süzgeç de yok: eksik bilgiyle elemektense hiç elememek yeğdir.
+ */
+function productionClassFilter(): ((outerClassName: string) => boolean) | undefined {
+	const state = getCoverageState();
+	if (!state?.fileCoverage) {
+		return undefined;
+	}
+	const index = buildProductionClassIndex(state.fileCoverage, productionSourceRoots(state.modules));
+	return (outerClassName) => index.has(outerClassName);
 }
 
 /** Bir satır "sorunlu" sayılır: cover eden testlerden en az biri `ok` değil (doğrulaması yok/zayıf/gereksiz ya da çözülemedi). */
@@ -234,7 +296,7 @@ function prodTestItem(node: Extract<LineTestsNode, { kind: 'prodTest' }>): vscod
 function testLineItem(node: Extract<LineTestsNode, { kind: 'testLine' }>): vscode.TreeItem {
 	const state = getCoverageState();
 	const item = leaf(`${shortName(node.ref.outerClassName)}.java : ${node.ref.line}`, 'circle-filled');
-	const productionIndex = state?.fileCoverage ? buildProductionClassIndex(state.fileCoverage, DEFAULT_SOURCE_ROOTS) : undefined;
+	const productionIndex = state?.fileCoverage ? buildProductionClassIndex(state.fileCoverage, productionSourceRoots(state.modules)) : undefined;
 	const path = productionIndex?.get(node.ref.outerClassName);
 	if (state && path) {
 		const uri = vscode.Uri.file(toAbsolutePath(state.workspaceRoot, path));

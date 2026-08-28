@@ -85,6 +85,35 @@ test('testsToLines: a nested-class entry is reported under its outer class name'
 	assert.deepEqual(refs, [{ outerClassName: 'dev.coverdict.playground.Calculator', line: 40 }]);
 });
 
+/**
+ * Faz 21: PIT'in L2 toplayıcısı test sınıflarını da `entries`'e yazıyor
+ * (gerçek playground koşusuyla doğrulandı) - süzgeç verilmezse bir test
+ * kendi gövdesinin satırlarını "çalıştırdığı production satırları" diye
+ * listeler.
+ */
+const BLOCK_WITH_SELF_COVERING_TEST: PerTestBlock = {
+	engine: 'pitest',
+	engineVersion: '1.15.8',
+	modules: [{
+		id: 'root',
+		entries: [
+			{ className: 'dev.coverdict.playground.Calculator', methodName: 'add', lines: [{ line: 7, tests: ['CalcTest#addsTwoNumbers()'] }] },
+			{ className: 'dev.coverdict.playground.CalcTest', methodName: 'addsTwoNumbers', lines: [{ line: 18, tests: ['CalcTest#addsTwoNumbers()'] }] },
+		],
+		ambient: [],
+	}],
+};
+
+test('testsToLines: with a production-class filter, a test does not report its own lines as production lines', () => {
+	const reverse = testsToLines(BLOCK_WITH_SELF_COVERING_TEST, 'root', (c) => c === 'dev.coverdict.playground.Calculator');
+	assert.deepEqual(reverse.get('CalcTest#addsTwoNumbers()')?.map((r) => r.line), [7]);
+});
+
+test('testsToLines: without a filter nothing is dropped - missing information must not silently delete evidence', () => {
+	const reverse = testsToLines(BLOCK_WITH_SELF_COVERING_TEST, 'root');
+	assert.deepEqual(reverse.get('CalcTest#addsTwoNumbers()')?.map((r) => r.line), [7, 18]);
+});
+
 test('testsToLines: a module id not present in the block returns an empty map, not an error', () => {
 	assert.equal(testsToLines(BLOCK, 'nope').size, 0);
 });

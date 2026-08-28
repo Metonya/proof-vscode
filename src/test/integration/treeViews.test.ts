@@ -33,6 +33,7 @@ const STATE: CoverageState = {
 	}],
 	findings: [FINDING],
 	warnings: [],
+	modules: [{ id: 'root', root: '.', sourceRoots: ['src/main/java'], testRoots: ['src/test/java'] }],
 };
 
 /** Real Extension Host smoke test - each provider's getChildren/getTreeItem run without throwing, both with and without published state. */

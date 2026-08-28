@@ -1,4 +1,4 @@
-import type { ChangedFile, FileCoverageBlock, Finding, MetricSet, NewCodeCoverage, PerTestBlock, Reason } from '../verdict/types';
+import type { ChangedFile, FileCoverageBlock, Finding, MetricSet, ModuleInput, NewCodeCoverage, PerTestBlock, Reason } from '../verdict/types';
 
 /**
  * The one place the last analyze run's data lives (Plan.md Bölüm 2's
@@ -14,6 +14,14 @@ export interface CoverageState {
 	changedFiles: readonly ChangedFile[];
 	findings: readonly Finding[];
 	warnings: readonly Reason[];
+	/**
+	 * Faz 21: CLI'ın `inputs.modules[]` beyanı - kaynak/test kökleri.
+	 * "Bu dosya test mi production mı" sorusunun tek doğru cevabı burada;
+	 * `model/pathIndex.ts`'in `classifySourcePath`'i bunu okur. Eski bir
+	 * verdict'ten geri yüklenirken boş olabilir - o zaman cevap `'unknown'`
+	 * olur, uydurulmaz.
+	 */
+	modules: readonly ModuleInput[];
 }
 
 let state: CoverageState | undefined;

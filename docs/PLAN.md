@@ -1,6 +1,6 @@
 # coverdict-vscode — devir belgesi ve ileri plan
 
-**Son güncelleme:** 2026-08-28, Faz 19 sonrası (`a4d28ea`).
+**Son güncelleme:** 2026-08-28, Faz 21 sonrası.
 
 ---
 
@@ -159,6 +159,16 @@ alan sırası.
 `perTest.ambient` `<clinit>` (static initializer) kapsamasını tutar ve
 **hiçbir teste atfedilemez** (D-50); `entries` ile karıştırılmamalıdır.
 
+**Kolay gözden kaçan, pahalıya patlayan gerçek:** `perTest.entries` yalnızca
+production sınıflarını içermez — **test sınıfları da oradadır**, kendi
+satırlarını kendi test metotlarıyla "kapsıyor" olarak. Gerçek bir koşuda
+doğrulandı (tek bir `--per-test-target root=...Calculator` için 10 test
+sınıfının onu da listelendi). Yani "bu sınıfın `entries`'te kaydı var mı"
+sorusu **bir dosyanın test mi production mı olduğunu söylemez**; o soru
+yalnızca `inputs.modules[].testRoots`/`sourceRoots` ile cevaplanır. Bu
+ayrımı kaçırmak Faz 16-20 arasında açık kalan gerçek bir hataya yol açtı
+(§7.1).
+
 ### Rule id'leri (6 tane)
 
 | Rule | Severity | Anlamı |
@@ -304,7 +314,7 @@ komut (ui/commands.ts)
 | `model/testQuality.ts` | **Projenin en değerli birleşimi:** `findings[].testMethod` ile `perTest` test id'lerini eşler (gerçek veride 17 tam eşleşme ile doğrulandı). "Yeşil ama oracle'sız" satırları buradan biliyoruz. |
 | `model/falseGreenIndex.ts` | JaCoCo'ya göre covered ama kapsayan her testin oracle bulgusu olan satırlar → turuncu gutter. |
 | `model/metrics.ts` | Tek izinli aritmetik: klasör rollup'ı. |
-| `model/pathIndex.ts` | Yol matematiği. coverdict yolları repo-göreli ve **ileri eğik çizgili**dir (D-22). |
+| `model/pathIndex.ts` | Yol matematiği + `classifySourcePath` (test mi production mı — "Satır → Testler"in yön kararı). coverdict yolları repo-göreli ve **ileri eğik çizgili**dir (D-22). |
 | `model/classNameDetector.ts` | package + dosya adı → FQCN. Çok sınıflı dosyada tahmin yapmaz. |
 | `model/productionClassIndex.ts` | `fileCoverage.files[]`'ten `className → yol` haritası; diskte arama yapmaz. |
 | `model/ruleCatalog.ts` | 6 rule için Türkçe başlık/özet/eylem. |
@@ -382,8 +392,8 @@ sağ tık, Java) · `coverdict.copyItem` (ağaçlarda sağ tık → Kopyala) ·
 
 ### Sağlık
 
-98 unit + 19 integration test geçiyor. SonarQube (`coverdict-vscode`,
-`http://localhost:9001`) sıfır açık bulgu. Working tree temiz, `main`.
+107 unit + 22 integration test geçiyor. SonarQube (`coverdict-vscode`,
+`http://localhost:9001`) sıfır açık bulgu.
 
 ---
 
@@ -427,8 +437,10 @@ rm -rf out dist coverage && npm run pretest && npm run test:unit:coverage && nod
 mvn verify
 ```
 
-→ `coverdict-cli/target/coverdict.jar`. JDK 17 gerekir. **Dikkat:** bu
-makinede PATH'te Java 8 önde olabilir; `java -version` ile kontrol et.
+→ `coverdict-cli/target/coverdict.jar`. Derlemek için JDK 17+ gerekir
+(`maven.compiler.release=17`). Bu makinede PATH'teki `java` şu an
+Temurin 25 — jar'ı çalıştırmak için sorun değil; `mvn verify` başarısız
+olursa önce `java -version`'a bak.
 
 ### Playground'da kanıt üretmek
 
@@ -486,34 +498,44 @@ Yeni bulgu **sıfır** olmalı; bu repoda Sonar temizliği duran bir kısıttır
 
 ## 7. Açık işler (öncelik sırasıyla)
 
-### 7.1 Test dosyasında yanlış yön çiziliyor — **gerçek hata, açık**
+### 7.1 ~~Test dosyasında yanlış yön çiziliyor~~ — **KAPANDI (Faz 21)**
 
-*(NOTES.md'de "Faz 16 madde 1")*
+*(NOTES.md'de "Faz 16 madde 1", üç faz boyunca açık kaldı)*
 
-Bir **test** dosyası açıkken "Satır → Testler" ters yönü değil production
-yönünü çiziyor: `CalculatorNullCheckOnlyTest.java` açıkken kökler
-`Satır 15/17/21/22/23` oluyor ve her biri kendi kendini kapsıyormuş gibi
-görünüyor. Olması gereken sözleşme:
+Sözleşme artık kodda yerine getiriliyor:
 
 > **Production dosyası → ileri yön** (satır → onu kapsayan testler).
 > **Test dosyası → ters yön** (test metodu → çalıştırdığı production satırları).
 
-Bu Faz 15c'nin tasarım niyetiydi; kod bunu yerine getirmiyor.
+**Kök neden, gerçek veriyle doğrulandı (2026-08-28):** PIT tabanlı L2
+toplayıcısı **test sınıflarını da `perTest.entries`'e yazıyor** — tek bir
+`--per-test-target root=...Calculator` koşusunda 10 test sınıfının onu da,
+kendi satırlarını kendi test metotlarıyla "kapsıyor" olarak listelendi.
+Bu yüzden `testsForClass(<TestClass>)` `'found'` dönüyordu ve hem
+`lineTestsView.computeView()` hem `hoverProvider` "önce production dene"
+sırasında production dalına kilitleniyordu.
 
-**Hipotez (doğrulanmadı):** `computeView()` önce `testsForClass(...)`
-deniyor, `'found'` bulunca duruyor ve `testsToLines` ters indeksine hiç
-bakmıyor. Gözlenen satır numaraları test dosyasının kendi satırları
-olduğuna göre, CLI'ın L2 toplayıcısı test sınıfının kendi satırlarını
-`entries`'e yazıyor olabilir.
+**Düzeltme iki parçalı:**
+1. **Yön yol tabanlı seçiliyor** — `model/pathIndex.ts`'in yeni
+   `classifySourcePath(path, modules)`'ı CLI'ın kendi
+   `inputs.modules[].testRoots`/`sourceRoots` beyanına bakar. Beyan yoksa
+   `'unknown'` döner ve yön tahmin edilmez: hangi yönde gerçek kanıt varsa
+   o gösterilir. Bunun için `CoverageState`/`AnalysisResult` artık
+   `inputs.modules[]`'ü de taşıyor.
+2. **Ters indeks test sınıflarını eliyor** — `testsToLines(...)` isteğe
+   bağlı bir production-sınıf süzgeci alıyor; süzgeç
+   `fileCoverage.files[]`'ten kuruluyor (bu koşunun production dosyalarının
+   yetkili listesi). `fileCoverage` yoksa süzgeç de yok: eksik bilgiyle
+   elemektense elememek yeğdir.
 
-**Önce doğrula, sonra düzelt:** gerçek bir `--per-test-target` koşusunun
-çıktısında `perTest.modules[0].entries[].className` içinde bir test sınıfı
-(`...CalculatorNullCheckOnlyTest`) var mı, bak.
+Yan düzeltme: `['src/main/java']` sabiti yerine artık gerçek
+`sourceRoots` kullanılıyor (`productionSourceRoots(modules)`), yani çoklu
+modül ve alışılmadık dizin düzenleri de doğru çalışıyor.
 
-**Önerilen çözüm:** `computeView()` yön kararını **yol tabanlı** versin
-(`inputs.modules[].testRoots` altında mı, değil mi) ve yalnızca o yönü
-sorgulasın. Self-covering entry'leri filtrelemek riskli — meşru bir
-self-reference varsa onu da siler.
+**Regresyon testleri gerçek veriyle** (`lineTestsView.test.ts`,
+`hoverProvider.test.ts`): fixture'lar artık test sınıflarının
+self-covering entry'lerini içeriyor — üç faz boyunca hatayı gizleyen tam
+olarak bu eksiklikti.
 
 ### 7.2 "Değişen satırların listesi" şemada yok
 

@@ -6,7 +6,7 @@ import * as vscode from 'vscode';
 
 import { setCoverageState, setPerTestState, type CoverageState } from '../../model/store';
 import { registerHoverProvider } from '../../ui/hoverProvider';
-import type { Finding, MetricSet, PerTestBlock } from '../../verdict/types';
+import type { Finding, MetricSet, ModuleInput, PerTestBlock } from '../../verdict/types';
 
 const METRIC = { numeratorName: 'a', numerator: 1, denominatorName: 'b', denominator: 1, percent: 100 };
 const METRIC_SET: MetricSet = { 'jacoco-line': METRIC, 'strict-line': METRIC, 'sonar-compatible': METRIC };
@@ -33,26 +33,40 @@ const FINDINGS: readonly Finding[] = [{
 	testMethod: 'dev.coverdict.playground.CalculatorPseudoTestedTest#squareHasNoAssertion()',
 }];
 
-const STATE: CoverageState = {
-	workspaceRoot: 'C:/repo', fileCoverage: undefined, overall: METRIC_SET,
+/** Exactly the shape a real single-module run emits (`inputs.modules[0]`, verified 2026-08-28). */
+const MODULES: readonly ModuleInput[] = [{
+	id: 'root', root: '.', sourceRoots: ['src/main/java'], testRoots: ['src/test/java'],
+}];
+
+const STATE: Omit<CoverageState, 'workspaceRoot'> = {
+	fileCoverage: undefined, overall: METRIC_SET,
 	newCode: { status: 'unavailable_no_vcs' }, changedFiles: [], findings: FINDINGS, warnings: [],
+	modules: MODULES,
 };
 
-/** A real file on disk padded to 40 lines so line 37 is a valid hover position - a fresh `package X; class Y {}` document is only 4 lines long. */
-async function openPaddedJavaFile(packageName: string, className: string): Promise<vscode.TextDocument> {
-	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-hoverProvider-'));
+/**
+ * A real file on disk padded to 40 lines so line 37 is a valid hover
+ * position - a fresh `package X; class Y {}` document is only 4 lines long.
+ * Placed under a real `src/main/java` root inside its own workspace root:
+ * since Faz 21 the hover picks its direction from `inputs.modules[]`, so the
+ * file's actual location is part of what these tests exercise.
+ */
+async function openPaddedJavaFile(rootRelativeDir: string, packageName: string, className: string): Promise<{ document: vscode.TextDocument; workspaceRoot: string }> {
+	const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-hoverProvider-'));
+	const dir = path.join(workspaceRoot, ...rootRelativeDir.split('/'), ...packageName.split('.'));
+	fs.mkdirSync(dir, { recursive: true });
 	const filePath = path.join(dir, `${className}.java`);
 	const body = `package ${packageName};\n\npublic class ${className} {\n` + '    // padding\n'.repeat(40) + '}\n';
 	fs.writeFileSync(filePath, body, 'utf8');
-	return vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
+	return { document: await vscode.workspace.openTextDocument(vscode.Uri.file(filePath)), workspaceRoot };
 }
 
 suite('Hover provider (Faz 15b)', () => {
 	test('a false-green production line hover names the missing oracle', async () => {
 		setPerTestState({ moduleId: 'root', perTest: PER_TEST, warnings: [] });
-		setCoverageState(STATE);
+		const { document, workspaceRoot } = await openPaddedJavaFile('src/main/java', 'dev.coverdict.playground', 'Calculator');
+		setCoverageState({ ...STATE, workspaceRoot });
 
-		const document = await openPaddedJavaFile('dev.coverdict.playground', 'Calculator');
 		const disposable = registerHoverProvider();
 		try {
 			const hovers = await vscode.commands.executeCommand<vscode.Hover[]>(
@@ -69,15 +83,73 @@ suite('Hover provider (Faz 15b)', () => {
 
 	test('a line with no per-test evidence at all produces no hover (no data, no claim)', async () => {
 		setPerTestState({ moduleId: 'root', perTest: PER_TEST, warnings: [] });
-		setCoverageState(STATE);
+		const { document, workspaceRoot } = await openPaddedJavaFile('src/main/java', 'dev.coverdict.playground', 'Calculator');
+		setCoverageState({ ...STATE, workspaceRoot });
 
-		const document = await openPaddedJavaFile('dev.coverdict.playground', 'Calculator');
 		const disposable = registerHoverProvider();
 		try {
 			const hovers = await vscode.commands.executeCommand<vscode.Hover[]>(
 				'vscode.executeHoverProvider', document.uri, new vscode.Position(9, 0), // line 10, no evidence for it
 			);
 			assert.ok(!hovers || hovers.length === 0);
+		} finally {
+			disposable.dispose();
+		}
+	});
+
+	/**
+	 * Faz 21: the hover had the same direction bug as the tree - because
+	 * PIT's L2 collector writes test classes into `entries` too, a test file
+	 * hit the production branch and returned `undefined` at the "known class,
+	 * no evidence for this line" guard, so the reverse hover never ran on
+	 * real data. Direction now comes from `inputs.modules[].testRoots`.
+	 */
+	test('a test file under testRoots gets the reverse hover, not the production one (Faz 16 madde 1)', async () => {
+		const realPerTest: PerTestBlock = {
+			engine: 'pitest',
+			engineVersion: '1.15.8',
+			modules: [{
+				id: 'root',
+				entries: [
+					{
+						className: 'dev.coverdict.playground.Calculator',
+						methodName: 'square',
+						lines: [{ line: 37, tests: ['dev.coverdict.playground.CalculatorPseudoTestedTest.[engine:junit-jupiter]/[class:dev.coverdict.playground.CalculatorPseudoTestedTest]/[method:squareHasNoAssertion()]'] }],
+					},
+					// Real data: the test class covers its own lines too.
+					{
+						className: 'dev.coverdict.playground.CalculatorPseudoTestedTest',
+						methodName: 'squareHasNoAssertion',
+						lines: [{ line: 4, tests: ['dev.coverdict.playground.CalculatorPseudoTestedTest.[engine:junit-jupiter]/[class:dev.coverdict.playground.CalculatorPseudoTestedTest]/[method:squareHasNoAssertion()]'] }],
+					},
+				],
+				ambient: [],
+			}],
+		};
+		setPerTestState({ moduleId: 'root', perTest: realPerTest, warnings: [] });
+		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-hoverProvider-'));
+		const dir = path.join(workspaceRoot, 'src', 'test', 'java', 'dev', 'coverdict', 'playground');
+		fs.mkdirSync(dir, { recursive: true });
+		const filePath = path.join(dir, 'CalculatorPseudoTestedTest.java');
+		fs.writeFileSync(filePath, 'package dev.coverdict.playground;\n\npublic class CalculatorPseudoTestedTest {\n    void squareHasNoAssertion() {}\n}\n', 'utf8');
+		const document = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
+		setCoverageState({
+			...STATE,
+			workspaceRoot,
+			// Authoritative production listing - lets the reverse index drop the test class's own self-covering entry.
+			fileCoverage: { files: [{ module: 'root', path: 'src/main/java/dev/coverdict/playground/Calculator.java', metrics: METRIC_SET, lines: [] }], excluded: [] },
+		});
+
+		const disposable = registerHoverProvider();
+		try {
+			// Cursor on the method name on line 4 (0-based 3), column inside `squareHasNoAssertion`.
+			const hovers = await vscode.commands.executeCommand<vscode.Hover[]>(
+				'vscode.executeHoverProvider', document.uri, new vscode.Position(3, 12),
+			);
+			assert.ok(hovers && hovers.length > 0, 'expected the reverse-direction hover on a test method');
+			const text = hovers.map((h) => h.contents.map((c) => (typeof c === 'string' ? c : (c as vscode.MarkdownString).value)).join('\n')).join('\n');
+			assert.match(text, /production satırlarını/, 'must be the reverse hover, which names the production lines this test runs');
+			assert.match(text, /Calculator\.java/);
 		} finally {
 			disposable.dispose();
 		}

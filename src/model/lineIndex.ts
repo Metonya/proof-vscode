@@ -79,7 +79,11 @@ export interface TestLineRef {
  * `model/testQuality.ts`'in `finding.testMethod` eşleştirmesiyle aynı
  * sözleşme, iki yön hiçbir zaman ayrışamaz.
  */
-export function testsToLines(perTest: PerTestBlock, moduleId: string): ReadonlyMap<string, readonly TestLineRef[]> {
+export function testsToLines(
+	perTest: PerTestBlock,
+	moduleId: string,
+	isProductionClass?: (outerClassName: string) => boolean,
+): ReadonlyMap<string, readonly TestLineRef[]> {
 	const module = perTest.modules.find((m) => m.id === moduleId);
 	const result = new Map<string, TestLineRef[]>();
 	if (!module) {
@@ -87,6 +91,15 @@ export function testsToLines(perTest: PerTestBlock, moduleId: string): ReadonlyM
 	}
 	for (const entry of module.entries) {
 		const outerClassName = stripNestedSuffix(entry.className);
+		// Faz 21: PIT'in L2 toplayıcısı test sınıflarını da `entries`'e
+		// yazıyor (gerçek veriyle doğrulandı) - süzülmezse bir test kendi
+		// gövdesinin satırlarını "çalıştırdığı production satırları" diye
+		// listeler. Süzgeç verilmezse (fileCoverage yoksa hangi sınıfın
+		// production olduğunu bilemeyiz) hepsi geçer: eksik veriyle
+		// süzmektense süzmemek yeğdir, çünkü yanlış eleme kanıt yok eder.
+		if (isProductionClass && !isProductionClass(outerClassName)) {
+			continue;
+		}
 		for (const line of entry.lines) {
 			for (const rawTestId of line.tests) {
 				addTestLineRef(result, rawTestId, outerClassName, line.line);

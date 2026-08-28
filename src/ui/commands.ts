@@ -19,7 +19,7 @@ import {
 	setPerTestState,
 } from '../model/store';
 import { parseVerdict } from '../verdict/parse';
-import type { ChangedFile, FileCoverageBlock, Finding, MetricSet, NewCodeCoverage, Reason, VerdictDocument } from '../verdict/types';
+import type { ChangedFile, FileCoverageBlock, Finding, MetricSet, ModuleInput, NewCodeCoverage, Reason, VerdictDocument } from '../verdict/types';
 import { publishFindings } from './diagnostics';
 import type { ExplorerBadgeProvider } from './explorerBadges';
 import { applyGutterCoverage, clearGutterCoverage, type GutterDecorationTypes } from './gutterRenderer';
@@ -151,6 +151,8 @@ export interface AnalysisResult {
 	changedFiles: readonly ChangedFile[];
 	findings: readonly Finding[];
 	warnings: readonly Reason[];
+	/** Faz 21: kaynak/test kökleri - "Satır → Testler"in yön kararı buna bakar. */
+	modules: readonly ModuleInput[];
 }
 
 export function analysisResultFrom(verdict: VerdictDocument): AnalysisResult {
@@ -161,6 +163,7 @@ export function analysisResultFrom(verdict: VerdictDocument): AnalysisResult {
 		changedFiles: verdict.changedFiles,
 		findings: verdict.findings,
 		warnings: verdict.warnings,
+		modules: verdict.inputs.modules,
 	};
 }
 

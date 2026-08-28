@@ -55,3 +55,46 @@ export function classNameFromPath(repoRelativePath: string, sourceRoots: readonl
 	}
 	return undefined;
 }
+
+/**
+ * Faz 21: bir dosya test kaynağı mı, production kaynağı mı - CLI'ın kendi
+ * `inputs.modules[].testRoots`/`sourceRoots` beyanına göre.
+ *
+ * Neden gerekli: PIT tabanlı L2 toplayıcısı test sınıflarını da
+ * `perTest.entries`'e yazıyor (gerçek playground koşusunda doğrulandı,
+ * 2026-08-28: 10 test sınıfının onunu da kendi satırlarını "kapsıyor"
+ * olarak listeliyor). Bu yüzden "bu sınıfın satır kaydı var mı" sorusu
+ * yön seçmek için kullanılamaz - bir test dosyası için de `found` döner
+ * ve `ui/treeViews/lineTestsView.ts` production yönüne kilitlenirdi.
+ * Yön kararı artık yol tabanlı.
+ *
+ * `'unknown'` gerçek bir cevaptır, "production" için kibar bir yedek
+ * değil (hard rule 3a): modül beyanı yoksa ya da dosya hiçbir beyan
+ * edilmiş kökün altında değilse çağıran bunu bilerek ele almalıdır.
+ */
+export type SourceKind = 'test' | 'production' | 'unknown';
+
+export function classifySourcePath(
+	repoRelativePath: string,
+	modules: readonly { sourceRoots: readonly string[]; testRoots: readonly string[] }[],
+): SourceKind {
+	// testRoots önce bakılır: bir kök diğerinin alt dizini olarak
+	// beyan edilmişse (örn. sourceRoot `src`, testRoot `src/test/java`)
+	// daha özel olan kazanmalı.
+	for (const module of modules) {
+		if (module.testRoots.some((root) => isUnderRoot(repoRelativePath, root))) {
+			return 'test';
+		}
+	}
+	for (const module of modules) {
+		if (module.sourceRoots.some((root) => isUnderRoot(repoRelativePath, root))) {
+			return 'production';
+		}
+	}
+	return 'unknown';
+}
+
+function isUnderRoot(repoRelativePath: string, root: string): boolean {
+	const prefix = root.endsWith('/') ? root : `${root}/`;
+	return repoRelativePath.startsWith(prefix);
+}

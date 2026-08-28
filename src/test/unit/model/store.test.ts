@@ -15,6 +15,7 @@ const STATE: CoverageState = {
 	changedFiles: [],
 	findings: [],
 	warnings: [],
+	modules: [{ id: 'root', root: '.', sourceRoots: ['src/main/java'], testRoots: ['src/test/java'] }],
 };
 
 /** Faz 14e: staleness tracking lives in model/store (no vscode import), stays pure and unit-testable. */
