@@ -33,11 +33,15 @@ suite('Gutter renderer (Faz 9)', () => {
 				});
 			});
 			assert.doesNotThrow(() => clearGutterCoverage(types));
+			// Faz 14e: staleAbsolutePaths matching the open document's own path
+			// must switch it into the "bayat" banner without throwing.
+			assert.doesNotThrow(() => applyGutterCoverage(types, '', { files: [], excluded: [] }, new Set([document.uri.fsPath])));
 		} finally {
 			types.covered.dispose();
 			types.partial.dispose();
 			types.uncovered.dispose();
 			types.excluded.dispose();
+			types.stale.dispose();
 		}
 	});
 });

@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 
 import { rollupFolder, type BadgeMetric } from '../model/metrics';
 import { toAbsolutePath } from '../model/pathIndex';
+import { isFileStale, markFileStale } from '../model/store';
 import type { FileCoverageBlock, FileCoverageEntry } from '../verdict/types';
 
 /**
@@ -33,9 +34,19 @@ export class ExplorerBadgeProvider implements vscode.FileDecorationProvider, vsc
 		this.changeEmitter.fire(undefined);
 	}
 
+	/** Faz 14e: bir tarama sonrası dosya düzenlenirse, eski yüzdeyi göstermeye devam etmek yerine bayatlığı işaretle. */
+	markStale(uri: vscode.Uri): void {
+		markFileStale(uri.fsPath);
+		this.changeEmitter.fire(uri);
+	}
+
 	provideFileDecoration(uri: vscode.Uri): vscode.FileDecoration | undefined {
 		if (!this.workspaceRoot || this.byAbsolutePath.size === 0) {
 			return undefined;
+		}
+
+		if (isFileStale(uri.fsPath)) {
+			return new vscode.FileDecoration('!', 'coverdict: bu dosya son taramadan sonra değişti - kapsama bayat olabilir, tekrar tarayın', new vscode.ThemeColor('charts.yellow'));
 		}
 
 		const file = this.byAbsolutePath.get(uri.fsPath);

@@ -18,10 +18,31 @@ export interface CoverageState {
 
 let state: CoverageState | undefined;
 let gutterVisible = true;
+let staleFiles = new Set<string>();
 
 export function setCoverageState(next: CoverageState): void {
 	state = next;
 	gutterVisible = true; // a fresh scan always shows - F4's toggle is a per-run choice, not sticky across runs
+	staleFiles = new Set(); // a fresh scan is by definition current - Faz 14e
+}
+
+/**
+ * Faz 14e (eski planın hiç yazılmamış "Açık risk 5"i): bir tarama
+ * bittikten sonra dosya düzenlenirse gutter/rozet artık o dosya için
+ * eski satır numaralarını boyamaya devam etmemeli - "veri yok" ile
+ * "veri bayat" aynı görünmemeli (hard rule 3a). Absolute path anahtarlı,
+ * `model/` hâlâ `vscode` import etmiyor (Plan.md Bölüm 2).
+ */
+export function markFileStale(absolutePath: string): void {
+	staleFiles.add(absolutePath);
+}
+
+export function isFileStale(absolutePath: string): boolean {
+	return staleFiles.has(absolutePath);
+}
+
+export function getStaleFiles(): ReadonlySet<string> {
+	return staleFiles;
 }
 
 export function getCoverageState(): CoverageState | undefined {

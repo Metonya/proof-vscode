@@ -21,6 +21,7 @@ export interface GutterDecorationTypes {
 	partial: vscode.TextEditorDecorationType;
 	uncovered: vscode.TextEditorDecorationType;
 	excluded: vscode.TextEditorDecorationType;
+	stale: vscode.TextEditorDecorationType;
 }
 
 export function createGutterDecorationTypes(): GutterDecorationTypes {
@@ -40,6 +41,20 @@ export function createGutterDecorationTypes(): GutterDecorationTypes {
 				margin: '0 0 0 1em',
 			},
 		}),
+		// Faz 14e: son taramadan sonra dosya düzenlendi - eski satır
+		// numaralarını boyamaya devam etmek yerine (hard rule 3a) tüm
+		// kapsama dekorasyonları kaldırılır, yerine bu tek banner konur.
+		stale: vscode.window.createTextEditorDecorationType({
+			isWholeLine: true,
+			overviewRulerColor: new vscode.ThemeColor('charts.yellow'),
+			overviewRulerLane: vscode.OverviewRulerLane.Left,
+			after: {
+				contentText: '  coverdict: bu dosya son taramadan sonra değişti - kapsama bayat, tekrar tarayın',
+				color: new vscode.ThemeColor('editorWarning.foreground'),
+				fontStyle: 'italic',
+				margin: '0 0 0 1em',
+			},
+		}),
 	};
 }
 
@@ -54,7 +69,7 @@ function borderDecoration(color: vscode.ThemeColor): vscode.TextEditorDecoration
 	});
 }
 
-export function applyGutterCoverage(types: GutterDecorationTypes, workspaceRoot: string, block: FileCoverageBlock): void {
+export function applyGutterCoverage(types: GutterDecorationTypes, workspaceRoot: string, block: FileCoverageBlock, staleAbsolutePaths: ReadonlySet<string> = new Set()): void {
 	const rangesByAbsolutePath = new Map<string, Record<LineState, vscode.Range[]>>();
 	for (const entry of block.files) {
 		const byState: Record<LineState, vscode.Range[]> = { covered: [], partial: [], uncovered: [] };
@@ -66,6 +81,17 @@ export function applyGutterCoverage(types: GutterDecorationTypes, workspaceRoot:
 
 	const excludedPaths = new Set(block.excluded);
 	for (const editor of vscode.window.visibleTextEditors) {
+		const bannerRange = editor.document.lineCount > 0 ? [editor.document.lineAt(0).range] : [];
+		if (staleAbsolutePaths.has(editor.document.uri.fsPath)) {
+			editor.setDecorations(types.covered, []);
+			editor.setDecorations(types.partial, []);
+			editor.setDecorations(types.uncovered, []);
+			editor.setDecorations(types.excluded, []);
+			editor.setDecorations(types.stale, bannerRange);
+			continue;
+		}
+		editor.setDecorations(types.stale, []);
+
 		const byState = rangesByAbsolutePath.get(editor.document.uri.fsPath);
 		editor.setDecorations(types.covered, byState?.covered ?? []);
 		editor.setDecorations(types.partial, byState?.partial ?? []);
@@ -73,7 +99,7 @@ export function applyGutterCoverage(types: GutterDecorationTypes, workspaceRoot:
 
 		const relative = toRepoRelativePath(workspaceRoot, editor.document.uri.fsPath);
 		const isExcluded = relative !== undefined && excludedPaths.has(relative);
-		editor.setDecorations(types.excluded, isExcluded && editor.document.lineCount > 0 ? [editor.document.lineAt(0).range] : []);
+		editor.setDecorations(types.excluded, isExcluded ? bannerRange : []);
 	}
 }
 
@@ -83,5 +109,6 @@ export function clearGutterCoverage(types: GutterDecorationTypes): void {
 		editor.setDecorations(types.partial, []);
 		editor.setDecorations(types.uncovered, []);
 		editor.setDecorations(types.excluded, []);
+		editor.setDecorations(types.stale, []);
 	}
 }

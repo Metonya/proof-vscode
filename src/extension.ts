@@ -1,7 +1,8 @@
 import * as fs from 'node:fs';
 import * as vscode from 'vscode';
 
-import { getCoverageState, isGutterVisible, setPerTestState } from './model/store';
+import { toAbsolutePath } from './model/pathIndex';
+import { getCoverageState, getStaleFiles, isGutterVisible, setPerTestState } from './model/store';
 import {
 	analysisResultFrom,
 	publishAnalysis,
@@ -65,7 +66,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		vscode.window.onDidChangeVisibleTextEditors(() => {
 			const state = getCoverageState();
 			if (state?.fileCoverage && isGutterVisible()) {
-				applyGutterCoverage(gutterTypes, state.workspaceRoot, state.fileCoverage);
+				applyGutterCoverage(gutterTypes, state.workspaceRoot, state.fileCoverage, getStaleFiles());
+			}
+		}),
+		// Faz 14e: bir tarama sonrası dosya düzenlenirse eski satır
+		// numaralarını boyamaya devam etmek yerine (hard rule 3a) o dosyayı
+		// bayat işaretler - gutter'daki banner'a ve Explorer rozetine hemen
+		// yansır, yeniden tarama bunu sıfırlar (model/store.ts).
+		vscode.workspace.onDidChangeTextDocument((e) => {
+			const state = getCoverageState();
+			if (!state?.fileCoverage || e.contentChanges.length === 0) {
+				return;
+			}
+			const absolutePath = e.document.uri.fsPath;
+			const isTrackedFile = state.fileCoverage.files.some((f) => toAbsolutePath(state.workspaceRoot, f.path) === absolutePath);
+			if (!isTrackedFile) {
+				return;
+			}
+			explorerBadges.markStale(e.document.uri);
+			if (isGutterVisible()) {
+				applyGutterCoverage(gutterTypes, state.workspaceRoot, state.fileCoverage, getStaleFiles());
 			}
 		}),
 		// F3: an already-open line->tests panel follows the user from file to

@@ -12,6 +12,7 @@ import { toRepoRelativePath } from '../model/pathIndex';
 import {
 	getCoverageState,
 	getPerTestState,
+	getStaleFiles,
 	isGutterVisible,
 	setCoverageState,
 	setGutterVisible,
@@ -416,7 +417,7 @@ function paintCoverage(sinks: CoverageSinks, workspaceRoot: string, fileCoverage
 	}
 
 	if (showLineGutter) {
-		applyGutterCoverage(sinks.gutterTypes, workspaceRoot, fileCoverage);
+		applyGutterCoverage(sinks.gutterTypes, workspaceRoot, fileCoverage, getStaleFiles());
 	} else {
 		clearGutterCoverage(sinks.gutterTypes);
 	}
