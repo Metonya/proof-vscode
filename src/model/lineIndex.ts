@@ -118,7 +118,7 @@ export function groupConsecutiveLines(linesToTests: ReadonlyMap<number, readonly
 	for (const line of sortedLines) {
 		const tests = linesToTests.get(line)!;
 		const last = groups.at(-1);
-		if (last && last.endLine === line - 1 && sameTestSet(last.tests, tests)) {
+		if (last?.endLine === line - 1 && sameTestSet(last.tests, tests)) {
 			last.endLine = line;
 		} else {
 			groups.push({ startLine: line, endLine: line, tests });
@@ -132,8 +132,8 @@ function sameTestSet(a: readonly string[], b: readonly string[]): boolean {
 	if (a.length !== b.length) {
 		return false;
 	}
-	const sortedA = [...a].sort();
-	const sortedB = [...b].sort();
+	const sortedA = [...a].sort((x, y) => x.localeCompare(y));
+	const sortedB = [...b].sort((x, y) => x.localeCompare(y));
 	return sortedA.every((test, i) => test === sortedB[i]);
 }
 
