@@ -6,6 +6,25 @@ kullanıcının kendi önceliği bu.
 
 **Faz 13 (2026-08-28) durumu:** 1-5, 9, 10 kodlandı. Madde 8 araştırıldı ve
 **kod hatası değil** olduğu doğrulandı (aşağıdaki madde 8'in sonuna bakın).
+
+**Faz 14 (2026-08-28) - elle test sonrası ek geri bildirim:** kullanıcı
+Faz 13'ü playground'da test ederken üç yeni sorun bildirdi ve bunlar da
+çözüldü:
+- Satır → Testler paneli okunmuyordu (`@ParameterizedTest` id'leri ham
+  basılıyordu) - `verdict/testIdentity.ts` test-template desteği,
+  `ui/panelView.ts` gruplu/katlanır görünüm.
+- `coverdict-cli`'a yeni `--per-test-target` (Faz 14a, `--mutation-target`
+  ile aynı desen) + eklentide yeni "Bu Sınıf İçin Hangi Test Hangi Satırı
+  Kapsıyor" komutu (Faz 14b) - artık kod değiştirmeden/diff yaratmadan
+  L2 kanıtı toplanabiliyor.
+- "Yeni Kod: yok" artık nedenini yazıyor, `warnings[]` artık Kapsama
+  ağacında "Uyarılar" bölümünde görünüyor (Faz 14d).
+- `lineIndex.ts`'in ambient/entries karışması ayrıştırıldı (hata D-6,
+  Faz 14c).
+- Bayatlık tespiti eklendi (eski planın hiç yazılmamış "Açık risk 5"i,
+  Faz 14e): tarama sonrası dosya düzenlenince gutter/rozet artık "bayat"
+  diyor, eski veriyi göstermeye devam etmiyor.
+
 Kalan: madde 6/7 (kullanıcının playground'da kendi yapacağı adım).
 
 ## 1. Toggle'ın geri bildirimi yok
