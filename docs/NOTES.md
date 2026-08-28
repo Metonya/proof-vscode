@@ -49,6 +49,135 @@ ama onu kapsayan tek test (`squareHasNoAssertion`) hiçbir şey doğrulamıyor.
 
 Kalan: madde 6/7 (kullanıcının playground'da kendi yapacağı adım).
 
+---
+
+# Faz 16 — Faz 15 sonrası elle test bulguları (2026-08-28, ekran görüntüleriyle)
+
+Kullanıcı Faz 15'i (hover + "Satır → Testler" ağacı + oracleless gutter)
+playground'da elle test etti, beş ekran görüntüsü + yazılı not bıraktı.
+Hiçbiri implement edilmedi - sadece bulgu. Aşağıdaki sıraya göre ele
+alınmalı (1 ve 2 gerçek hata, geri kalanı iyileştirme isteği).
+
+## 1. GERÇEK HATA: bir test dosyası açılınca ters yön yerine "kendi kendini kapsıyor" görünümü çıkıyor
+
+**Gözlem** (CalculatorNullCheckOnlyTest.java açıkken "Satır → Testler"
+ağacı): kök düğümler `Satır 15`, `Satır 17`, `Satır 21`, `Satır 22`,
+`Satır 23` - her biri `1 test (1 oracle'sız/zayıf)` açıklaması ve turuncu
+uyarı ikonuyla, altında tek çocuk
+`CalculatorNullCheckOnlyTest#describeOnlyChecksNonNull() NULL_CHECK_ONLY`.
+Bu **`prodLineItem`/`prodTestItem`'in tam formatı** (`ui/treeViews/
+lineTestsView.ts:70-73`, `Satır ${node.line}` + `${n} test
+(${weak} oracle'sız/zayıf)`) - yani test dosyası **production yönünde**
+render ediliyor. Doğru davranış: `Satır → Testler` bir test dosyasında
+**ters yönü** göstermeli - tek bir `testMethod` düğümü
+(`describeOnlyChecksNonNull()`) + altında çalıştırdığı production
+satırları (`testLine` düğümleri, `Calculator.java : N` biçiminde).
+
+**Kök neden hipotezi (doğrulanmadı, ilk adım bu olmalı):**
+`computeView()` (`lineTestsView.ts` içinde, `private computeView()`)
+önce `testsForClass(perTestState.perTest, moduleId, className)`'ı dener;
+`'found'` dönerse **production** kabul edip orada durur, `testsToLines`
+ters indeksine hiç bakmaz (`rootChildren`/`nodeForLine`/`getParent`'ın
+hepsi aynı sırayı izliyor). `testsForClass` yalnızca `perTest.modules[].
+entries[].className` içinde eşleşme arıyor
+(`model/lineIndex.ts:23-37`). Ekran görüntüsündeki satır numaraları
+(15, 17, 21, 22, 23) **production `Calculator.java`'nın değil, test
+dosyasının kendi satırları** (dosyanın kendi editöründe aynı satırlarda
+metot gövdesi/assertion var). Bu, coverdict-cli'ın L2 (PIT tabanlı)
+toplayıcısının **test sınıfının kendi satırlarını da** `entries`'e
+kendi kendine kapsayan bir "test" olarak yazdığını düşündürüyor (test
+metodu kendi gövdesini "çalıştırıyor" sayılmış olabilir).
+
+**Doğrulama adımı:** gerçek bir `--per-test-target` koşusunun çıktısında
+(`perTest.modules[0].entries`) `className` alanı
+`dev.coverdict.playground.CalculatorNullCheckOnlyTest` gibi bir **test**
+sınıfı adı taşıyan bir girdi var mı, bak. Varsa hipotez doğrulanır.
+
+**Olası düzeltme yönleri (karar verilmedi, sonraki oturum seçsin):**
+- `computeView()` önce dosyanın bir test dosyası olup olmadığını
+  (`inputs.modules[].testRoots` altında mı, ya da `changedFiles[]`'ta
+  `test` sınıflandırması var mı) kontrol etsin, öyleyse doğrudan
+  `testsToLines` ters indeksini kullansın - `testsForClass`'a hiç
+  bakmasın.
+- Ya da `testsForClass`/`collectLines` (`model/lineIndex.ts`) zaten
+  kendi kendini kapsayan (`entry.className === kapsayan tek test'in
+  sınıfı`) girdileri filtrelesin - ama bu, üretim kodunda meşru
+  "kendi kendine referans" bir durum varsa yanlış olabilir, temkinli
+  olunmalı.
+- En temiz çözüm muhtemelen ilki: dosyanın test mi production mu
+  olduğuna **önce, bağımsız olarak** karar vermek (yol tabanlı), sonra
+  o yöne göre tek bir sorgu yapmak - şu anki "önce production'ı dene,
+  bulamazsan test'e düş" sırası yanlış varsayım üretiyor.
+
+**Kullanıcının kendi sorusu, aynen not edildi (tasarım netleşsin):**
+"unit teste girince Satır->test ekranında ne görmem lazım: koda gidince
+ne görmem lazımdı?" - yani üstteki "doğru davranış" bölümü net şekilde
+yazılıp bir sonraki oturumda onaylanmalı: **test dosyasında ters yön
+(hangi production satırlarını çalıştırıyorum), production dosyasında
+düz yön (bu satırı kim kapsıyor, oracle'ı var mı)** - Faz 15c'nin
+tasarım niyeti buydu, kod bunu tutmuyor.
+
+## 2. GERÇEK HATA (OLASI): NotifyingCalculator.java'da gutter yeşil ama Explorer'da rozet yok
+
+**Gözlem:** `NotifyingCalculator.java` açıkken editör gutter'ında gerçek
+yeşil kapsama çizgileri var (satır 9-11, 14-16 gibi) - yani bu dosya için
+`fileCoverage.files[]`'ta gerçek, sıfır olmayan veri var. Ama Dosya
+Gezgini'nde bu dosyanın (ve o anki ekran görüntüsünde görünen diğer
+dosyaların da) yanında **hiçbir yüzde rozeti yok**.
+
+**Not:** Bu, Faz 13 madde 8'de kapatılan `Notifier.java` sorunundan
+**farklı** - o zaman `Notifier.java`'nın gerçekten 0 çalıştırılabilir
+satırı olduğu (saf arayüz) kanıtlanmış ve rozetsiz kalması doğru
+bulunmuştu. Burada `NotifyingCalculator.java`'nın **gerçek, gutter'da
+görünen kapsaması var**, dolayısıyla o kapanışın gerekçesi burada
+geçerli değil - bu ayrı, hâlâ açık bir olası regresyon.
+
+**Doğrulama adımı (Faz 13 madde 8'in aynısı, o oturumda izlenen yöntem):**
+playground'a karşı gerçek bir `--file-coverage` koşusu çalıştır,
+`fileCoverage.files[]`'ta `NotifyingCalculator.java`'nın gerçekten olup
+olmadığını, `path` alanının `ExplorerBadgeProvider`'ın beklediği
+biçimde olup olmadığını kontrol et (`ui/explorerBadges.ts`). Ekran
+görüntüsü alındığı an hangi komut en son çalıştırılmıştı bilinmiyor -
+`coverdict.perTestForFile` (Faz 14b/15b, tek sınıf hedefli) son koşu
+olduysa `fileCoverage` yine de **tüm** filtrelenmiş dosyaları içermeli
+(`buildAnalyzeArgs`'da `fileCoverage: true` her koşuda sabit) - yani
+tek-hedefli bir koşunun bu rozeti bir şekilde bastırıp bastırmadığı da
+ayrıca kontrol edilmeli.
+
+## 3. İyileştirme: Test Kalitesi görünümü zayıf
+
+Kullanıcının kendi cümleleri (aynen): "Test kalitesi filterelenebilir
+search edilebilir dosya bazlı gösterilebilir. kural bazlı gösterilebilir
+kurallara daha doğru display ismi verilmeli. üstüne gidildiğinde
+açıklaması olmalı."
+
+Madde madde:
+- **Filtrelenebilir/aranabilir** - şu an `ui/treeViews/qualityView.ts`
+  sadece kural bazlı statik gruplama yapıyor, VS Code'un TreeView arama
+  desteği (`view/title`'da bir arama widget'ı yok bugün) eklenmeli.
+- **Dosya bazlı gösterim seçeneği** - şu an tek gruplama modu (kurala
+  göre); kullanıcı dosyaya göre gruplamayı da istiyor. Muhtemelen
+  `view/title` menüsünde bir "gruplama: kural/dosya" toggle'ı.
+- **Kural adları için daha iyi display ismi** - şu an ham
+  `RuleId` enum değeri gösteriliyor (örn. `CATCH_ORACLE_WITHOUT_FAIL`).
+  İnsan okunur bir eşleme lazım (örn. "Yakalanıp Yutulan İstisna" gibi -
+  gerçek metin coverdict-cli'ın `docs/rules/<RULE>.md` dosyalarından
+  alınabilir, uydurulmamalı).
+- **Üstüne gelince açıklama (hover/tooltip)** - kural grubu düğümünün
+  kendisinde bugün tooltip yok (yalnızca tek tek bulgu yapraklarında var,
+  `qualityView.ts`'in `finding` node'u). Grup düğümüne de "bu kural ne
+  demek" tooltip'i eklenmeli - `docs/rules/<RULE>.md`'nin bir özeti,
+  Problems panelindeki `diagnostic.code.target` linkiyle tutarlı kalmalı.
+
+## Genel not
+
+Yukarıdaki 1 ve 2 numaralı maddeler **gerçek hata şüphesi** taşıyor ve
+Faz 15'in "artık coverdict'in asıl değeri görünüyor" iddiasını
+zedeliyor - production/test yön karışıklığı özellikle ciddi, çünkü
+kullanıcının en son "bu daha iyi" dediği tam olarak bu ekran. Bir
+sonraki oturum önce 1'i (gerçek veriyle doğrulayıp) düzeltmeli, sonra 2'yi
+araştırmalı, 3 en sona kalabilir.
+
 ## 1. Toggle'ın geri bildirimi yok
 
 "Kapsama Görünümünü Aç/Kapat" tıklanınca (durum çubuğundan ya da "Çalıştır"
