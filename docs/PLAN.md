@@ -414,7 +414,7 @@ sağ tık, Java) · `coverdict.copyItem` (ağaçlarda sağ tık → Kopyala) ·
 
 ### Sağlık
 
-142 unit + 32 integration test geçiyor. SonarQube (`coverdict-vscode`,
+145 unit + 33 integration test geçiyor. SonarQube (`coverdict-vscode`,
 `http://localhost:9001`) sıfır açık bulgu.
 
 ---
@@ -786,12 +786,33 @@ kapandı**, 4-7 açık — öncelik kullanıcının kendi sıralaması.
    Kapsıyor" adlarına güncellendi.
 
 **Açık — öncelik kullanıcının belirlediği sıra:**
-4. **`Satır 4 · 14 test` gürültü.** JaCoCo örtük constructor'ı sınıf
-   bildirim satırına (`public class Calculator {`) yazıyor; Satır →
-   Testler listesinin en tepesinde en kalabalık ve en anlamsız madde
-   duruyor. Tartışmalı: gizlemek veri saklamaktır (hard rule 3a'ya
-   aykırı olabilir), muhtemelen doğrusu **etiketlemek** ("örtük
-   constructor" gibi), gizlemek değil.
+4. ~~**`Satır 4 · 14 test` gürültü.**~~ — **KAPANDI (Faz 24).** Gerçek
+   playground verisiyle doğrulandı (`--per-test-target
+   root=dev.coverdict.playground.Calculator`, 2026-08-28):
+   `Calculator.java`'da elle yazılmış bir constructor yok, derleyicinin
+   ürettiği parametresiz `<init>()`in tek instruction'ı sınıf bildirim
+   satırına (satır 4) yazılıyor, nesne oluşturan 14 testin hepsi orada
+   "kapsıyor" görünüyor.
+
+   Gizlemek yerine etiketlendi: `model/lineIndex.ts`'in
+   `testsForClass`'ı artık `linesToMethod`/`ambientLinesToMethod`
+   döndürüyor (`PerTestEntry.methodName`'den, uydurma yok - bir satırı
+   birden fazla metot iddia ediyorsa belirsiz sayılıp haritaya hiç
+   girmiyor). `groupConsecutiveLines` artık metot adını da birleştirme
+   kriterine katıyor (iki farklı metodun ardışık satırları aynı test
+   kümesine sahip olsa bile artık tek aralıkta birleşmiyor).
+   `lineTestsView.ts`'te `prodLine` düğümleri gerçek metot adını
+   taşıyor; etiket `Satır 4 · <init>()` oluyor, `<init>` tek satırlık bir
+   grup olduğunda tooltip'e "nesne oluşturan her test bu satırı da
+   kapsar" açıklaması ekleniyor - "örtük"/"auto-generated" gibi
+   ispatlayamayacağımız bir iddia yok, yalnızca gerçek veri.
+
+   Doğrulama: yeni birim testleri (`lineIndex.test.ts`: `linesToMethod`,
+   metot-farklı ardışık satırların artık ayrılması) ve gerçek playground
+   şekliyle bir entegrasyon testi (`lineTestsView.test.ts`: 14 testli
+   `<init>` satırı → etiket + tooltip). `npm run check-types && npm run
+   lint`, temiz koşu (145 unit + 33 integration), SonarQube sıfır açık
+   bulgu.
 5. **Test Kalitesi ve Mutasyon aynı kanıtı bağlantısız söylüyor.**
    `PSEUDO_TESTED_METHOD` bulgusu ile mutasyon ağacındaki "HAYATTA KALDI"
    aynı olgunun iki görünümü ama aralarında tıklanabilir bir bağ yok.

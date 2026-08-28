@@ -42,6 +42,17 @@ test('a known class returns real entries in linesToTests, static-initializer evi
 	}
 });
 
+/** Faz 24 (§7.6 madde 4): `linesToMethod` gerçek `methodName` alanından geliyor - satır 3 yalnızca ambient'te olduğu için `linesToMethod`'da değil `ambientLinesToMethod`'da görünür. */
+test('linesToMethod carries the real production method name per line, ambient stays in its own map', () => {
+	const result = testsForClass(BLOCK, 'root', 'dev.coverdict.playground.Calculator');
+	assert.equal(result.kind, 'found');
+	if (result.kind === 'found') {
+		assert.equal(result.linesToMethod.get(7), 'add');
+		assert.equal(result.linesToMethod.get(3), undefined);
+		assert.equal(result.ambientLinesToMethod.get(3), '<clinit>');
+	}
+});
+
 test('a nested class entry is matched under its outer class name', () => {
 	const result = testsForClass(BLOCK, 'root', 'dev.coverdict.playground.Calculator');
 	assert.equal(result.kind, 'found');
@@ -134,7 +145,7 @@ test('groupConsecutiveLines: consecutive lines with the exact same test set merg
 		[11, ['NotifyingCalculatorMockitoTest#addAndNotifySendsTheComputedResult()']],
 	]);
 	const groups = groupConsecutiveLines(linesToTests);
-	assert.deepEqual(groups, [{ startLine: 9, endLine: 11, tests: ['NotifyingCalculatorMockitoTest#addAndNotifySendsTheComputedResult()'] }]);
+	assert.deepEqual(groups, [{ startLine: 9, endLine: 11, tests: ['NotifyingCalculatorMockitoTest#addAndNotifySendsTheComputedResult()'], methodName: undefined }]);
 });
 
 test('groupConsecutiveLines: a differently-tested line in the middle splits the range', () => {
@@ -145,9 +156,9 @@ test('groupConsecutiveLines: a differently-tested line in the middle splits the 
 	]);
 	const groups = groupConsecutiveLines(linesToTests);
 	assert.deepEqual(groups, [
-		{ startLine: 9, endLine: 9, tests: ['TestA#a()'] },
-		{ startLine: 10, endLine: 10, tests: ['TestB#b()'] },
-		{ startLine: 11, endLine: 11, tests: ['TestA#a()'] },
+		{ startLine: 9, endLine: 9, tests: ['TestA#a()'], methodName: undefined },
+		{ startLine: 10, endLine: 10, tests: ['TestB#b()'], methodName: undefined },
+		{ startLine: 11, endLine: 11, tests: ['TestA#a()'], methodName: undefined },
 	]);
 });
 
@@ -158,8 +169,8 @@ test('groupConsecutiveLines: a non-consecutive line number (a gap) never merges 
 	]);
 	const groups = groupConsecutiveLines(linesToTests);
 	assert.deepEqual(groups, [
-		{ startLine: 9, endLine: 9, tests: ['TestA#a()'] },
-		{ startLine: 15, endLine: 15, tests: ['TestA#a()'] },
+		{ startLine: 9, endLine: 9, tests: ['TestA#a()'], methodName: undefined },
+		{ startLine: 15, endLine: 15, tests: ['TestA#a()'], methodName: undefined },
 	]);
 });
 
@@ -176,5 +187,34 @@ test('groupConsecutiveLines: the same test set in a different order still merges
 
 test('groupConsecutiveLines: a lone line is its own group with startLine === endLine', () => {
 	const groups = groupConsecutiveLines(new Map([[7, ['CalcTest#addsTwoNumbers()']]]));
-	assert.deepEqual(groups, [{ startLine: 7, endLine: 7, tests: ['CalcTest#addsTwoNumbers()'] }]);
+	assert.deepEqual(groups, [{ startLine: 7, endLine: 7, tests: ['CalcTest#addsTwoNumbers()'], methodName: undefined }]);
+});
+
+/**
+ * Faz 24 (§7.6 madde 4): real playground data (verified 2026-08-28,
+ * --per-test-target root=dev.coverdict.playground.Calculator) shows the
+ * compiler-generated no-arg constructor's single instruction attributed to
+ * the class declaration line, "Satır 4 · 14 test" - every test that builds
+ * a Calculator shows up there, which reads as noise unless the line is
+ * labelled with the method it actually belongs to (`<init>`).
+ */
+test('groupConsecutiveLines: linesToMethod labels a range with its production method, real <init> shape', () => {
+	const linesToTests = new Map([[4, Array.from({ length: 14 }, (_, i) => `Test${i}#t()`)]]);
+	const linesToMethod = new Map([[4, '<init>']]);
+	const groups = groupConsecutiveLines(linesToTests, linesToMethod);
+	assert.equal(groups.length, 1);
+	assert.equal(groups[0].methodName, '<init>');
+});
+
+test('groupConsecutiveLines: adjacent lines from two different methods never merge even with identical test sets', () => {
+	const linesToTests = new Map([
+		[10, ['TestA#a()']],
+		[11, ['TestA#a()']],
+	]);
+	const linesToMethod = new Map([[10, 'foo'], [11, 'bar']]);
+	const groups = groupConsecutiveLines(linesToTests, linesToMethod);
+	assert.deepEqual(groups, [
+		{ startLine: 10, endLine: 10, tests: ['TestA#a()'], methodName: 'foo' },
+		{ startLine: 11, endLine: 11, tests: ['TestA#a()'], methodName: 'bar' },
+	]);
 });

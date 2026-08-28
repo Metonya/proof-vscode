@@ -114,6 +114,48 @@ suite('Line tests view (Faz 15c)', () => {
 	});
 
 	/**
+	 * Faz 24 (§7.6 madde 4) - real data from a live
+	 * `--per-test-target root=dev.coverdict.playground.Calculator` run
+	 * (2026-08-28): `Calculator.java` has no explicit constructor, so the
+	 * compiler's synthesized no-arg `<init>()` gets its single instruction
+	 * attributed to the class declaration line (line 4). Every one of the 14
+	 * tests that constructs a `Calculator` shows up covering that line, which
+	 * used to render as an unexplained "Satır 4 · 14 test" at the top of the
+	 * list. It must now be labelled with the real method it belongs to.
+	 */
+	test('a line whose only covering method is the constructor is labelled, not left as bare noise', async () => {
+		const constructorPerTest: PerTestBlock = {
+			engine: 'pitest', engineVersion: '1.15.8',
+			modules: [{
+				id: 'root',
+				entries: [{
+					className: 'dev.coverdict.playground.Calculator',
+					methodName: '<init>',
+					lines: [{ line: 4, tests: Array.from({ length: 14 }, (_, i) => `[class:dev.coverdict.playground.Test${i}]/[method:t()]`) }],
+				}],
+				ambient: [],
+			}],
+		};
+		setPerTestState({ moduleId: 'root', perTest: constructorPerTest, warnings: [] });
+		const { document, workspaceRoot } = await openProductionFile('Calculator');
+		setCoverageState({ ...STATE, workspaceRoot, findings: [] });
+
+		const provider = new LineTestsTreeProvider();
+		provider.setActiveDocument(document);
+
+		const roots = provider.getChildren();
+		assert.equal(roots.length, 1);
+		assert.equal(roots[0].kind, 'prodLine');
+		if (roots[0].kind === 'prodLine') {
+			assert.equal(roots[0].methodName, '<init>');
+		}
+		const item = provider.getTreeItem(roots[0]);
+		assert.match(String(item.label), /<init>\(\)/, 'the label must name the method the line belongs to, not just "Satır 4"');
+		assert.ok(item.tooltip, 'a constructor-attributed line must explain why its test count looks high');
+		assert.match(String((item.tooltip as { value?: string })?.value ?? item.tooltip), /constructor/i);
+	});
+
+	/**
 	 * Faz 17a: the real regression this test pins down - real
 	 * NotifyingCalculator.java data (2026-08-28) had 6 lines (9-11, 14-16)
 	 * all covered by the exact same one test, and the tree used to show 6

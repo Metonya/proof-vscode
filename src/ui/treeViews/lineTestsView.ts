@@ -29,7 +29,7 @@ import type { Finding } from '../../verdict/types';
 export type LineTestsNode =
 	| { kind: 'empty'; message: string }
 	| { kind: 'collectHint' }
-	| { kind: 'prodLine'; startLine: number; endLine: number; tests: readonly string[] }
+	| { kind: 'prodLine'; startLine: number; endLine: number; tests: readonly string[]; methodName: string | undefined }
 	| { kind: 'prodTest'; startLine: number; endLine: number; rawTestId: string; verdict: TestVerdict; finding: Finding | undefined }
 	| { kind: 'testMethod'; methodName: string; refs: readonly TestLineRef[] }
 	| { kind: 'testLine'; methodName: string; ref: TestLineRef };
@@ -75,8 +75,8 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 		if (view?.kind !== 'production') {
 			return undefined;
 		}
-		const group = groupConsecutiveLines(view.linesToTests).find((g) => g.startLine <= line1Based && line1Based <= g.endLine);
-		return group ? { kind: 'prodLine', startLine: group.startLine, endLine: group.endLine, tests: group.tests } : undefined;
+		const group = groupConsecutiveLines(view.linesToTests, view.linesToMethod).find((g) => g.startLine <= line1Based && line1Based <= g.endLine);
+		return group ? { kind: 'prodLine', startLine: group.startLine, endLine: group.endLine, tests: group.tests, methodName: group.methodName } : undefined;
 	}
 
 	getTreeItem(node: LineTestsNode): vscode.TreeItem {
@@ -123,7 +123,7 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 	getParent(node: LineTestsNode): LineTestsNode | undefined {
 		const view = this.computeView();
 		if (view?.kind === 'production' && node.kind === 'prodTest') {
-			return { kind: 'prodLine', startLine: node.startLine, endLine: node.endLine, tests: view.linesToTests.get(node.startLine) ?? [] };
+			return { kind: 'prodLine', startLine: node.startLine, endLine: node.endLine, tests: view.linesToTests.get(node.startLine) ?? [], methodName: view.linesToMethod.get(node.startLine) };
 		}
 		if (view?.kind === 'test' && node.kind === 'testLine') {
 			const refs = view.reverse.get(`${view.className}#${node.methodName}()`);
@@ -149,12 +149,12 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 		}
 		if (view.kind === 'production') {
 			const findingsByTestMethod = indexFindingsByTestMethod(getCoverageState()?.findings ?? []);
-			const groups = groupConsecutiveLines(view.linesToTests)
+			const groups = groupConsecutiveLines(view.linesToTests, view.linesToMethod)
 				.filter((group) => !this.problemsOnly || hasProblem(group.tests, findingsByTestMethod));
 			if (groups.length === 0) {
 				return [{ kind: 'empty', message: this.problemsOnly ? 'Bu dosyada sorunlu satır yok - cover eden her testin doğrulaması var. (Filtreyi kaldırmak için başlıktaki süzgece tıklayın.)' : 'Bu sınıf için satır kaydı yok.' }];
 			}
-			return groups.map((group): LineTestsNode => ({ kind: 'prodLine', startLine: group.startLine, endLine: group.endLine, tests: group.tests }));
+			return groups.map((group): LineTestsNode => ({ kind: 'prodLine', startLine: group.startLine, endLine: group.endLine, tests: group.tests, methodName: group.methodName }));
 		}
 		// test file: group the reverse index's flat refs back into per-method nodes for this class
 		const methods = [...view.reverse.entries()]
@@ -184,7 +184,7 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 	 * söylenir (hard rule 3a).
 	 */
 	private computeView():
-		| { kind: 'production'; linesToTests: ReadonlyMap<number, readonly string[]> }
+		| { kind: 'production'; linesToTests: ReadonlyMap<number, readonly string[]>; linesToMethod: ReadonlyMap<number, string> }
 		| { kind: 'test'; className: string; reverse: ReadonlyMap<string, readonly TestLineRef[]> }
 		| { kind: 'noPerTestData' }
 		| undefined {
@@ -206,7 +206,7 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 		const productionView = () => {
 			const production = testsForClass(perTestState.perTest!, perTestState.moduleId, className);
 			return production.kind === 'found'
-				? { kind: 'production' as const, linesToTests: production.linesToTests }
+				? { kind: 'production' as const, linesToTests: production.linesToTests, linesToMethod: production.linesToMethod }
 				: undefined;
 		};
 
@@ -264,12 +264,27 @@ function prodLineItem(node: Extract<LineTestsNode, { kind: 'prodLine' }>): vscod
 	const findingsByTestMethod = indexFindingsByTestMethod(getCoverageState()?.findings ?? []);
 	const quality = lineQuality(node.tests, findingsByTestMethod);
 	const weak = quality.byVerdict.noOracle + quality.byVerdict.weak;
-	const label = node.startLine === node.endLine ? `Satır ${node.startLine}` : `Satır ${node.startLine}-${node.endLine}`;
+	const baseLabel = node.startLine === node.endLine ? `Satır ${node.startLine}` : `Satır ${node.startLine}-${node.endLine}`;
+	// Faz 24 (§7.6 madde 4): gerçek `methodName` bilgisi biliniyorsa etikete
+	// eklenir - JaCoCo/PIT bir sınıfın tek satırlık `<init>()`ını (parametresiz
+	// constructor kodu yoksa) sınıf bildirim satırına yazar, o satır da her
+	// nesne oluşturan testte "kapsanmış" görünür (gerçek playground verisi,
+	// 2026-08-28: "Satır 4 · 14 test"). Gizlemek yerine hangi metoda ait
+	// olduğu gösterilir (hard rule 3a) - "örtük" diye bir iddia yok, sadece
+	// gerçek veri.
+	const label = node.methodName ? `${baseLabel} · ${node.methodName}()` : baseLabel;
 	const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Collapsed);
 	item.description = weak > 0 ? `${node.tests.length} test (${weak} oracle'sız/zayıf)` : `${node.tests.length} test`;
 	item.iconPath = new vscode.ThemeIcon(quality.isFalseGreen ? 'warning' : 'circle-filled', quality.isFalseGreen ? new vscode.ThemeColor('editorWarning.foreground') : undefined);
+	const tooltipParts: string[] = [];
+	if (node.methodName === '<init>' && node.startLine === node.endLine) {
+		tooltipParts.push('Bu satır constructor\'a (`<init>()`) ait - nesne oluşturan her test bu satırı da kapsar, yüksek test sayısı bundan kaynaklanıyor olabilir.');
+	}
 	if (quality.isFalseGreen) {
-		item.tooltip = 'Bu satırı kapsayan hiçbir testin oracle\'ı yok - kapsama yeşil ama satır gerçekte doğrulanmıyor.';
+		tooltipParts.push('Bu satırı kapsayan hiçbir testin oracle\'ı yok - kapsama yeşil ama satır gerçekte doğrulanmıyor.');
+	}
+	if (tooltipParts.length > 0) {
+		item.tooltip = new vscode.MarkdownString(tooltipParts.join('\n\n'));
 	}
 	item.contextValue = 'coverdict.prodLine';
 	return item;

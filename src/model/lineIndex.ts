@@ -18,7 +18,20 @@ import type { PerTestBlock, PerTestEntry } from '../verdict/types';
 export type ClassLookupResult =
 	| { kind: 'moduleNotFound' }
 	| { kind: 'classNotFound' }
-	| { kind: 'found'; linesToTests: ReadonlyMap<number, readonly string[]>; ambientLinesToTests: ReadonlyMap<number, readonly string[]> };
+	| {
+		kind: 'found';
+		linesToTests: ReadonlyMap<number, readonly string[]>;
+		ambientLinesToTests: ReadonlyMap<number, readonly string[]>;
+		/**
+		 * Faz 24 (§7.6 madde 4): bir satırın ait olduğu production metodu -
+		 * `perTest.entries[].methodName`'den, uydurma yok. Bir satır (nadiren)
+		 * birden fazla farklı metottan geliyorsa belirsizdir ve haritada hiç
+		 * yer almaz (hard rule 3a) - `groupConsecutiveLines` bunu `undefined`
+		 * olarak görür.
+		 */
+		linesToMethod: ReadonlyMap<number, string>;
+		ambientLinesToMethod: ReadonlyMap<number, string>;
+	};
 
 export function testsForClass(perTest: PerTestBlock, moduleId: string, className: string): ClassLookupResult {
 	const module = perTest.modules.find((m) => m.id === moduleId);
@@ -27,17 +40,18 @@ export function testsForClass(perTest: PerTestBlock, moduleId: string, className
 	}
 
 	const outerClassName = stripNestedSuffix(className);
-	const linesToTests = collectLines(module.entries, outerClassName);
-	const ambientLinesToTests = collectLines(module.ambient, outerClassName);
+	const { linesToTests, linesToMethod } = collectLines(module.entries, outerClassName);
+	const { linesToTests: ambientLinesToTests, linesToMethod: ambientLinesToMethod } = collectLines(module.ambient, outerClassName);
 
 	if (linesToTests.size === 0 && ambientLinesToTests.size === 0) {
 		return { kind: 'classNotFound' };
 	}
-	return { kind: 'found', linesToTests, ambientLinesToTests };
+	return { kind: 'found', linesToTests, ambientLinesToTests, linesToMethod, ambientLinesToMethod };
 }
 
-function collectLines(entries: readonly PerTestEntry[], outerClassName: string): Map<number, string[]> {
+function collectLines(entries: readonly PerTestEntry[], outerClassName: string): { linesToTests: Map<number, string[]>; linesToMethod: Map<number, string> } {
 	const linesToTests = new Map<number, string[]>();
+	const methodNamesPerLine = new Map<number, Set<string>>();
 	for (const entry of entries) {
 		if (stripNestedSuffix(entry.className) !== outerClassName) {
 			continue;
@@ -49,9 +63,21 @@ function collectLines(entries: readonly PerTestEntry[], outerClassName: string):
 			} else {
 				linesToTests.set(line.line, [...line.tests]);
 			}
+			const methodNames = methodNamesPerLine.get(line.line) ?? new Set<string>();
+			methodNames.add(entry.methodName);
+			methodNamesPerLine.set(line.line, methodNames);
 		}
 	}
-	return linesToTests;
+	// Yalnızca tek bir metot bu satırı iddia ediyorsa etiketlenir - iki
+	// metot aynı satırı paylaşıyorsa (görülmedi ama teorik olarak mümkün)
+	// hangisi olduğunu uydurmak yerine hiç etiketlememek yeğdir.
+	const linesToMethod = new Map<number, string>();
+	for (const [line, methodNames] of methodNamesPerLine) {
+		if (methodNames.size === 1) {
+			linesToMethod.set(line, [...methodNames][0]);
+		}
+	}
+	return { linesToTests, linesToMethod };
 }
 
 /** Strips a nested-class suffix (`Outer$Inner` -> `Outer`) - same convention coverdict-cli's PseudoTestedMethodRule uses on the production side. */
@@ -114,6 +140,8 @@ export interface LineGroup {
 	startLine: number;
 	endLine: number;
 	tests: readonly string[];
+	/** Faz 24: bu aralığın ait olduğu production metodu, biliniyorsa. */
+	methodName: string | undefined;
 }
 
 /**
@@ -124,17 +152,22 @@ export interface LineGroup {
  * `ui/treeViews/coverageView.ts`'in `uncoveredNewRanges` için zaten
  * kullandığı "aralık" deseniyle aynı fikir - sırasız test kümesi eşitliğine
  * göre bitişik satırları birleştirir.
+ *
+ * Faz 24: `linesToMethod` verilirse (opsiyonel, geriye dönük uyumlu) metot
+ * adı da eşleşme kriterine girer - iki farklı metodun ardışık satırları,
+ * test kümeleri aynı olsa bile tek bir aralıkta birleşmez.
  */
-export function groupConsecutiveLines(linesToTests: ReadonlyMap<number, readonly string[]>): LineGroup[] {
+export function groupConsecutiveLines(linesToTests: ReadonlyMap<number, readonly string[]>, linesToMethod?: ReadonlyMap<number, string>): LineGroup[] {
 	const sortedLines = [...linesToTests.keys()].sort((a, b) => a - b);
 	const groups: LineGroup[] = [];
 	for (const line of sortedLines) {
 		const tests = linesToTests.get(line)!;
+		const methodName = linesToMethod?.get(line);
 		const last = groups.at(-1);
-		if (last?.endLine === line - 1 && sameTestSet(last.tests, tests)) {
+		if (last?.endLine === line - 1 && sameTestSet(last.tests, tests) && last.methodName === methodName) {
 			last.endLine = line;
 		} else {
-			groups.push({ startLine: line, endLine: line, tests });
+			groups.push({ startLine: line, endLine: line, tests, methodName });
 		}
 	}
 	return groups;
