@@ -7,6 +7,7 @@ import { getCoverageState, getStaleFiles, isGutterVisible, setMutationState, set
 import {
 	analysisResultFrom,
 	MUTATION_STORAGE_FILE,
+	PERTEST_STORAGE_FILE,
 	publishAnalysis,
 	registerAnalyzeCommand,
 	registerAnalyzePerTestCommand,
@@ -17,6 +18,7 @@ import {
 	registerToggleCoverageCommand,
 	type CoverageSinks,
 	type MutationSnapshot,
+	type PerTestSnapshot,
 } from './ui/commands';
 import { createDiagnosticCollection } from './ui/diagnostics';
 import { ExplorerBadgeProvider } from './ui/explorerBadges';
@@ -28,7 +30,7 @@ import { LineTestsTreeProvider, type LineTestsNode } from './ui/treeViews/lineTe
 import { MutationTreeProvider } from './ui/treeViews/mutationView';
 import { QualityTreeProvider } from './ui/treeViews/qualityView';
 import { RunTreeProvider } from './ui/treeViews/runView';
-import { isMutationBlock, parseVerdict } from './verdict/parse';
+import { isMutationBlock, isPerTestBlock, parseVerdict } from './verdict/parse';
 
 /** F3's module id, same single-module-shorthand scope as everywhere else until F8's config UI adds real multi-module support. */
 const MODULE_ID = 'root';
@@ -189,11 +191,12 @@ async function restoreLastCoverage(context: vscode.ExtensionContext, sinks: Cove
  * have by default).
  */
 export async function restoreLastCoverageFrom(storageDir: string, workspaceRoot: string, sinks: CoverageSinks): Promise<void> {
-	// Faz 25 (§7.5): kendi dosyasında yaşıyor artık, `verdict-current.json`'dan
-	// tamamen bağımsız olarak geri yüklenir - biri bozuksa/yoksa diğeri yine
-	// de geri gelsin diye ayrı bir adım, aşağıdaki erken `return`'lerden
-	// etkilenmez.
+	// Faz 25/28 (§7.5, §7.5b): ikisi de kendi dosyasında yaşıyor artık,
+	// `verdict-current.json`'dan tamamen bağımsız olarak geri yüklenir -
+	// biri bozuksa/yoksa diğerleri yine de geri gelsin diye ayrı adımlar,
+	// aşağıdaki erken `return`'lerden etkilenmez.
 	await restoreMutationSnapshot(storageDir, sinks);
+	const perTestRestored = await restorePerTestSnapshot(storageDir, sinks);
 
 	let raw: string;
 	try {
@@ -207,9 +210,12 @@ export async function restoreLastCoverageFrom(storageDir: string, workspaceRoot:
 		return;
 	}
 	publishAnalysis(sinks, workspaceRoot, analysisResultFrom(parsed.value));
-	// perTest restores independently of fileCoverage - a run can carry one
-	// without the other depending on which command produced it.
-	setPerTestState({ moduleId: MODULE_ID, perTest: parsed.value.perTest, warnings: parsed.value.warnings });
+	// Faz 28: pertest-current.json zaten geri yüklediyse (yukarıda) burada
+	// tekrar `setPerTestState` çağırıp onu `verdict-current.json`'ın
+	// (muhtemelen perTest'siz) haliyle ezmiyoruz - hangisi varsa o kalır.
+	if (!perTestRestored) {
+		setPerTestState({ moduleId: MODULE_ID, perTest: parsed.value.perTest, warnings: parsed.value.warnings });
+	}
 	// Faz 23: publishAnalysis kendi refresh()'ini setPerTestState çağrılmadan
 	// ÖNCE tetikliyor (bu fonksiyonun içinde), yani TreeView eski/boş
 	// state ile bir kez yenileniyor. setPerTestState düz değişken ataması -
@@ -219,7 +225,7 @@ export async function restoreLastCoverageFrom(storageDir: string, workspaceRoot:
 
 /**
  * Faz 25 (§7.5): `mutation-current.json`'ı okur - `ui/commands.ts`'in
- * `writeMutationSnapshot`'ının yazdığı, kendi gerçek zaman damgamızı
+ * `writeJsonSnapshot`'ının yazdığı, kendi gerçek zaman damgamızı
  * taşıyan format (CLI'ın çıktısı hiç taşımaz, D-xx). Dosya yok/bozuksa
  * (eski bir eklenti sürümünden kalma farklı bir şekil dahil) sessizce
  * hiçbir şey yapmaz - "henüz mutasyon testi çalıştırılmadı" ilk hâli
@@ -258,6 +264,48 @@ function parseMutationSnapshot(raw: string): MutationSnapshot | undefined {
 		return undefined;
 	}
 	return json as unknown as MutationSnapshot;
+}
+
+/**
+ * Faz 28 (§7.5b): `pertest-current.json`'ı okur - `mutation-current.json`
+ * ile birebir aynı gerekçe, şimdi perTest tarafında. Restore edebildiyse
+ * `true` döner - çağıran, `verdict-current.json`'ın (muhtemelen
+ * perTest'siz) kendi bloğuyla bunu ezmesin diye.
+ */
+async function restorePerTestSnapshot(storageDir: string, sinks: CoverageSinks): Promise<boolean> {
+	let raw: string;
+	try {
+		raw = await fs.promises.readFile(path.join(storageDir, PERTEST_STORAGE_FILE), 'utf8');
+	} catch {
+		return false;
+	}
+	const snapshot = parsePerTestSnapshot(raw);
+	if (!snapshot) {
+		return false;
+	}
+	setPerTestState({ moduleId: snapshot.moduleId, perTest: snapshot.perTest, warnings: snapshot.warnings });
+	// verdict-current.json bağımsız olarak eksik/bozuk olabilir (§7.5/§7.5b
+	// aynı gerekçe) - bu yenileme onun varlığına bağlı olmamalı.
+	sinks.lineTestsView.refresh();
+	return true;
+}
+
+function parsePerTestSnapshot(raw: string): PerTestSnapshot | undefined {
+	let json: unknown;
+	try {
+		json = JSON.parse(raw);
+	} catch {
+		return undefined;
+	}
+	if (
+		typeof json !== 'object' || json === null
+		|| !('moduleId' in json) || typeof json.moduleId !== 'string'
+		|| !('perTest' in json) || !isPerTestBlock(json.perTest)
+		|| !('warnings' in json) || !Array.isArray(json.warnings)
+	) {
+		return undefined;
+	}
+	return json as unknown as PerTestSnapshot;
 }
 
 /** `coverdict.show.*`/`coverdict.badgeMetric` changed while a run's data is still current - repaint from `model/store`'s own state, no re-parse needed. */

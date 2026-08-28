@@ -9,7 +9,7 @@ import { createDiagnosticCollection } from '../../ui/diagnostics';
 import { ExplorerBadgeProvider } from '../../ui/explorerBadges';
 import { createGutterDecorationTypes } from '../../ui/gutterRenderer';
 import { createStatusBarItem } from '../../ui/statusBar';
-import { MUTATION_STORAGE_FILE, type CoverageSinks, type MutationSnapshot } from '../../ui/commands';
+import { MUTATION_STORAGE_FILE, PERTEST_STORAGE_FILE, type CoverageSinks, type MutationSnapshot, type PerTestSnapshot } from '../../ui/commands';
 import { CoverageTreeProvider } from '../../ui/treeViews/coverageView';
 import { LineTestsTreeProvider, type LineTestsNode } from '../../ui/treeViews/lineTestsView';
 import { MutationTreeProvider, type MutationNode } from '../../ui/treeViews/mutationView';
@@ -76,6 +76,46 @@ function realMutationSnapshot(ranAtMs: number): MutationSnapshot {
 		warnings: [],
 		targets: ['dev.coverdict.playground.Calculator'],
 		ranAtMs,
+	};
+}
+
+/**
+ * Faz 28 (§7.5b) - real shape a live `--mutation-report` run's own
+ * verdict looks like (verified 2026-08-28): `fileCoverage` present,
+ * `perTest` **absent** entirely, because a Mutasyon Testi run never
+ * requests `--per-test-report`. This is exactly what running Mutasyon
+ * Testi *last* leaves in `verdict-current.json`.
+ */
+function verdictJsonWithoutPerTest(): unknown {
+	return {
+		schemaVersion: '1', tool: { name: 'coverdict', version: '0.0.0' },
+		analysis: { status: 'complete', exitCode: 0, incompleteReasons: [] },
+		inputs: { modules: [{ id: 'root', root: '.', sourceRoots: ['src/main/java'], testRoots: ['src/test/java'] }] },
+		coverage: { overall: METRIC_SET, newCode: { status: 'unavailable_no_vcs' } },
+		changedFiles: [], findings: [], warnings: [],
+		fileCoverage: {
+			files: [{ module: 'root', path: 'src/main/java/dev/coverdict/playground/Calculator.java', metrics: METRIC_SET, lines: [] }],
+			excluded: [],
+		},
+	};
+}
+
+/** Real shape `writeJsonSnapshot` (`ui/commands.ts`) produces for a Derin Tarama's perTest result. */
+function realPerTestSnapshot(): PerTestSnapshot {
+	return {
+		moduleId: 'root',
+		perTest: {
+			engine: 'pitest', engineVersion: '1.15.8',
+			modules: [{
+				id: 'root',
+				entries: [{
+					className: 'dev.coverdict.playground.Calculator', methodName: 'square',
+					lines: [{ line: 37, tests: ['[class:dev.coverdict.playground.CalculatorGoodTest]/[method:squareWorks()]'] }],
+				}],
+				ambient: [],
+			}],
+		},
+		warnings: [],
 	};
 }
 
@@ -226,5 +266,78 @@ suite('extension.restoreLastCoverageFrom (Faz 23/25 - pencere yenileme)', () => 
 		await restoreLastCoverageFrom(storageDir, workspaceRoot, sinks);
 
 		assert.equal(mutationSnapshots.length, 0, 'a malformed snapshot must not be partially trusted');
+	});
+
+	/**
+	 * Faz 28 (§7.5b) - the exact real bug the user hit next (2026-08-28),
+	 * right after §7.5's mutation fix landed: Hızlı Tarama → Derin Tarama
+	 * → Mutasyon Testi run in that order (all three produced real data,
+	 * confirmed on screen), window closed and reopened, "Satır → Testler"
+	 * was empty. Cause: Mutasyon Testi's own verdict has no `perTest`
+	 * block, and it was the *last* run, so it overwrote
+	 * `verdict-current.json` without one - Derin Tarama's perTest result
+	 * must still restore from its own independent file.
+	 */
+	test('perTest restores from its own file even when the latest verdict-current.json (a later Mutasyon Testi run) has no perTest block at all', async () => {
+		const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-restore-'));
+		fs.writeFileSync(path.join(storageDir, 'verdict-current.json'), JSON.stringify(verdictJsonWithoutPerTest()), 'utf8');
+		fs.writeFileSync(path.join(storageDir, PERTEST_STORAGE_FILE), JSON.stringify(realPerTestSnapshot()), 'utf8');
+
+		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-restore-ws6-'));
+		const classDir = path.join(workspaceRoot, 'src', 'main', 'java', 'dev', 'coverdict', 'playground');
+		fs.mkdirSync(classDir, { recursive: true });
+		const classFile = path.join(classDir, 'Calculator.java');
+		fs.writeFileSync(classFile, 'package dev.coverdict.playground;\n\npublic class Calculator {\n}\n', 'utf8');
+		const document = await vscode.workspace.openTextDocument(vscode.Uri.file(classFile));
+
+		const sinks = buildSinks();
+		sinks.lineTestsView.setActiveDocument(document);
+		const lineTestsSnapshots = spyRefresh<LineTestsNode>(sinks.lineTestsView);
+
+		await restoreLastCoverageFrom(storageDir, workspaceRoot, sinks);
+
+		assert.ok(lineTestsSnapshots.length > 0, 'perTest must restore independently of verdict-current.json having no perTest block');
+		assert.equal(lineTestsSnapshots.at(-1)![0]?.kind, 'prodLine', 'must show the restored per-test data, not "Bu sınıf için test bazlı kanıt yok"');
+	});
+
+	test('a missing pertest-current.json (never ran Derin Tarama) falls back to verdict-current.json\'s own perTest block, unchanged behavior', async () => {
+		const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-restore-'));
+		fs.writeFileSync(path.join(storageDir, 'verdict-current.json'), JSON.stringify(realVerdictJson()), 'utf8');
+		// No pertest-current.json written - realVerdictJson()'s own embedded perTest block must still apply.
+
+		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-restore-ws7-'));
+		const classDir = path.join(workspaceRoot, 'src', 'main', 'java', 'dev', 'coverdict', 'playground');
+		fs.mkdirSync(classDir, { recursive: true });
+		const classFile = path.join(classDir, 'Calculator.java');
+		fs.writeFileSync(classFile, 'package dev.coverdict.playground;\n\npublic class Calculator {\n}\n', 'utf8');
+		const document = await vscode.workspace.openTextDocument(vscode.Uri.file(classFile));
+
+		const sinks = buildSinks();
+		sinks.lineTestsView.setActiveDocument(document);
+
+		await restoreLastCoverageFrom(storageDir, workspaceRoot, sinks);
+
+		const roots = sinks.lineTestsView.getChildren();
+		assert.equal(roots[0]?.kind, 'prodLine', 'falls back to verdict-current.json\'s own perTest block when no dedicated snapshot exists');
+	});
+
+	test('a corrupted pertest-current.json is ignored, falls back to verdict-current.json\'s own perTest block', async () => {
+		const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-restore-'));
+		fs.writeFileSync(path.join(storageDir, 'verdict-current.json'), JSON.stringify(realVerdictJson()), 'utf8');
+		fs.writeFileSync(path.join(storageDir, PERTEST_STORAGE_FILE), '{"moduleId": "root", "perTe', 'utf8');
+
+		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-restore-ws8-'));
+		const classDir = path.join(workspaceRoot, 'src', 'main', 'java', 'dev', 'coverdict', 'playground');
+		fs.mkdirSync(classDir, { recursive: true });
+		const classFile = path.join(classDir, 'Calculator.java');
+		fs.writeFileSync(classFile, 'package dev.coverdict.playground;\n\npublic class Calculator {\n}\n', 'utf8');
+		const document = await vscode.workspace.openTextDocument(vscode.Uri.file(classFile));
+
+		const sinks = buildSinks();
+		sinks.lineTestsView.setActiveDocument(document);
+
+		await assert.doesNotReject(restoreLastCoverageFrom(storageDir, workspaceRoot, sinks));
+		const roots = sinks.lineTestsView.getChildren();
+		assert.equal(roots[0]?.kind, 'prodLine', 'a corrupted snapshot must not block the verdict-current.json fallback');
 	});
 });

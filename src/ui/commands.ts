@@ -26,7 +26,7 @@ import {
 } from '../model/store';
 import { parseVerdict } from '../verdict/parse';
 import { parseTestIdentity } from '../verdict/testIdentity';
-import type { ChangedFile, FileCoverageBlock, Finding, MetricSet, ModuleInput, MutationBlock, NewCodeCoverage, Reason, VerdictDocument } from '../verdict/types';
+import type { ChangedFile, FileCoverageBlock, Finding, MetricSet, ModuleInput, MutationBlock, NewCodeCoverage, PerTestBlock, Reason, VerdictDocument } from '../verdict/types';
 import { publishFindings } from './diagnostics';
 import type { ExplorerBadgeProvider } from './explorerBadges';
 import { applyGutterCoverage, clearGutterCoverage, type GutterDecorationTypes } from './gutterRenderer';
@@ -64,18 +64,38 @@ export interface MutationSnapshot {
 	ranAtMs: number;
 }
 
-/** Best-effort: bir mutasyon koşusunun sonucunu diske yazamamak koşunun kendisini başarısız saymaz - sonuç zaten ekranda, yalnızca bir sonraki pencere yenilemesinde kaybolur. Sebep Output kanalına gider, kullanıcıyı bir hata diyaloğuyla kesmez. */
-async function writeMutationSnapshot(context: vscode.ExtensionContext, output: vscode.OutputChannel, snapshot: MutationSnapshot): Promise<void> {
+/**
+ * Faz 28 (§7.5b): tam olarak Faz 25'in mutasyon için çözdüğü sorunun
+ * perTest tarafındaki eşi - kullanıcının canlı yakaladığı gerçek durum
+ * (2026-08-28): Hızlı Tarama → Derin Tarama → Mutasyon Testi sırayla
+ * çalıştırıldı (üçü de gerçek veri üretti), pencere kapatılıp açıldı,
+ * "Satır → Testler" boştu. Sebep: Mutasyon Testi `--per-test-report`
+ * içermiyor, o yüzden **son** koşu olarak `verdict-current.json`'ı
+ * perTest'siz bir haliyle üzerine yazdı - Derin Tarama'nın topladığı
+ * perTest verisi hâlâ ağaçta duruyordu (bellekte) ama disk'e hiç
+ * yazılmamış oluyordu bir sonraki pencere için. Aynı reçete: kendi
+ * dosyasında, `verdict-current.json`'dan bağımsız yaşar.
+ */
+export const PERTEST_STORAGE_FILE = 'pertest-current.json';
+
+export interface PerTestSnapshot {
+	moduleId: string;
+	perTest: PerTestBlock;
+	warnings: readonly Reason[];
+}
+
+/** Best-effort: bir koşunun test bazlı/mutasyon sonucunu diske yazamamak koşunun kendisini başarısız saymaz - sonuç zaten ekranda, yalnızca bir sonraki pencere yenilemesinde kaybolur. Sebep Output kanalına gider, kullanıcıyı bir hata diyaloğuyla kesmez. */
+async function writeJsonSnapshot(context: vscode.ExtensionContext, output: vscode.OutputChannel, fileName: string, data: unknown, failureNoun: string): Promise<void> {
 	const storageRoot = context.storageUri;
 	if (!storageRoot) {
 		return;
 	}
 	try {
 		await vscode.workspace.fs.createDirectory(storageRoot);
-		const outUri = vscode.Uri.joinPath(storageRoot, MUTATION_STORAGE_FILE);
-		await fs.promises.writeFile(outUri.fsPath, JSON.stringify(snapshot), 'utf8');
+		const outUri = vscode.Uri.joinPath(storageRoot, fileName);
+		await fs.promises.writeFile(outUri.fsPath, JSON.stringify(data), 'utf8');
 	} catch (e) {
-		output.appendLine(`coverdict: mutasyon sonucu kalıcı depolamaya yazılamadı (pencere yenilenince kaybolur): ${(e as Error).message}`);
+		output.appendLine(`coverdict: ${failureNoun} kalıcı depolamaya yazılamadı (pencere yenilenince kaybolur): ${(e as Error).message}`);
 	}
 }
 
@@ -430,7 +450,13 @@ async function runAnalyzePerTest(context: vscode.ExtensionContext, output: vscod
 
 	publishAnalysis(sinks, folder.uri.fsPath, analysisResultFrom(parsed));
 	setPerTestState({ moduleId: MODULE_ID, perTest: parsed.perTest, warnings: parsed.warnings });
-	if (!parsed.perTest) {
+	if (parsed.perTest) {
+		// Faz 28 (§7.5b): yalnızca blok gerçekten varsa yazılır - sonraki bir
+		// Hızlı Tarama ya da Mutasyon Testi bu bloğu taşımayan bir
+		// verdict-current.json yazınca bu dosya etkilenmeden kalır.
+		const snapshot: PerTestSnapshot = { moduleId: MODULE_ID, perTest: parsed.perTest, warnings: parsed.warnings };
+		await writeJsonSnapshot(context, output, PERTEST_STORAGE_FILE, snapshot, 'test bazlı kanıt');
+	} else {
 		vscode.window.showWarningMessage('coverdict: bu koşuda test bazlı (per-test) kanıt yok - PER_TEST_* uyarıları için çıktı kanalını kontrol edin.');
 	}
 	revealLineTestsView(sinks);
@@ -477,7 +503,10 @@ async function runPerTestForFile(context: vscode.ExtensionContext, output: vscod
 
 	publishAnalysis(sinks, folder.uri.fsPath, analysisResultFrom(parsed));
 	setPerTestState({ moduleId: MODULE_ID, perTest: parsed.perTest, warnings: parsed.warnings });
-	if (!parsed.perTest) {
+	if (parsed.perTest) {
+		const snapshot: PerTestSnapshot = { moduleId: MODULE_ID, perTest: parsed.perTest, warnings: parsed.warnings };
+		await writeJsonSnapshot(context, output, PERTEST_STORAGE_FILE, snapshot, 'test bazlı kanıt');
+	} else {
 		vscode.window.showWarningMessage(`coverdict: ${className} için test bazlı kanıt yok - PER_TEST_* uyarıları için çıktı kanalını kontrol edin.`);
 	}
 	revealLineTestsView(sinks);
@@ -573,7 +602,8 @@ async function runMutation(
 	// Faz 25: yalnızca blok gerçekten varsa yazılır - yoksa (bütçe aşıldı vb.)
 	// eski bir sonucu yeni ama boş bir "koşu" ile ezmemek için hiç dokunulmaz.
 	if (parsed.mutation) {
-		await writeMutationSnapshot(context, output, { moduleId: MODULE_ID, mutation: parsed.mutation, warnings: parsed.warnings, targets, ranAtMs });
+		const snapshot: MutationSnapshot = { moduleId: MODULE_ID, mutation: parsed.mutation, warnings: parsed.warnings, targets, ranAtMs };
+		await writeJsonSnapshot(context, output, MUTATION_STORAGE_FILE, snapshot, 'mutasyon sonucu');
 	}
 }
 

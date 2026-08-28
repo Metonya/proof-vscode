@@ -147,7 +147,8 @@ function isLineTuple(value: unknown): value is LineTuple {
 	return Array.isArray(value) && value.length === 5 && value.every((n) => typeof n === 'number');
 }
 
-function isPerTestBlock(value: unknown): value is PerTestBlock {
+/** Faz 28 (§7.5b): `extension.ts`'in kendi `pertest-current.json`'ını doğrularken de kullanılıyor - `isMutationBlock`'un aynı gerekçesi. */
+export function isPerTestBlock(value: unknown): value is PerTestBlock {
 	return isRecord(value)
 		&& typeof value.engine === 'string'
 		&& typeof value.engineVersion === 'string'

@@ -425,7 +425,7 @@ o satırın gerçek bir perTest kaydı varsa - §7.7).
 
 ### Sağlık
 
-157 unit + 54 integration test geçiyor. SonarQube (`coverdict-vscode`,
+157 unit + 57 integration test geçiyor. SonarQube (`coverdict-vscode`,
 `http://localhost:9001`) sıfır açık bulgu, kalite kapısı **OK** (Faz 27,
 §7.4).
 
@@ -813,6 +813,37 @@ Faz 20 ile temel arayüz geldi (§8). Bilerek yapılmayanlar:
   eksik dosya/bozuk JSON/eksik alan üç ayrı durumda da sessizce yok
   sayılıyor. `npm run check-types && npm run lint`, temiz koşu (157 unit
   + 51 integration), SonarQube sıfır açık bulgu.
+- ~~**Aynı hatanın perTest ikizi.**~~ — **KAPANDI (Faz 28, §7.5b).**
+  Faz 25'in commit'i pushlanmadan kullanıcı hemen ardından **aynı hatanın
+  perTest yüzünü** canlı yakaladı (2026-08-28): Hızlı Tarama → Derin
+  Tarama → Mutasyon Testi sırayla çalıştırıldı (üçü de gerçek veri
+  üretti, ekranda doğrulandı), pencere **kapatılıp yeniden açıldı**
+  (Reload Window değil, gerçek kapat/aç) - "Satır → Testler" boştu.
+  Disk'teki gerçek `verdict-current.json` incelenerek kök nedeni
+  doğrulandı: Mutasyon Testi `--per-test-report` içermiyor, son koşu
+  olduğu için `verdict-current.json`'ı perTest'siz üzerine yazdı - Derin
+  Tarama'nın topladığı perTest verisi hiçbir yerde disk'e kalıcı
+  yazılmamıştı.
+
+  Aynı reçete uygulandı: perTest de artık kendi dosyasında,
+  `pertest-current.json` (`ui/commands.ts`'in ortak
+  `writeJsonSnapshot`'ı - mutasyonla kod tekrarını önlemek için Faz 25'in
+  `writeMutationSnapshot`'ı bu ortak fonksiyona indirgendi).
+  `extension.ts`'in `restorePerTestSnapshot`'ı `verdict-current.json`'dan
+  bağımsız, kendi erken `return`'lerinden etkilenmeyen bir adımda
+  çalışıyor; başarıyla geri yüklerse `verdict-current.json`'ın
+  (muhtemelen perTest'siz) kendi bloğu onu **ezmez** - hangisi varsa o
+  kalır. `verdict/parse.ts`'in `isPerTestBlock`'u da `isMutationBlock`
+  gibi dışa açılıp doğrulamada yeniden kullanıldı.
+
+  Doğrulama: gerçek senaryoyu birebir kuran yeni entegrasyon testleri -
+  `verdict-current.json`'da hiç `perTest` bloğu yokken (gerçek bir
+  Mutasyon Testi çıktısının şekli) `pertest-current.json`'dan doğru geri
+  yükleniyor; dosya yoksa/bozuksa eski davranışa (`verdict-current.json`'ın
+  kendi bloğu) sessizce düşülüyor. Düzeltmeden önce testin **kırmızı**
+  başladığı elle doğrulandı (geçici olarak `perTestRestored = false`
+  yapılıp koşuldu). `npm run check-types && npm run lint`, temiz koşu
+  (157 unit + 57 integration), SonarQube sıfır açık bulgu.
 - **`SUBSUMED_TEST` bulgusu** Test Kalitesi görünümünde çıkıyor ama
   mutasyon ağacıyla çapraz bağlanmadı (`PSEUDO_TESTED_METHOD` için bu
   köprü Faz 24'te kuruldu, §7.6 madde 5).
