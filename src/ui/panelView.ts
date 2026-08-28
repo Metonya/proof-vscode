@@ -160,15 +160,15 @@ function groupTestDisplays(tests: readonly string[]): { label: string; title: st
 		} else {
 			grouped.set(key, {
 				simpleClassName: id.simpleClassName, methodName: id.methodName, className: id.className,
-				invocations: id.invocation !== null ? [id.invocation] : [],
+				invocations: id.invocation === null ? [] : [id.invocation],
 			});
 		}
 	}
 
-	const groupedItems = [...grouped.values()].map((g) => ({
-		label: `${g.simpleClassName}#${g.methodName}()${g.invocations.length > 0 ? ' ' + g.invocations.map((i) => `#${i}`).join(' ') : ''}`,
-		title: g.className,
-	}));
+	const groupedItems = [...grouped.values()].map((g) => {
+		const invocationSuffix = g.invocations.length === 0 ? '' : ' ' + g.invocations.map((i) => `#${i}`).join(' ');
+		return { label: `${g.simpleClassName}#${g.methodName}()${invocationSuffix}`, title: g.className };
+	});
 	const unparsedItems = unparsed.map((raw) => ({ label: raw, title: raw }));
 	return [...groupedItems, ...unparsedItems];
 }

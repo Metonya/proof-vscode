@@ -74,39 +74,46 @@ export class CoverageTreeProvider implements vscode.TreeDataProvider<CoverageNod
 	getChildren(node?: CoverageNode): CoverageNode[] {
 		const state = getCoverageState();
 		if (!node) {
-			if (!state) {
-				return [{ kind: 'empty', message: 'Önce bir analiz çalıştırın.' }];
-			}
-			const sections: CoverageNode[] = [{ kind: 'section', id: 'overall' }, { kind: 'section', id: 'newCode' }, { kind: 'section', id: 'uncovered' }];
-			if (state.warnings.length > 0) {
-				sections.push({ kind: 'section', id: 'warnings' });
-			}
-			return sections;
+			return rootChildren(state);
 		}
 		if (!state) {
 			return [];
 		}
-
 		if (node.kind === 'section') {
-			if (node.id === 'overall') {
-				return metricNodes(state.overall);
-			}
-			if (node.id === 'newCode') {
-				return newCodeChildren(state.newCode, state.changedFiles, state.warnings);
-			}
-			if (node.id === 'warnings') {
-				return state.warnings.map((reason): CoverageNode => ({ kind: 'warning', reason }));
-			}
-			const uncoveredFiles = state.changedFiles.filter((f) => f.classification === 'mapped' && (f.uncoveredNewRanges?.length ?? 0) > 0);
-			return uncoveredFiles.length === 0
-				? [{ kind: 'empty', message: 'Kapsanmayan yeni satır yok.' }]
-				: uncoveredFiles.map((file): CoverageNode => ({ kind: 'changedFile', file }));
+			return sectionChildren(node.id, state);
 		}
 		if (node.kind === 'changedFile') {
 			return (node.file.uncoveredNewRanges ?? []).map((range): CoverageNode => ({ kind: 'range', file: node.file, range }));
 		}
 		return [];
 	}
+}
+
+function rootChildren(state: CoverageState | undefined): CoverageNode[] {
+	if (!state) {
+		return [{ kind: 'empty', message: 'Önce bir analiz çalıştırın.' }];
+	}
+	const sections: CoverageNode[] = [{ kind: 'section', id: 'overall' }, { kind: 'section', id: 'newCode' }, { kind: 'section', id: 'uncovered' }];
+	if (state.warnings.length > 0) {
+		sections.push({ kind: 'section', id: 'warnings' });
+	}
+	return sections;
+}
+
+function sectionChildren(id: 'overall' | 'newCode' | 'uncovered' | 'warnings', state: CoverageState): CoverageNode[] {
+	if (id === 'overall') {
+		return metricNodes(state.overall);
+	}
+	if (id === 'newCode') {
+		return newCodeChildren(state.newCode, state.changedFiles, state.warnings);
+	}
+	if (id === 'warnings') {
+		return state.warnings.map((reason): CoverageNode => ({ kind: 'warning', reason }));
+	}
+	const uncoveredFiles = state.changedFiles.filter((f) => f.classification === 'mapped' && (f.uncoveredNewRanges?.length ?? 0) > 0);
+	return uncoveredFiles.length === 0
+		? [{ kind: 'empty', message: 'Kapsanmayan yeni satır yok.' }]
+		: uncoveredFiles.map((file): CoverageNode => ({ kind: 'changedFile', file }));
 }
 
 /**
