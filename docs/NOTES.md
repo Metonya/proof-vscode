@@ -51,6 +51,54 @@ Kalan: madde 6/7 (kullanıcının playground'da kendi yapacağı adım).
 
 ---
 
+# Faz 20 (planlanacak) — MUTASYON TESTİ ARAYÜZÜ
+
+Kullanıcının açık isteği (2026-08-28): *"derin taramaya tıkladım onun
+mutasyon testi olduğunu mu anlamalıyım ne yapıyor o? birde mutasyon
+testinde ne kadar ilerledi yüzde vs kapsamlı rapor vs baya birşey
+istiyorum onu ayrıca düşün."*
+
+**Durum:** Mutasyon arayüzü **hiç yok**. Faz 12'den beri sırada, hiç
+başlanmadı. "Derin Tarama" mutasyon DEĞİL — L2 (hangi test hangi satır)
+topluyor; Faz 19'da tooltip'in en başına "MUTASYON TESTİ DEĞİLDİR" yazıldı
+ama bu geçici bir yama, gerçek çözüm mutasyonu gerçekten eklemek.
+
+**CLI tarafı hazır (D-71), eklentide karşılığı yok:**
+- `--mutation-report` + `--mutation-classpath <id>=<file>`
+- `--mutation-target <id>=<FQCN>` — tek sınıf, diff gerektirmez
+- `--mutation-timeout <saniye>` (varsayılan 300)
+- İlerleme akışı **zaten var ama kullanılmıyor**: CLI her ilerleme satırını
+  `stderr`'e `coverdict: ` önekiyle anında flush ediyor
+  (`AnalyzeCommand.java`'nın `buildDiagnostics`'i), 30 sn'de bir heartbeat
+  (`MutationRunner.java`). `cli/runner.ts`'in `onStderrLine` kancası hazır
+  ve şu an sadece Output'a ham geçiyor; `withProgress`'in `_progress`'i
+  kullanılmadan atılıyor (`ui/commands.ts`). `cli/progressParser.ts` adı
+  `runner.ts`'in yorumunda vaat edilmiş ama **dosya hiç yazılmadı**.
+
+**Kullanıcının istedikleri (kendi sözleriyle "baya bir şey"):**
+1. Yüzde/ilerleme göstergesi — kaç sınıf/mutant bitti, tahmini süre.
+   Veri kaynağı yukarıdaki stderr akışı; `progressParser.ts` yazılıp
+   `withProgress`'in `progress.report({ increment, message })`'ine
+   bağlanmalı.
+2. "Kapsamlı rapor" — hangi mutant nerede, öldü mü kaldı mı.
+3. Muhtemelen kendi kenar çubuğu görünümü (mevcut dört view'ın yanına).
+
+**Tasarım kararları henüz verilmedi, bir sonraki oturum sormalı:**
+- Mutasyon ayrı bir buton mu (üçüncü tarama), yoksa Derin Tarama'nın bir
+  seçeneği mi? Süre çok farklı (tek sınıf saniyeler, büyük modül 70-90
+  dakika — `ROADMAP.md`), bu yüzden **asla otomatik tetiklenmemeli**.
+- 9 PIT statüsünün üç kovaya haritalanması: `NON_VIABLE`, `MEMORY_ERROR`,
+  `NOT_STARTED`, `STARTED`, `RUN_ERROR`, `NO_COVERAGE` → **belirsiz**;
+  asla "öldü"/"kaldı" sayılmamalı (hard rule 3a).
+- İptal: `runner.ts:cancel` bugün çıplak `SIGTERM`, ağaç öldürme yok —
+  Windows'ta yalnızca doğrudan `java` sürecini bitirir, PIT'in minion
+  süreçleri kalabilir. Uzun koşan bir mutasyon için bu gerçek bir sorun.
+- Classpath: Faz 19'da `cli/classpathBuilder.ts` eklendi, mutasyon da aynı
+  listeyi kullanabilir (`--mutation-classpath`) — yeniden yazılmasına
+  gerek yok.
+
+---
+
 # Faz 18 durumu (2026-08-28) — Faz 16/17 bulgularının çoğu kapandı
 
 **Kapandı:**
