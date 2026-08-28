@@ -51,6 +51,46 @@ Kalan: madde 6/7 (kullanıcının playground'da kendi yapacağı adım).
 
 ---
 
+# Faz 18 durumu (2026-08-28) — Faz 16/17 bulgularının çoğu kapandı
+
+**Kapandı:**
+- Faz 16 madde 2 (`NotifyingCalculator.java` gutter yeşil ama Explorer'da
+  rozet yok) — **kök neden bulundu**: VS Code'un uzantı ana süreci
+  `FileDecoration.badge` iki *code point*'ten uzunsa exception fırlatıyor
+  ve o dosyanın dekorasyonunu tamamen düşürüyor. Yani `"100"` = rozetsiz
+  dosya. Bu, Faz 9 planındaki "Açık risk 1"in gerçekleşmiş hâli. %100
+  artık `✓`, tam sayı tooltip'te. Eski test `badge === '100'` diye kontrol
+  ettiği için yakalayamamıştı (throw bizde değil, VS Code tarafında oluyor)
+  — yerine sağlayıcının ürettiği **her** rozetin ≤2 code point olduğunu
+  doğrulayan bir değişmez testi kondu.
+- Faz 16 madde 3 (Test Kalitesi) — kural adları düz Türkçe başlığa çevrildi
+  (`model/ruleCatalog.ts`, metinler coverdict'in kendi
+  `docs/rules/<RULE>.md`'lerinden), ham enum yanında duruyor, hover'da
+  "ne demek + ne yapmalı" var. Filtreleme (serbest metin) ve dosyaya göre
+  gruplama eklendi. Sağ tık → Kopyala eklendi.
+- Uyarılar artık düz Türkçe (`model/warningCatalog.ts`); ham CLI mesajı
+  tooltip'te aynen korunuyor (içindeki gerçek sayılar uydurulamaz).
+- "Çalıştır" beş komuttan iki taramaya indi (Hızlı / Derin), her biri ne
+  yaptığını ve kabaca ne kadar süreceğini söylüyor.
+- Kapsama dışı bırakılmış dosyalar Explorer'da görünür oldu (gri `–`).
+
+**Hâlâ açık:**
+- **Faz 16 madde 1** — bir test dosyası açılınca "Satır → Testler" ters yön
+  yerine production yönünü render ediyor. Kök neden hipotezi ve doğrulama
+  adımı aşağıda, dokunulmadı.
+- Kullanıcının "Yeni Kod bölümünde hangi satırların değiştiğini de görmek
+  isterim" beklentisi netleşmedi (şu an sadece yüzde + kapsanmayan
+  aralıklar var, kapsanan yeni satırların listesi şemada yok — D-70).
+
+**Dikkat (tuzak):** `mvn clean test` çalıştırmak
+`target/coverdict-classpath.txt`'yi siler ve "Satır → Testler" bir daha
+çalışmaz (`PER_TEST_CLASSPATH_MISSING`). Bu oturumda bir kez yaşandı.
+`clean`den sonra classpath listesini yeniden üretin
+(`mvn dependency:build-classpath` + `target/classes`/`target/test-classes`
+satırlarını ekleyin) — `run.ps1` bunu zaten yapıyor.
+
+---
+
 # Faz 16 — Faz 15 sonrası elle test bulguları (2026-08-28, ekran görüntüleriyle)
 
 Kullanıcı Faz 15'i (hover + "Satır → Testler" ağacı + oracleless gutter)
