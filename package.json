@@ -63,7 +63,7 @@
         "coverdict.baseRef": {
           "type": "string",
           "default": "",
-          "description": "coverdict.diffMode \"base\" iken karşılaştırılacak commit, branch veya tag adı (örn. \"main\" veya \"origin/main\"). Diğer diffMode değerlerinde kullanılmaz."
+          "description": "coverdict.diffMode \"base\" iken karşılaştırılacak commit, branch veya tag adı (örn. \"main\" veya \"origin/main\"). Diğer diffMode değerlerinde kullanılmaz. HEAD'in kendisini veya HEAD'in atası olmayan bir ref'i girerseniz diff boş çıkar - karşılaştıracak gerçek bir fark yoktur."
         },
         "coverdict.perTestClasspathPath": {
           "type": "string",
@@ -95,7 +95,7 @@
     "commands": [
       {
         "command": "coverdict.analyze",
-        "title": "coverdict: Analiz Et"
+        "title": "coverdict: Kapsama Taraması"
       },
       {
         "command": "coverdict.toggleCoverage",
@@ -103,7 +103,7 @@
       },
       {
         "command": "coverdict.analyzePerTest",
-        "title": "coverdict: Analiz Et (test bazlı)"
+        "title": "coverdict: Kapsama + Hangi Test Hangi Satırı Kapsıyor"
       },
       {
         "command": "coverdict.showLineTests",

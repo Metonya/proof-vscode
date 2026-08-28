@@ -34,7 +34,7 @@ export class CoverageTreeProvider implements vscode.TreeDataProvider<CoverageNod
 			case 'section':
 				return section(node.id);
 			case 'metric':
-				return leaf(`${node.name}: ${percentText(node.metric)}`, 'graph');
+				return leaf(`${node.name}: ${percentText(node.metric)}`, 'graph', metricTooltip(node.name));
 			case 'newCodeStatus':
 				return leaf(newCodeStatusText(node.status), 'info');
 			case 'changedFile': {
@@ -107,10 +107,25 @@ function section(id: 'overall' | 'newCode' | 'uncovered'): vscode.TreeItem {
 	return item;
 }
 
-function leaf(label: string, icon: string): vscode.TreeItem {
+function leaf(label: string, icon: string, tooltip?: string): vscode.TreeItem {
 	const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
 	item.iconPath = new vscode.ThemeIcon(icon);
+	if (tooltip) {
+		item.tooltip = tooltip;
+	}
 	return item;
+}
+
+/** Faz 13 madde 10: üç metrik modunun nasıl hesaplandığını anlatan tek yer - `MetricsEngine.java`/D-04'e dayanıyor, uydurulmuyor. */
+function metricTooltip(name: keyof MetricSet): string {
+	switch (name) {
+		case 'jacoco-line':
+			return 'Bir satırdaki herhangi bir komut çalıştıysa kapsanmış sayılır - en cömert sayı, JaCoCo\'nun ham satır kapsamasıyla birebir aynı.';
+		case 'strict-line':
+			return 'Bir satırın kapsanmış sayılması için o satırdaki HER komutun çalışmış olması gerekir - en katı sayı, genelde en düşük çıkar.';
+		case 'sonar-compatible':
+			return 'JaCoCo satır kapsamasına dal (branch) kapsamasını da ekler - SonarQube\'un gösterdiği yüzdeyle ±0.1 içinde eşleşir, bu yüzden genelde jacoco-line\'dan daha düşük çıkar.';
+	}
 }
 
 function percentText(metric: Metric): string {

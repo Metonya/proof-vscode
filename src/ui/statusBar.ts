@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 
+import type { BadgeMetric } from '../model/metrics';
 import type { MetricSet } from '../verdict/types';
 
 /**
@@ -23,10 +24,10 @@ export function showNoFileCoverageWarning(item: vscode.StatusBarItem): void {
 	item.show();
 }
 
-export function showCoverageSummary(item: vscode.StatusBarItem, overall: MetricSet, gutterVisible: boolean): void {
-	const jacocoLine = overall['jacoco-line'].percent;
+export function showCoverageSummary(item: vscode.StatusBarItem, overall: MetricSet, gutterVisible: boolean, badgeMetric: BadgeMetric): void {
+	const headlinePercent = overall[badgeMetric].percent;
 	const eyeIcon = gutterVisible ? 'eye' : 'eye-closed';
-	item.text = jacocoLine === null ? '$(check) coverdict' : `$(${eyeIcon}) coverdict ${jacocoLine}%`;
+	item.text = headlinePercent === null ? '$(check) coverdict' : `$(${eyeIcon}) coverdict ${headlinePercent}%`;
 	item.tooltip = new vscode.MarkdownString(
 		[
 			`**coverdict** - ${gutterVisible ? 'kapsama görünümü açık' : 'kapsama görünümü kapalı'} (aç/kapat için tıklayın)`,

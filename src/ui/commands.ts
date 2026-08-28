@@ -108,7 +108,7 @@ export function publishAnalysis(sinks: CoverageSinks, workspaceRoot: string, res
 
 	if (result.fileCoverage) {
 		paintCoverage(sinks, workspaceRoot, result.fileCoverage);
-		showCoverageSummary(sinks.statusBarItem, result.overall, isGutterVisible());
+		showCoverageSummary(sinks.statusBarItem, result.overall, isGutterVisible(), readBadgeMetric(workspaceRoot));
 	} else {
 		showNoFileCoverageWarning(sinks.statusBarItem);
 		sinks.explorerBadges.clear();
@@ -137,7 +137,9 @@ function toggleCoverage(sinks: CoverageSinks): void {
 		sinks.explorerBadges.clear();
 		clearGutterCoverage(sinks.gutterTypes);
 	}
-	showCoverageSummary(sinks.statusBarItem, state.overall, nextVisible);
+	showCoverageSummary(sinks.statusBarItem, state.overall, nextVisible, readBadgeMetric(state.workspaceRoot));
+	sinks.runView.refresh();
+	vscode.window.setStatusBarMessage(`coverdict: kapsama görünümü ${nextVisible ? 'açık' : 'kapalı'}`, 2000);
 }
 
 async function runAnalyze(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
@@ -174,7 +176,10 @@ async function runAnalyzePerTest(context: vscode.ExtensionContext, output: vscod
 		return;
 	}
 	if (diffMode.kind === 'no-vcs') {
-		vscode.window.showErrorMessage('coverdict: test bazlı analiz bir diff modu gerektirir, "no-vcs" ile çalışmaz. coverdict.diffMode ayarını "uncommitted" veya "base" yapın.');
+		vscode.window.showErrorMessage(
+			'coverdict: L2 kanıtı sadece değişen dosyaları hedefleyebilir; no-vcs\'te "değişen dosya" diye bir kavram yok, bu yüzden test bazlı analiz çalışmaz. '
+			+ 'coverdict.diffMode ayarını "uncommitted" veya "base" yapın.',
+		);
 		return;
 	}
 
@@ -305,12 +310,16 @@ async function runAnalyzeCore(
 			// All three modes (jacoco-line, strict-line, sonar-compatible) are
 			// already in the verdict - zero new analysis to show them side by
 			// side (Plan.md Bölüm 4, 2026-08-27: jacoco-line and sonar-compatible
-			// are genuinely different numbers, not a rounding artifact).
+			// are genuinely different numbers, not a rounding artifact). Faz 13
+			// madde 9: seçili badgeMetric öne çıkar, diğer ikisi yanında küçük
+			// kalır - üçü de eşit ağırlıkta yan yana basmak okunaksızdı.
 			const overall = parsed.value.coverage.overall;
+			const headline = readBadgeMetric(folder.uri.fsPath);
+			const others = (['jacoco-line', 'strict-line', 'sonar-compatible'] as const).filter((m) => m !== headline);
 			vscode.window.showInformationMessage(
-				`coverdict: ${parsed.value.analysis.status} - jacoco-line ${percentText(overall['jacoco-line'].percent)}`
-				+ ` · strict-line ${percentText(overall['strict-line'].percent)}`
-				+ ` · sonar-compatible ${percentText(overall['sonar-compatible'].percent)}`,
+				`coverdict: analiz ${statusText(parsed.value.analysis.status)} — ${headline} ${percentText(overall[headline].percent)}`
+				+ ` (${others.map((m) => `${m} ${percentText(overall[m].percent)}`).join(', ')})`
+				+ ' · ayrıntılar için Kapsama görünümüne bakın',
 			);
 
 			return parsed.value;
@@ -318,8 +327,17 @@ async function runAnalyzeCore(
 	);
 }
 
+/** `coverdict.badgeMetric`'i tekli okuma noktası - durum çubuğu başlığı, rozetler ve gutter aynı ayarı, aynı şekilde okur (madde 2). */
+function readBadgeMetric(workspaceRoot: string): BadgeMetric {
+	return vscode.workspace.getConfiguration('coverdict', vscode.Uri.file(workspaceRoot)).get<BadgeMetric>('badgeMetric') ?? 'sonar-compatible';
+}
+
 function percentText(percent: number | null): string {
 	return percent === null ? 'yok' : `${percent}%`;
+}
+
+function statusText(status: 'complete' | 'incomplete'): string {
+	return status === 'complete' ? 'tamamlandı' : 'eksik tamamlandı';
 }
 
 /** A blocking configuration problem: shows the reason and a button that opens Settings scrolled to the offending key, instead of a bare error + a manual search. */
@@ -346,7 +364,7 @@ function paintCoverage(sinks: CoverageSinks, workspaceRoot: string, fileCoverage
 	const config = vscode.workspace.getConfiguration('coverdict', vscode.Uri.file(workspaceRoot));
 	const showExplorerBadges = config.get<boolean>('show.explorerBadges') ?? true;
 	const showLineGutter = config.get<boolean>('show.lineGutter') ?? true;
-	const badgeMetric = config.get<BadgeMetric>('badgeMetric') ?? 'sonar-compatible';
+	const badgeMetric = readBadgeMetric(workspaceRoot);
 
 	if (showExplorerBadges) {
 		sinks.explorerBadges.update(workspaceRoot, fileCoverage, badgeMetric);
