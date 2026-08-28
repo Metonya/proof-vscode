@@ -6,19 +6,19 @@ import { getCoverageState, getStaleFiles, isGutterVisible, setPerTestState } fro
 import {
 	analysisResultFrom,
 	publishAnalysis,
-	refreshLineTestsPanelForActiveEditor,
 	registerAnalyzeCommand,
 	registerAnalyzePerTestCommand,
 	registerPerTestForFileCommand,
-	registerShowLineTestsCommand,
 	registerToggleCoverageCommand,
 	type CoverageSinks,
 } from './ui/commands';
 import { createDiagnosticCollection } from './ui/diagnostics';
 import { ExplorerBadgeProvider } from './ui/explorerBadges';
 import { applyGutterCoverage, createGutterDecorationTypes } from './ui/gutterRenderer';
+import { registerHoverProvider } from './ui/hoverProvider';
 import { createStatusBarItem } from './ui/statusBar';
 import { CoverageTreeProvider } from './ui/treeViews/coverageView';
+import { LineTestsTreeProvider, type LineTestsNode } from './ui/treeViews/lineTestsView';
 import { QualityTreeProvider } from './ui/treeViews/qualityView';
 import { RunTreeProvider } from './ui/treeViews/runView';
 import { parseVerdict } from './verdict/parse';
@@ -40,14 +40,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	const runView = new RunTreeProvider();
 	const coverageView = new CoverageTreeProvider();
 	const qualityView = new QualityTreeProvider();
-	const sinks: CoverageSinks = { context, gutterTypes, explorerBadges, statusBarItem, diagnostics, runView, coverageView, qualityView };
+	const lineTestsView = new LineTestsTreeProvider();
+	const sinks: CoverageSinks = { context, gutterTypes, explorerBadges, statusBarItem, diagnostics, runView, coverageView, qualityView, lineTestsView };
+
+	// Faz 15c: `createTreeView` (not `registerTreeDataProvider`) because
+	// `reveal()` needs it - the cursor-follow listener below uses it to
+	// jump the tree to whichever line the caret is on. Unlike the deleted
+	// webview panel, clicking a node in this view cannot empty it: the
+	// provider tracks the last Java editor itself (`setActiveDocument`),
+	// never reads `vscode.window.activeTextEditor` live.
+	const lineTestsTreeView = vscode.window.createTreeView('coverdict.lineTestsView', { treeDataProvider: lineTestsView, showCollapseAll: true });
+	lineTestsView.setActiveDocument(vscode.window.activeTextEditor?.document);
 
 	context.subscriptions.push(
 		output,
 		gutterTypes.covered,
 		gutterTypes.partial,
 		gutterTypes.uncovered,
+		gutterTypes.oracleless,
 		gutterTypes.excluded,
+		gutterTypes.stale,
 		explorerBadges,
 		vscode.window.registerFileDecorationProvider(explorerBadges),
 		statusBarItem,
@@ -55,11 +67,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		vscode.window.registerTreeDataProvider('coverdict.runView', runView),
 		vscode.window.registerTreeDataProvider('coverdict.coverageView', coverageView),
 		vscode.window.registerTreeDataProvider('coverdict.qualityView', qualityView),
+		lineTestsTreeView,
+		registerHoverProvider(),
 		registerAnalyzeCommand(context, output, sinks),
 		registerAnalyzePerTestCommand(context, output, sinks),
 		registerPerTestForFileCommand(context, output, sinks),
 		registerToggleCoverageCommand(sinks),
-		registerShowLineTestsCommand(),
 		// setDecorations is per-editor, not global - a newly-visible editor
 		// needs its gutter marks re-applied by hand (Faz 9: always our own
 		// decorations now, no native path that keeps its own state).
@@ -88,11 +101,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 				applyGutterCoverage(gutterTypes, state.workspaceRoot, state.fileCoverage, getStaleFiles());
 			}
 		}),
-		// F3: an already-open line->tests panel follows the user from file to
-		// file - re-running the command every time they switch editors would
-		// be the "why do I have to keep asking" complaint F1's restore-on-
-		// activation fix already addressed once this session.
-		vscode.window.onDidChangeActiveTextEditor(() => refreshLineTestsPanelForActiveEditor()),
+		// Faz 15c: "Satır → Testler" görünümü aktif Java dosyasını takip eder -
+		// eski panelin aksine bunu ayrı bir dinleyicide, sinyali kendi tuttuğu
+		// bir alanda saklayarak yapıyor, `activeTextEditor`'ü canlı okumuyor.
+		vscode.window.onDidChangeActiveTextEditor((editor) => lineTestsView.setActiveDocument(editor?.document)),
+		// İmleç takibi: seçim değişince o satırın düğümünü ağaçta `reveal` eder.
+		vscode.window.onDidChangeTextEditorSelection((e) => {
+			if (e.textEditor.document.languageId !== 'java' || e.textEditor !== vscode.window.activeTextEditor) {
+				return;
+			}
+			const node: LineTestsNode | undefined = lineTestsView.nodeForLine(e.selections[0].active.line + 1);
+			if (node) {
+				void lineTestsTreeView.reveal(node, { select: true, focus: false });
+			}
+		}),
 		// coverdict.show.* ayarları canlı: kullanıcı ayarlar sayfasında
 		// değiştirdiği anda son taramadan yeniden boyanır, tekrar analiz veya
 		// aç/kapat yapmasına gerek kalmaz.

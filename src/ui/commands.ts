@@ -5,10 +5,9 @@ import * as vscode from 'vscode';
 import { buildAnalyzeArgs, type DiffMode } from '../cli/argsBuilder';
 import { locateJar } from '../cli/jarLocator';
 import { run } from '../cli/runner';
+import { buildFalseGreenIndex } from '../model/falseGreenIndex';
 import type { BadgeMetric } from '../model/metrics';
 import { detectClassName } from '../model/classNameDetector';
-import { testsForClass } from '../model/lineIndex';
-import { toRepoRelativePath } from '../model/pathIndex';
 import {
 	getCoverageState,
 	getPerTestState,
@@ -23,11 +22,14 @@ import type { ChangedFile, FileCoverageBlock, Finding, MetricSet, NewCodeCoverag
 import { publishFindings } from './diagnostics';
 import type { ExplorerBadgeProvider } from './explorerBadges';
 import { applyGutterCoverage, clearGutterCoverage, type GutterDecorationTypes } from './gutterRenderer';
-import { refreshLineTestsPanelIfOpen, showLineTestsPanel, type PanelContent } from './panelView';
 import { showCoverageSummary, showNoFileCoverageWarning } from './statusBar';
 import type { CoverageTreeProvider } from './treeViews/coverageView';
+import type { LineTestsTreeProvider } from './treeViews/lineTestsView';
 import type { QualityTreeProvider } from './treeViews/qualityView';
 import type { RunTreeProvider } from './treeViews/runView';
+
+/** Faz 15d'nin `model/falseGreenIndex.ts`'i şu an tek bir kaynak modülü varsayıyor - F8'in çoklu modül config UI'ı gelene kadar aynı sınır. */
+const DEFAULT_SOURCE_ROOTS = ['src/main/java'];
 
 /** F3's own module id - single-module shorthand only, same scope limit as F1's argsBuilder (multi-module lands with F8). */
 const MODULE_ID = 'root';
@@ -49,6 +51,7 @@ export interface CoverageSinks {
 	runView: RunTreeProvider;
 	coverageView: CoverageTreeProvider;
 	qualityView: QualityTreeProvider;
+	lineTestsView: LineTestsTreeProvider;
 }
 
 export function registerAnalyzeCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
@@ -65,19 +68,9 @@ export function registerToggleCoverageCommand(sinks: CoverageSinks): vscode.Disp
 	return vscode.commands.registerCommand('coverdict.toggleCoverage', () => toggleCoverage(sinks));
 }
 
-/** F3: opens (or reveals) the line->tests panel for the currently active editor. */
-export function registerShowLineTestsCommand(): vscode.Disposable {
-	return vscode.commands.registerCommand('coverdict.showLineTests', () => showLineTestsPanel(computePanelContent()));
-}
-
 /** Faz 14b: diff'siz L2 kanıtı, tek bir açık dosya için (`--per-test-target`, Faz 14a). */
 export function registerPerTestForFileCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
 	return vscode.commands.registerCommand('coverdict.perTestForFile', () => runPerTestForFile(context, output, sinks));
-}
-
-/** Called from extension.ts on active-editor change, to keep an already-open panel in sync without a new command invocation. */
-export function refreshLineTestsPanelForActiveEditor(): void {
-	refreshLineTestsPanelIfOpen(computePanelContent());
 }
 
 /** The subset of a parsed verdict `publishAnalysis` needs - deliberately flat so both a fresh CLI run and a restore from storage can build it without a fake `VerdictDocument`. */
@@ -113,7 +106,7 @@ export function publishAnalysis(sinks: CoverageSinks, workspaceRoot: string, res
 	setCoverageState({ workspaceRoot, ...result });
 
 	if (result.fileCoverage) {
-		paintCoverage(sinks, workspaceRoot, result.fileCoverage);
+		paintCoverage(sinks, workspaceRoot, result.fileCoverage, result.findings);
 		showCoverageSummary(sinks.statusBarItem, result.overall, isGutterVisible(), readBadgeMetric(workspaceRoot), result.newCode);
 	} else {
 		showNoFileCoverageWarning(sinks.statusBarItem);
@@ -125,6 +118,7 @@ export function publishAnalysis(sinks: CoverageSinks, workspaceRoot: string, res
 	sinks.runView.refresh();
 	sinks.coverageView.refresh();
 	sinks.qualityView.refresh();
+	sinks.lineTestsView.refresh();
 }
 
 function toggleCoverage(sinks: CoverageSinks): void {
@@ -138,7 +132,7 @@ function toggleCoverage(sinks: CoverageSinks): void {
 	setGutterVisible(nextVisible);
 
 	if (nextVisible) {
-		paintCoverage(sinks, state.workspaceRoot, state.fileCoverage);
+		paintCoverage(sinks, state.workspaceRoot, state.fileCoverage, state.findings);
 	} else {
 		sinks.explorerBadges.clear();
 		clearGutterCoverage(sinks.gutterTypes);
@@ -199,7 +193,7 @@ async function runAnalyzePerTest(context: vscode.ExtensionContext, output: vscod
 	if (!parsed.perTest) {
 		vscode.window.showWarningMessage('coverdict: bu koşuda test bazlı (per-test) kanıt yok - PER_TEST_* uyarıları için çıktı kanalını kontrol edin.');
 	}
-	showLineTestsPanel(computePanelContent());
+	revealLineTestsView(sinks);
 }
 
 /**
@@ -240,7 +234,13 @@ async function runPerTestForFile(context: vscode.ExtensionContext, output: vscod
 	if (!parsed.perTest) {
 		vscode.window.showWarningMessage(`coverdict: ${className} için test bazlı kanıt yok - PER_TEST_* uyarıları için çıktı kanalını kontrol edin.`);
 	}
-	showLineTestsPanel(computePanelContent());
+	revealLineTestsView(sinks);
+}
+
+/** Faz 15c/15e: yeni "Satır → Testler" kenar çubuğu görünümüne odaklanır - eski webview'in aksine, tıklanınca kendini boşaltmaz (o hatanın doğrudan dersi, bkz. `ui/treeViews/lineTestsView.ts`). */
+function revealLineTestsView(sinks: CoverageSinks): void {
+	sinks.lineTestsView.refresh();
+	void vscode.commands.executeCommand('coverdict.lineTestsView.focus');
 }
 
 /** `coverdict.diffMode` + (base modundaysa) `coverdict.baseRef`'i okur; base seçiliyken baseRef boşsa kullanıcıyı ayara yönlendirip `undefined` döner. */
@@ -398,7 +398,7 @@ async function offerToOpenSetting(message: string, settingId: string): Promise<v
  * API'nin "ikisini birlikte üretir" kısıtı yok. `isGutterVisible()` (F4'ün
  * genel aç/kapa'sı) `false` ise ikisi de hiç çağrılmaz.
  */
-function paintCoverage(sinks: CoverageSinks, workspaceRoot: string, fileCoverage: FileCoverageBlock): void {
+function paintCoverage(sinks: CoverageSinks, workspaceRoot: string, fileCoverage: FileCoverageBlock, findings: readonly Finding[]): void {
 	if (!isGutterVisible()) {
 		sinks.explorerBadges.clear();
 		clearGutterCoverage(sinks.gutterTypes);
@@ -408,6 +408,7 @@ function paintCoverage(sinks: CoverageSinks, workspaceRoot: string, fileCoverage
 	const config = vscode.workspace.getConfiguration('coverdict', vscode.Uri.file(workspaceRoot));
 	const showExplorerBadges = config.get<boolean>('show.explorerBadges') ?? true;
 	const showLineGutter = config.get<boolean>('show.lineGutter') ?? true;
+	const showOraclelessLines = config.get<boolean>('show.oraclelessLines') ?? true;
 	const badgeMetric = readBadgeMetric(workspaceRoot);
 
 	if (showExplorerBadges) {
@@ -417,58 +418,17 @@ function paintCoverage(sinks: CoverageSinks, workspaceRoot: string, fileCoverage
 	}
 
 	if (showLineGutter) {
-		applyGutterCoverage(sinks.gutterTypes, workspaceRoot, fileCoverage, getStaleFiles());
+		// Faz 15d: a JaCoCo-green line every covering test has a real
+		// oracle-quality finding against gets its own decoration instead of
+		// blending into "covered" - only computed when the setting is on and
+		// there is per-test evidence to compute it from (no perTest -> no claim).
+		const perTest = getPerTestState();
+		const falseGreenLinesByPath = showOraclelessLines && perTest?.perTest
+			? buildFalseGreenIndex(perTest.perTest, perTest.moduleId, findings, fileCoverage, DEFAULT_SOURCE_ROOTS)
+			: new Map();
+		applyGutterCoverage(sinks.gutterTypes, workspaceRoot, fileCoverage, getStaleFiles(), falseGreenLinesByPath);
 	} else {
 		clearGutterCoverage(sinks.gutterTypes);
 	}
 }
 
-/**
- * F3's fallback ladder (Plan.md Bölüm 4), checked in this exact order:
- * `PER_TEST_TRUNCATED` first (evidence dropped, not "no tests" - hard rule
- * 3a), then no perTest block at all (suggest a re-scan), then class not
- * found in the evidence (L2 only covers changed classes). The active
- * editor's FQCN is best-effort (`detectClassName`) - a nonstandard file is
- * indistinguishable from "out of scope" here, which is the same honest
- * degrade the plan already accepts for that shape.
- */
-function computePanelContent(): PanelContent {
-	const coverageState = getCoverageState();
-	if (!coverageState) {
-		return { kind: 'noWorkspace' };
-	}
-
-	const editor = vscode.window.activeTextEditor;
-	if (editor?.document.languageId !== 'java') {
-		return { kind: 'noActiveEditor' };
-	}
-
-	const perTestState = getPerTestState();
-	const warningFor = (code: string) => perTestState?.warnings.find((w) => w.code === code && (w.module === undefined || w.module === perTestState.moduleId));
-	if (warningFor('PER_TEST_TRUNCATED')) {
-		return { kind: 'truncated', message: warningFor('PER_TEST_TRUNCATED')!.message };
-	}
-	if (!perTestState?.perTest) {
-		return { kind: 'noPerTestData' };
-	}
-	// Bu, "hiç kanıt yok" ile "kapsam dışı" ile aynı görünmemesi gereken üçüncü
-	// bir durum: L2 hiçbir sınıfı hedeflemedi çünkü diff'te değişen production
-	// sınıfı yoktu (PerTestCollector.java'nın kendi uyarısı) - kullanıcının
-	// "anlamadım" dediği yer tam olarak burasıydı (2026-08-27).
-	if (warningFor('PER_TEST_NO_CHANGED_TARGETS')) {
-		return { kind: 'noChangedTargets' };
-	}
-
-	const fileName = path.basename(editor.document.fileName, '.java');
-	const className = detectClassName(editor.document.getText(), fileName);
-	const lookup = testsForClass(perTestState.perTest, perTestState.moduleId, className);
-	if (lookup.kind !== 'found') {
-		return { kind: 'classOutOfScope', className };
-	}
-
-	const relativePath = toRepoRelativePath(coverageState.workspaceRoot, editor.document.uri.fsPath);
-	return {
-		kind: 'lines', fileName: relativePath ?? editor.document.fileName, className,
-		linesToTests: lookup.linesToTests, ambientLinesToTests: lookup.ambientLinesToTests,
-	};
-}

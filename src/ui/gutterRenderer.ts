@@ -22,6 +22,8 @@ export interface GutterDecorationTypes {
 	uncovered: vscode.TextEditorDecorationType;
 	excluded: vscode.TextEditorDecorationType;
 	stale: vscode.TextEditorDecorationType;
+	/** Faz 15d: JaCoCo-covered, but every covering test has a real oracle-quality finding - a "false green" the plain JaCoCo colors cannot distinguish from a genuinely tested line. */
+	oracleless: vscode.TextEditorDecorationType;
 }
 
 export function createGutterDecorationTypes(): GutterDecorationTypes {
@@ -55,6 +57,7 @@ export function createGutterDecorationTypes(): GutterDecorationTypes {
 				margin: '0 0 0 1em',
 			},
 		}),
+		oracleless: borderDecoration(new vscode.ThemeColor('charts.orange')),
 	};
 }
 
@@ -69,12 +72,24 @@ function borderDecoration(color: vscode.ThemeColor): vscode.TextEditorDecoration
 	});
 }
 
-export function applyGutterCoverage(types: GutterDecorationTypes, workspaceRoot: string, block: FileCoverageBlock, staleAbsolutePaths: ReadonlySet<string> = new Set()): void {
-	const rangesByAbsolutePath = new Map<string, Record<LineState, vscode.Range[]>>();
+export function applyGutterCoverage(
+	types: GutterDecorationTypes,
+	workspaceRoot: string,
+	block: FileCoverageBlock,
+	staleAbsolutePaths: ReadonlySet<string> = new Set(),
+	falseGreenLinesByPath: ReadonlyMap<string, ReadonlySet<number>> = new Map(),
+): void {
+	const rangesByAbsolutePath = new Map<string, Record<LineState | 'oracleless', vscode.Range[]>>();
 	for (const entry of block.files) {
-		const byState: Record<LineState, vscode.Range[]> = { covered: [], partial: [], uncovered: [] };
+		const byState: Record<LineState | 'oracleless', vscode.Range[]> = { covered: [], partial: [], uncovered: [], oracleless: [] };
+		const falseGreenLines = falseGreenLinesByPath.get(entry.path);
 		for (const mapped of mapLines(entry.lines)) {
-			byState[classifyLine(mapped)].push(new vscode.Range(mapped.line - 1, 0, mapped.line - 1, 0));
+			const state = classifyLine(mapped);
+			const range = new vscode.Range(mapped.line - 1, 0, mapped.line - 1, 0);
+			// Faz 15d: a JaCoCo-covered line whose every covering test has no
+			// real oracle moves out of "covered" into its own bucket - never
+			// touches partial/uncovered, both already say something real.
+			byState[state === 'covered' && falseGreenLines?.has(mapped.line) ? 'oracleless' : state].push(range);
 		}
 		rangesByAbsolutePath.set(toAbsolutePath(workspaceRoot, entry.path), byState);
 	}
@@ -86,6 +101,7 @@ export function applyGutterCoverage(types: GutterDecorationTypes, workspaceRoot:
 			editor.setDecorations(types.covered, []);
 			editor.setDecorations(types.partial, []);
 			editor.setDecorations(types.uncovered, []);
+			editor.setDecorations(types.oracleless, []);
 			editor.setDecorations(types.excluded, []);
 			editor.setDecorations(types.stale, bannerRange);
 			continue;
@@ -96,6 +112,7 @@ export function applyGutterCoverage(types: GutterDecorationTypes, workspaceRoot:
 		editor.setDecorations(types.covered, byState?.covered ?? []);
 		editor.setDecorations(types.partial, byState?.partial ?? []);
 		editor.setDecorations(types.uncovered, byState?.uncovered ?? []);
+		editor.setDecorations(types.oracleless, byState?.oracleless ?? []);
 
 		const relative = toRepoRelativePath(workspaceRoot, editor.document.uri.fsPath);
 		const isExcluded = relative !== undefined && excludedPaths.has(relative);
@@ -108,6 +125,7 @@ export function clearGutterCoverage(types: GutterDecorationTypes): void {
 		editor.setDecorations(types.covered, []);
 		editor.setDecorations(types.partial, []);
 		editor.setDecorations(types.uncovered, []);
+		editor.setDecorations(types.oracleless, []);
 		editor.setDecorations(types.excluded, []);
 		editor.setDecorations(types.stale, []);
 	}

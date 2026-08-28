@@ -1,0 +1,67 @@
+import * as assert from 'node:assert/strict';
+import { test } from 'node:test';
+
+import { buildFalseGreenIndex } from '../../../model/falseGreenIndex';
+import type { FileCoverageBlock, Finding, PerTestBlock } from '../../../verdict/types';
+
+const METRIC = { numeratorName: 'a', numerator: 1, denominatorName: 'b', denominator: 1, percent: 100 };
+const METRIC_SET = { 'jacoco-line': METRIC, 'strict-line': METRIC, 'sonar-compatible': METRIC };
+
+const FILE_COVERAGE: FileCoverageBlock = {
+	files: [{ module: 'root', path: 'src/main/java/dev/coverdict/playground/Calculator.java', metrics: METRIC_SET, lines: [] }],
+	excluded: [],
+};
+
+const PER_TEST: PerTestBlock = {
+	engine: 'pitest',
+	engineVersion: '1.15.8',
+	modules: [{
+		id: 'root',
+		entries: [{
+			className: 'dev.coverdict.playground.Calculator',
+			methodName: 'square',
+			lines: [
+				{ line: 37, tests: ['[class:dev.coverdict.playground.CalculatorPseudoTestedTest]/[method:squareHasNoAssertion()]'] },
+				{ line: 15, tests: [
+					'[class:dev.coverdict.playground.CalculatorSubsumedTest]/[method:divideAndMultiplyWide()]',
+					'[class:dev.coverdict.playground.CalculatorTautologicalOracleTest]/[method:multiplyConstantVsConstant()]',
+				] },
+			],
+		}],
+		ambient: [],
+	}],
+};
+
+const FINDINGS: readonly Finding[] = [
+	{
+		rule: 'NO_RECOGNIZED_ORACLE', confidence: 'HIGH', severity: 'WARNING', module: 'root',
+		path: 'x', startLine: 1, endLine: 1, message: 'm', suggestedAction: 'a', fingerprint: '1',
+		testMethod: 'dev.coverdict.playground.CalculatorPseudoTestedTest#squareHasNoAssertion()',
+	},
+	{
+		rule: 'TAUTOLOGICAL_ORACLE', confidence: 'HIGH', severity: 'WARNING', module: 'root',
+		path: 'x', startLine: 1, endLine: 1, message: 'm', suggestedAction: 'a', fingerprint: '2',
+		testMethod: 'dev.coverdict.playground.CalculatorTautologicalOracleTest#multiplyConstantVsConstant()',
+	},
+];
+
+/** Real data shape from a live --per-test-target run (Faz 15 session) - line 37's single test has no oracle, line 15's has a real one alongside a weak one. */
+test('buildFalseGreenIndex: a line whose only covering test has no oracle is in the index, keyed by the production file path', () => {
+	const index = buildFalseGreenIndex(PER_TEST, 'root', FINDINGS, FILE_COVERAGE, ['src/main/java']);
+	const lines = index.get('src/main/java/dev/coverdict/playground/Calculator.java');
+	assert.ok(lines?.has(37));
+});
+
+test('buildFalseGreenIndex: a line with at least one test that has no finding is not in the index', () => {
+	const index = buildFalseGreenIndex(PER_TEST, 'root', FINDINGS, FILE_COVERAGE, ['src/main/java']);
+	const lines = index.get('src/main/java/dev/coverdict/playground/Calculator.java');
+	assert.ok(!lines?.has(15));
+});
+
+test('buildFalseGreenIndex: no perTest module for the id returns an empty index, not an error', () => {
+	assert.equal(buildFalseGreenIndex(PER_TEST, 'nope', FINDINGS, FILE_COVERAGE, ['src/main/java']).size, 0);
+});
+
+test('buildFalseGreenIndex: no fileCoverage (flag not requested) returns an empty index rather than guessing a path', () => {
+	assert.equal(buildFalseGreenIndex(PER_TEST, 'root', FINDINGS, undefined, ['src/main/java']).size, 0);
+});
