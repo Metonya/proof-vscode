@@ -307,15 +307,16 @@
     "test": "npm run test:unit && npm run test:integration",
     "test:unit": "node --test \"out/test/unit/**/*.test.js\"",
     "test:unit:coverage": "c8 --reporter=lcov --report-dir=coverage --include=\"out/cli/**\" --include=\"out/model/**\" --include=\"out/verdict/**\" node --test \"out/test/unit/**/*.test.js\"",
-    "test:integration": "vscode-test"
+    "test:integration": "vscode-test",
+    "test:integration:coverage": "vscode-test --coverage"
   },
   "devDependencies": {
     "@eslint/js": "^9.13.0",
     "@stylistic/eslint-plugin": "^2.9.0",
     "@types/node": "^22.20.1",
     "@types/vscode": "^1.88.0",
-    "@vscode/test-cli": "^0.0.10",
-    "@vscode/test-electron": "^2.4.1",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.1.0",
     "c8": "^10.1.3",
     "esbuild": "^0.25.0",
     "eslint": "^9.13.0",

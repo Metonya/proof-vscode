@@ -426,7 +426,8 @@ o satırın gerçek bir perTest kaydı varsa - §7.7).
 ### Sağlık
 
 157 unit + 54 integration test geçiyor. SonarQube (`coverdict-vscode`,
-`http://localhost:9001`) sıfır açık bulgu.
+`http://localhost:9001`) sıfır açık bulgu, kalite kapısı **OK** (Faz 27,
+§7.4).
 
 ---
 
@@ -496,20 +497,32 @@ kullanmıyor** — varlığını bil, çağırma.
 ### SonarQube
 
 ```bash
-sonar-scanner -Dsonar.host.url=http://localhost:9001 -Dsonar.token=$SONAR_TOKEN -Dsonar.projectKey=coverdict-vscode -Dsonar.sources=src -Dsonar.exclusions=**/*.test.ts,out/**,dist/**,.vscode-test/** -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+sonar-scanner -Dsonar.host.url=http://localhost:9001 -Dsonar.token=$SONAR_TOKEN -Dsonar.projectKey=coverdict-vscode -Dsonar.sources=src -Dsonar.exclusions=**/*.test.ts,out/**,dist/**,.vscode-test/** -Dsonar.coverage.exclusions=src/ui/** -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
 ```
 
 Sonuçlar SonarQube MCP araçlarıyla okunur
 (`search_sonar_issues_in_projects`, `get_project_quality_gate_status`).
 Yeni bulgu **sıfır** olmalı; bu repoda Sonar temizliği duran bir kısıttır.
 
-**Kalite kapısı hakkında bilinmesi gereken:** `new_violations` ve
-`new_security_hotspots_reviewed` geçiyor, ama kapının bütünü `new_coverage`
-yüzünden ERROR veriyor (~%59, eşik %80). Sebep yapısal: `c8` yalnızca
-`out/cli`, `out/model`, `out/verdict`'i ölçüyor; `src/ui/**` gerçek
-Extension Host testleriyle test ediliyor ama o koşu enstrümante edilmiyor,
-dolayısıyla Sonar tüm UI kodunu "kapsanmamış" görüyor. Yani bu ERROR
-"UI test edilmemiş" demek **değil**. Karar bekliyor (§7.4).
+**Kalite kapısı hakkında bilinmesi gereken (§7.4, Faz 27 - denendi,
+gerçek bir ortam kısıtına takıldı):** `new_violations` ve
+`new_security_hotspots_reviewed` geçiyor; `new_coverage` için önce
+Extension Host'u gerçekten enstrümante etmek denendi -
+`.vscode-test.mjs`'e `@vscode/test-cli`'ın kendi `coverage` yapılandırması
+eklendi (`npm run test:integration:coverage`, `vscode-test --coverage`),
+`@vscode/test-cli`/`@vscode/test-electron` en son sürüme yükseltildi
+(0.0.10→0.0.15, 2.4.1→3.1.0 - 157 unit + 54 integration test hâlâ
+geçiyor, düzeltme koşullarını bozmadı). Ama gerçekte çalıştırınca:
+`NODE_V8_COVERAGE`, Extension Host sürecinden bu ortamda (Windows) hiçbir
+kapsama verisi üretmiyor - iki araç sürümünde de "Unknown% (0/0)". Bu bir
+yapılandırma hatası değil, gerçek bir Electron/ortam kısıtı gibi duruyor
+(kullanıcıyla doğrulandı, 2026-08-28). Altyapı **bırakıldı** (zararsız -
+`--coverage` bayrağı verilmeden hiçbir şeyi etkilemiyor, Linux CI gibi
+farklı bir ortamda tekrar denenebilir), ama kapıyı şimdilik açık tutmak
+yerine `sonar.coverage.exclusions=src/ui/**` eklendi - dürüst seçenek
+(kullanıcının 3 seçenekten seçtiği): `src/ui/**` gerçek Extension Host
+testleriyle test ediliyor, "test edilmemiş" demek değil, sadece Sonar'ın
+coverage hesabına giremiyor.
 
 ---
 
@@ -732,18 +745,38 @@ Gerçek yeni-kod akışı ayrı bir branch + push ile denenecek, sonra
 bir `Calculator.negate(int)` var ve hiçbir test onu çağırmıyor — gerçek bir
 uncovered-yeni-satır adayı; `mvn clean test` sonrası raporda görünür.
 
-### 7.4 Sonar kalite kapısı `new_coverage` yüzünden ERROR
+### 7.4 ~~Sonar kalite kapısı `new_coverage` yüzünden ERROR~~ — **KAPANDI (Faz 27)**
 
-Yapısal, yeni bir hata değil: UI kodunun coverage'ı hiç ölçülmüyor (§5).
-Üç seçenek var, hiçbiri seçilmedi:
-1. `src/ui/**`'ı `sonar.coverage.exclusions`'a ekle — dürüst ama gerçek
-   boşlukları da gizler.
-2. Integration testlerini enstrümante et (`c8` + Extension Host) — doğru
-   çözüm, ama kurulumu zahmetli.
-3. Eşiği düşür — en kolay, en az bilgilendirici.
+Yapısal bir hataydı, yeni bir hata değil: UI kodunun coverage'ı hiç
+ölçülmüyordu. Kullanıcı 2. seçeneği (doğru çözüm) istedi, denendi -
+**gerçek bir ortam kısıtına takıldı, sonra 1. seçeneğe düşüldü.**
 
-`new_violations` sıfır olduğu sürece koşu "temiz" sayılıyor; kapının
-kendisi bu maddeye kadar ERROR kalacak.
+**Denenen (2): Extension Host'u gerçekten enstrümante et.**
+`@vscode/test-cli`'ın kendi `coverage` yapılandırması `.vscode-test.mjs`'e
+eklendi (c8 tabanlı, `--coverage` bayrağıyla; `npm run
+test:integration:coverage` script'i), `@vscode/test-cli`/`@vscode/
+test-electron` en son sürüme yükseltildi (0.0.10→0.0.15, 2.4.1→3.1.0 -
+157 unit + 54 integration test yükseltmeden sonra da geçti, regresyon
+yok). Ama gerçekte çalıştırınca: `NODE_V8_COVERAGE`, Extension Host
+sürecinden bu ortamda (Windows) hiçbir kapsama verisi üretmiyor - hem
+eski hem yeni araç sürümünde "Unknown% (0/0)". Bu bir yapılandırma
+hatası değil; muhtemelen Electron'un bu ortamdaki süreç/sandbox
+davranışıyla ilgili gerçek bir kısıt (kullanıcıyla doğrulandı,
+2026-08-28).
+
+Altyapı **kaldırılmadı** - `--coverage` bayrağı verilmeden
+`test:integration`'ı hiçbir şekilde etkilemiyor, zararsız; farklı bir
+ortamda (ör. Linux CI) tekrar denenebilir bir başlangıç noktası olarak
+duruyor.
+
+**Uygulanan (1): `sonar.coverage.exclusions=src/ui/**`.** Dürüst
+seçenek - `src/ui/**` gerçek Extension Host testleriyle test ediliyor,
+bu "test edilmemiş" demek değil, sadece Sonar'ın coverage hesabına
+giremiyor. Sonuç: kalite kapısı artık **OK**
+(`new_coverage`: %88.4, eşik %80; `new_violations`: 0; `new_duplicated_
+lines_density`: %0; `new_security_hotspots_reviewed`: %100).
+
+Komut ve gerekçe §5'te (SonarQube bölümü) güncel.
 
 ### 7.5 Mutasyon arayüzünün kalanı
 
