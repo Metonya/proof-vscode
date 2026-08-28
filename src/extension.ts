@@ -153,6 +153,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	// is done - otherwise a command dispatched right after activation could
 	// run against empty state and race the restore that was about to fill it.
 	await restoreLastCoverage(context, sinks);
+
+	// Faz 25: on a real window reload, VS Code has not always finished
+	// restoring the previously-active editor tab by the time this function
+	// started - the `setActiveDocument` call above (line ~59) can fire
+	// before `vscode.window.activeTextEditor` is populated, and if nothing
+	// changes it afterward `onDidChangeActiveTextEditor` never fires again
+	// (the editor was already "active" from VS Code's own perspective, so
+	// there is no change to report). Re-syncing here, after the `await`
+	// above gave the event loop time to catch up, is what makes "Satır →
+	// Testler" reliably show the restored data instead of "Önce bir Java
+	// dosyası açın" even though a Java file is genuinely open.
+	lineTestsView.setActiveDocument(vscode.window.activeTextEditor?.document);
 }
 
 async function restoreLastCoverage(context: vscode.ExtensionContext, sinks: CoverageSinks): Promise<void> {
