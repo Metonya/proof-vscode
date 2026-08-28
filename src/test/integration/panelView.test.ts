@@ -21,6 +21,24 @@ suite('Line tests panel (F3)', () => {
 			fileName: 'src/main/java/dev/coverdict/playground/Calculator.java',
 			className: 'dev.coverdict.playground.Calculator',
 			linesToTests: new Map([[7, ['CalcTest#addsTwoNumbers()']], [26, ['CalcTest#a()', 'CalcTest#b()']]]),
+			ambientLinesToTests: new Map([[3, ['CalcTest#addsTwoNumbers()']]]),
+		}));
+		// Faz 14c: a real @ParameterizedTest UniqueId shape (with invocation),
+		// a "more than 5 tests" line (collapses into <details>), and an
+		// unrecognized id side by side in one line, all in one render.
+		assert.doesNotThrow(() => showLineTestsPanel({
+			kind: 'lines',
+			fileName: 'src/main/java/dev/coverdict/playground/Calculator.java',
+			className: 'dev.coverdict.playground.Calculator',
+			linesToTests: new Map([
+				[4, [
+					'[class:dev.coverdict.playground.CalculatorParameterizedTest]/[test-template:add(int, int, int)]/[test-template-invocation:#1]',
+					'[class:dev.coverdict.playground.CalculatorParameterizedTest]/[test-template:add(int, int, int)]/[test-template-invocation:#2]',
+					'CalcTest#a()', 'CalcTest#b()', 'CalcTest#c()', 'CalcTest#d()', 'CalcTest#e()',
+					'SomeWeirdEngine::totallyUnknownFormat',
+				]],
+			]),
+			ambientLinesToTests: new Map(),
 		}));
 	});
 });

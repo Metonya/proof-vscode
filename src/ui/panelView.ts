@@ -22,7 +22,11 @@ export type PanelContent =
 	| { kind: 'noPerTestData' }
 	| { kind: 'noChangedTargets' }
 	| { kind: 'classOutOfScope'; className: string }
-	| { kind: 'lines'; fileName: string; className: string; linesToTests: ReadonlyMap<number, readonly string[]> };
+	| {
+		kind: 'lines'; fileName: string; className: string;
+		linesToTests: ReadonlyMap<number, readonly string[]>;
+		ambientLinesToTests: ReadonlyMap<number, readonly string[]>;
+	  };
 
 let panel: vscode.WebviewPanel | undefined;
 
@@ -74,17 +78,99 @@ function bodyFor(content: PanelContent): string {
 	}
 }
 
+/**
+ * Faz 14c: kullanıcının "sağdan açılan gösterimden hiçbir şey anlamıyorum"
+ * geri bildiriminin doğrudan çözümü. İki sorun vardı: (1) her satırda ham
+ * JUnit5 UniqueId'ler tek tek basılıyordu (bkz. testIdentity.ts'in
+ * test-template düzeltmesi), (2) `@ParameterizedTest`'in her invocation'ı
+ * (`#1`, `#2`, `#3`...) ayrı bir satır olarak listeleniyordu. Şimdi aynı
+ * sınıf+metot tek satırda toplanıyor (`#1 #2 #3`), tam FQCN sadece `title`
+ * niteliğinde duruyor, ve beşten fazla test içeren satırlar `<details>`
+ * içinde katlanıyor (webview `enableScripts: false` - `<details>` JS'siz
+ * çalışan tek katlanır öğe).
+ */
 function linesTable(content: Extract<PanelContent, { kind: 'lines' }>): string {
+	const summary = `<p class="muted">${content.linesToTests.size} satır · ${countDistinctTests(content.linesToTests)} farklı test`
+		+ (content.ambientLinesToTests.size > 0 ? ` · ${content.ambientLinesToTests.size} satır yalnızca statik başlatıcıdan (aşağıda)` : '')
+		+ '</p>';
+
 	const rows = [...content.linesToTests.entries()]
 		.sort(([a], [b]) => a - b)
-		.map(([line, tests]) => {
-			const displayed = tests.map((t) => escapeHtml(parseTestIdentity(t).display));
-			return `<tr><td class="line">${line}</td><td>${displayed.join('<br>')}</td></tr>`;
-		})
+		.map(([line, tests]) => lineRow(line, tests))
 		.join('');
+
+	const ambientSection = content.ambientLinesToTests.size === 0 ? '' : `
+<h3>Statik başlatıcıdan gelen dolaylı kanıt</h3>
+<p class="muted">Bu satırlar bir testin doğrudan çalıştırdığı kod değil - sınıfın <code>&lt;clinit&gt;</code>'i (statik alan/blok başlatıcısı) yüzünden çalışmış, ve bunu tetikleyen ilk test burada listeleniyor. "Bu satırı bu test kapsıyor" anlamına gelmez, sadece "bu test çalışınca bu satır da çalıştı" demektir.</p>
+<table><thead><tr><th>Satır</th><th>Tetikleyen test(ler)</th></tr></thead><tbody>
+${[...content.ambientLinesToTests.entries()].sort(([a], [b]) => a - b).map(([line, tests]) => lineRow(line, tests)).join('')}
+</tbody></table>`;
+
 	return `<h2>${escapeHtml(content.fileName)}</h2>
 <p class="muted">${escapeHtml(content.className)}</p>
-<table><thead><tr><th>Satır</th><th>Kapsayan testler</th></tr></thead><tbody>${rows}</tbody></table>`;
+${summary}
+<table><thead><tr><th>Satır</th><th>Kapsayan testler</th></tr></thead><tbody>${rows}</tbody></table>
+${ambientSection}`;
+}
+
+const COLLAPSE_THRESHOLD = 5;
+
+function lineRow(line: number, tests: readonly string[]): string {
+	const groups = groupTestDisplays(tests);
+	const items = groups.map((g) => `<span title="${escapeHtml(g.title)}">${escapeHtml(g.label)}</span>`);
+	const cell = items.length > COLLAPSE_THRESHOLD
+		? `<details><summary>${items.length} test</summary>${items.join('<br>')}</details>`
+		: items.join('<br>');
+	return `<tr><td class="line">${line}</td><td>${cell}</td></tr>`;
+}
+
+function countDistinctTests(linesToTests: ReadonlyMap<number, readonly string[]>): number {
+	const distinct = new Set<string>();
+	for (const tests of linesToTests.values()) {
+		for (const raw of tests) {
+			const id = parseTestIdentity(raw);
+			distinct.add(id.className && id.methodName ? `${id.className}#${id.methodName}` : id.display);
+		}
+	}
+	return distinct.size;
+}
+
+/**
+ * Aynı sınıf+metodun birden fazla `@ParameterizedTest`/`@RepeatedTest`
+ * invocation'ını (`#1`, `#2`, `#3`...) tek bir satırda toplar - her biri
+ * ayrı satır olarak basılan eski davranış, üç invocation'lı tek bir testi
+ * üç ayrı test gibi gösteriyordu.
+ */
+function groupTestDisplays(tests: readonly string[]): { label: string; title: string }[] {
+	const grouped = new Map<string, { simpleClassName: string; methodName: string; className: string; invocations: string[] }>();
+	const unparsed: string[] = [];
+
+	for (const raw of tests) {
+		const id = parseTestIdentity(raw);
+		if (id.className === null || id.methodName === null || id.simpleClassName === null) {
+			unparsed.push(id.display);
+			continue;
+		}
+		const key = `${id.className}#${id.methodName}`;
+		const existing = grouped.get(key);
+		if (existing) {
+			if (id.invocation !== null) {
+				existing.invocations.push(id.invocation);
+			}
+		} else {
+			grouped.set(key, {
+				simpleClassName: id.simpleClassName, methodName: id.methodName, className: id.className,
+				invocations: id.invocation !== null ? [id.invocation] : [],
+			});
+		}
+	}
+
+	const groupedItems = [...grouped.values()].map((g) => ({
+		label: `${g.simpleClassName}#${g.methodName}()${g.invocations.length > 0 ? ' ' + g.invocations.map((i) => `#${i}`).join(' ') : ''}`,
+		title: g.className,
+	}));
+	const unparsedItems = unparsed.map((raw) => ({ label: raw, title: raw }));
+	return [...groupedItems, ...unparsedItems];
 }
 
 function message(text: string, warning = false): string {
@@ -102,4 +188,7 @@ th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--vsco
 .line { font-family: var(--vscode-editor-font-family); color: var(--vscode-descriptionForeground); width: 3em; }
 .muted { color: var(--vscode-descriptionForeground); }
 .warning { color: var(--vscode-editorWarning-foreground); }
+h3 { margin-top: 1.5em; }
+details summary { cursor: pointer; color: var(--vscode-descriptionForeground); }
+code { font-family: var(--vscode-editor-font-family); }
 `;

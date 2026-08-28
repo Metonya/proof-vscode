@@ -25,12 +25,20 @@ const BLOCK: PerTestBlock = {
 	}],
 };
 
-test('a known class returns its lines merged from entries and ambient', () => {
+/**
+ * Faz 14c (hata D-6): `entries` (a test directly executed this line) and
+ * `ambient` (only reachable via a static initializer, D-50) must stay in
+ * two separate maps, not merged - a caller that flattens them can no longer
+ * tell "a test really covers this" from "this line only ran because of
+ * `<clinit>`".
+ */
+test('a known class returns real entries in linesToTests, static-initializer evidence separately in ambientLinesToTests', () => {
 	const result = testsForClass(BLOCK, 'root', 'dev.coverdict.playground.Calculator');
 	assert.equal(result.kind, 'found');
 	if (result.kind === 'found') {
 		assert.deepEqual(result.linesToTests.get(7), ['CalcTest#addsTwoNumbers()']);
-		assert.deepEqual(result.linesToTests.get(3), ['CalcTest#addsTwoNumbers()']);
+		assert.equal(result.linesToTests.get(3), undefined, 'line 3 only has ambient evidence, must not appear in linesToTests');
+		assert.deepEqual(result.ambientLinesToTests.get(3), ['CalcTest#addsTwoNumbers()']);
 	}
 });
 

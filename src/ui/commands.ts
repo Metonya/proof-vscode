@@ -466,5 +466,8 @@ function computePanelContent(): PanelContent {
 	}
 
 	const relativePath = toRepoRelativePath(coverageState.workspaceRoot, editor.document.uri.fsPath);
-	return { kind: 'lines', fileName: relativePath ?? editor.document.fileName, className, linesToTests: lookup.linesToTests };
+	return {
+		kind: 'lines', fileName: relativePath ?? editor.document.fileName, className,
+		linesToTests: lookup.linesToTests, ambientLinesToTests: lookup.ambientLinesToTests,
+	};
 }
