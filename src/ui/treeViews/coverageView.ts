@@ -50,7 +50,7 @@ export class CoverageTreeProvider implements vscode.TreeDataProvider<CoverageNod
 				return warningItem(node.reason);
 			case 'changedFile': {
 				const item = new vscode.TreeItem(node.file.path, vscode.TreeItemCollapsibleState.Collapsed);
-				item.description = `${node.file.uncoveredNewRanges?.length ?? 0} kapsanmayan aralık`;
+				item.description = `${node.file.uncoveredNewRanges?.length ?? 0} uncovered aralık`;
 				item.iconPath = new vscode.ThemeIcon('file');
 				return item;
 			}
@@ -110,7 +110,7 @@ function sectionChildren(id: 'overall' | 'newCode' | 'uncovered' | 'warnings', s
 	}
 	const uncoveredFiles = state.changedFiles.filter((f) => f.classification === 'mapped' && (f.uncoveredNewRanges?.length ?? 0) > 0);
 	return uncoveredFiles.length === 0
-		? [{ kind: 'empty', message: 'Kapsanmayan yeni satır yok.' }]
+		? [{ kind: 'empty', message: 'Uncovered yeni satır yok.' }]
 		: uncoveredFiles.map((file): CoverageNode => ({ kind: 'changedFile', file }));
 }
 
@@ -159,7 +159,7 @@ function metricNodes(set: MetricSet): CoverageNode[] {
 }
 
 function section(id: 'overall' | 'newCode' | 'uncovered' | 'warnings'): vscode.TreeItem {
-	const labels: Record<typeof id, string> = { overall: 'Genel', newCode: 'Yeni Kod', uncovered: 'Kapsanmayan Yeni Satırlar', warnings: 'Uyarılar' };
+	const labels: Record<typeof id, string> = { overall: 'Genel', newCode: 'Yeni Kod', uncovered: 'Uncovered Yeni Satırlar', warnings: 'Uyarılar' };
 	const descriptions: Partial<Record<typeof id, string>> = { overall: 'tüm repo', newCode: 'sadece bu diff\'teki satırlar' };
 	const item = new vscode.TreeItem(labels[id], id === 'overall' || id === 'newCode' ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
 	item.description = descriptions[id];

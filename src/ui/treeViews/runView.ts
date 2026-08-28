@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-import { getCoverageState, isGutterVisible } from '../../model/store';
+import { isGutterVisible } from '../../model/store';
 
 /**
  * Faz 11b: "coverdict: Çalıştır" - komut paletine gitmeden analiz
@@ -12,8 +12,8 @@ import { getCoverageState, isGutterVisible } from '../../model/store';
  * olarak hesaplanması, hangi test hangi yeri cover ediyor görmek,
  * mutasyon başlatmak". Beş komut yerine iki tarama var, ikisi de ne
  * yaptığını ve ne kadar süreceğini söylüyor:
- *   - **Hızlı Tarama**: kapsama (overall + yeni kod) + kötü test bulguları.
- *   - **Derin Tarama**: ayrıca hangi test hangi satırı kapsıyor (L2).
+  *   - **Hızlı Tarama**: coverage (overall + yeni kod) + kötü test bulguları.
+ *   - **Derin Tarama**: ayrıca hangi test hangi satırı cover ediyor (L2).
  * Dar kapsamlı "bu sınıf için" işi editör sağ-tık menüsüne taşındı
  * (`package.json`'daki `editor/context`), ağaçtan kalktı. Aç/kapa ve
  * görünüme odaklanma da eylem değil, durum - onlar da kalktı; aç/kapa
@@ -44,10 +44,10 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 		const items = [
 			new RunItem(
 				'Hızlı Tarama',
-				`kapsama + kötü test bulguları · yeni kod: ${scopeText}`,
+				`coverage + kötü test bulguları · yeni kod: ${scopeText}`,
 				'coverdict.analyze',
 				'play',
-				`Saniyeler sürer. Şunları hesaplar:\n· Genel kapsama (tüm repo)\n· Yeni kod kapsaması (${scopeText})\n· Test kalitesi bulguları (doğrulaması olmayan/zayıf testler)`,
+				`Saniyeler sürer. Şunları hesaplar:\n· Genel coverage (tüm repo)\n· Yeni kod coverage (${scopeText})\n· Test kalitesi bulguları (doğrulaması olmayan/zayıf testler)`,
 			),
 		];
 
@@ -62,31 +62,23 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 		} else {
 			items.push(new RunItem(
 				'Derin Tarama',
-				'hızlı taramanın her şeyi + hangi test hangi satırı kapsıyor',
+				'hızlı taramanın her şeyi + hangi test hangi satırı cover ediyor',
 				'coverdict.analyzePerTest',
 				'beaker',
-				`Dakikalar sürebilir (testleri PIT altında yeniden çalıştırır). Hızlı taramanın her şeyine ek olarak:\n· Her satırı hangi testlerin çalıştırdığı\n· "Yalancı yeşil" satırlar - kapsanmış ama kapsayan hiçbir testin doğrulaması yok\n\nKapsam: ${scopeText} içinde değişen sınıflar.`,
+				'DERİN TARAMA MUTASYON TESTİ DEĞİLDİR - mutasyon henüz bu arayüzde yok.\n\n'
+				+ `Dakikalar sürebilir (testleri PIT motoru altında yeniden çalıştırır, ama sadece hangi testin hangi satıra dokunduğunu kaydetmek için - kodu mutasyona uğratmaz).\n\nHızlı taramanın her şeyine ek olarak:\n· Her satırı hangi testlerin çalıştırdığı ("Satır → Testler" görünümü)\n· "Yalancı yeşil" satırlar - covered ama cover eden hiçbir testin doğrulaması yok\n\nKapsam: ${scopeText} içinde değişen sınıflar.`,
 			));
 		}
 
 		items.push(new RunItem(
-			'Kapsama Görünümü',
+			'Coverage Görünümü',
 			isGutterVisible() ? 'açık - gizlemek için tıklayın' : 'kapalı - göstermek için tıklayın',
 			'coverdict.toggleCoverage',
 			isGutterVisible() ? 'eye' : 'eye-closed',
 			'Editördeki satır renklerini ve Dosya Gezgini rozetlerini birlikte açar/kapatır. Yeniden tarama yapmaz.',
 		));
-
-		const state = getCoverageState();
-		if (state) {
-			items.push(new RunItem('Son tarama', lastRunSummary(state.findings.length), undefined, 'history'));
-		}
 		return items;
 	}
-}
-
-function lastRunSummary(findingCount: number): string {
-	return findingCount === 0 ? 'bulgu yok' : `${findingCount} test kalitesi bulgusu`;
 }
 
 function diffModeText(diffMode: string, baseRef: string | undefined): string {

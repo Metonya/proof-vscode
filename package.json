@@ -37,6 +37,11 @@
           "default": "java",
           "description": "coverdict.jar'ı çalıştırmak için kullanılan Java çalıştırılabilir dosyası."
         },
+        "coverdict.mavenExecutable": {
+          "type": "string",
+          "default": "",
+          "description": "Derin tarama için classpath listesi eksik olduğunda onu üretmekte kullanılacak Maven komutu. Boş bırakılırsa Windows'ta \"mvn.cmd\", diğer sistemlerde \"mvn\" kullanılır. Maven PATH'te değilse tam yolunu yazın."
+        },
         "coverdict.coverageExclusions": {
           "type": "array",
           "items": {
@@ -124,14 +129,14 @@
         "icon": "$(filter)"
       },
       {
-        "command": "coverdict.qualityView.groupByRule",
-        "title": "coverdict: Kurala Göre Grupla",
-        "icon": "$(list-tree)"
+        "command": "coverdict.qualityView.toggleGrouping",
+        "title": "coverdict: Gruplamayı Değiştir (kural ↔ dosya)",
+        "icon": "$(group-by-ref-type)"
       },
       {
-        "command": "coverdict.qualityView.groupByFile",
-        "title": "coverdict: Dosyaya Göre Grupla",
-        "icon": "$(file-directory)"
+        "command": "coverdict.lineTestsView.toggleProblemsOnly",
+        "title": "coverdict: Sadece Sorunlu Satırlar",
+        "icon": "$(filter)"
       }
     ],
     "menus": {
@@ -149,14 +154,14 @@
           "group": "navigation@1"
         },
         {
-          "command": "coverdict.qualityView.groupByFile",
+          "command": "coverdict.qualityView.toggleGrouping",
           "when": "view == coverdict.qualityView",
           "group": "navigation@2"
         },
         {
-          "command": "coverdict.qualityView.groupByRule",
-          "when": "view == coverdict.qualityView",
-          "group": "navigation@3"
+          "command": "coverdict.lineTestsView.toggleProblemsOnly",
+          "when": "view == coverdict.lineTestsView",
+          "group": "navigation@1"
         }
       ],
       "view/item/context": [

@@ -125,7 +125,7 @@ suite('Explorer badges (Faz 9 / Faz 13 madde 8)', () => {
 		const excluded = provider.provideFileDecoration(vscode.Uri.file(path.join(WORKSPACE_ROOT, 'src/main/java/dev/coverdict/playground/Generated.java')));
 		assert.ok(excluded, 'kapsama dışı bırakılmış dosya da işaretlenmeli');
 		assert.equal(excluded!.badge, '–');
-		assert.match(String(excluded!.tooltip), /kapsama dışı/);
+		assert.match(String(excluded!.tooltip), /coverage dışı/);
 
 		provider.dispose();
 	});

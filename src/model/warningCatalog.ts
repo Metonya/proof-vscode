@@ -24,20 +24,20 @@ export interface WarningInfo {
 
 const CATALOG: Record<string, { title: string; explanation: string; action: string }> = {
 	CHANGED_LINES_ABSENT_FROM_REPORT: {
-		title: 'Değişen bazı satırlar kapsama raporunda yok',
+		title: 'Değişen bazı satırlar coverage raporunda yok',
 		explanation: 'Değiştirdiğiniz satırların bir kısmı JaCoCo raporunda hiç geçmiyor, bu yüzden "yeni kod" yüzdesinin ne payına ne paydasına katıldılar. '
 			+ 'İki sebebi olabilir ve coverdict bunları birbirinden ayıramaz: (1) o satırlar zaten çalıştırılabilir kod değil - süslü parantez, metot imzası, boş satır; JaCoCo bunları hiç listelemez, bu tamamen normaldir. '
 			+ '(2) Rapor bu değişiklikten eski - yani testleri son düzenlemenizden sonra çalıştırmadınız.',
 		action: 'Sayı beklediğinizden düşükse önce testleri yeniden çalıştırıp raporu tazeleyin (mvn test). Sonra hâlâ görünüyorsa, geri kalan satırlar muhtemelen sadece parantez/imza satırlarıdır.',
 	},
 	CHANGED_FILES_EXCLUDED: {
-		title: 'Bazı değişen dosyalar kapsama dışı bırakıldı',
+		title: 'Bazı değişen dosyalar coverage dışı bırakıldı',
 		explanation: 'Değiştirdiğiniz dosyalardan bazıları coverdict.coverageExclusions desenlerine (ya da bir test klasörüne) uyduğu için yeni kod hesabına hiç girmedi.',
 		action: 'Bu kasıtlıysa yapacak bir şey yok. Değilse coverdict.coverageExclusions ayarınızı gözden geçirin.',
 	},
 	MODULE_WITHOUT_REPORT: {
-		title: 'Bir modülün kapsama raporu yok',
-		explanation: 'Tanımlanmış bir modüle hiçbir JaCoCo raporu bağlanmamış, bu yüzden o modül analiz edilen kümeden tamamen çıkarıldı - kapsaması %0 değil, hiç bilinmiyor.',
+		title: 'Bir modülün coverage raporu yok',
+		explanation: 'Tanımlanmış bir modüle hiçbir JaCoCo raporu bağlanmamış, bu yüzden o modül analiz edilen kümeden tamamen çıkarıldı - coverage\'ı %0 değil, hiç bilinmiyor.',
 		action: 'O modül için testleri JaCoCo ile çalıştırın ve coverdict.reportPath ayarının doğru dosyayı gösterdiğinden emin olun.',
 	},
 	PER_TEST_NO_CHANGED_TARGETS: {
@@ -72,7 +72,7 @@ const CATALOG: Record<string, { title: string; explanation: string; action: stri
 	},
 	PER_TEST_COLLECTION_FAILED: {
 		title: 'Test bazlı kanıt toplanamadı',
-		explanation: 'Motor bu modül için hata verdi; o modülün test bazlı kanıtı atlandı. Kapsama sayıları etkilenmedi, yalnızca "hangi test hangi satırı kapsıyor" bilgisi eksik.',
+		explanation: 'Motor bu modül için hata verdi; o modülün test bazlı kanıtı atlandı. Coverage sayıları etkilenmedi, yalnızca "hangi test hangi satırı kapsıyor" bilgisi eksik.',
 		action: 'Ayrıntı için coverdict çıktı kanalına bakın (Output → coverdict).',
 	},
 };

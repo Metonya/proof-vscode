@@ -40,11 +40,30 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 	readonly onDidChangeTreeData = this.changeEmitter.event;
 
 	private activeDocument: vscode.TextDocument | undefined;
+	private problemsOnly = false;
 
 	/** `extension.ts` calls this on `onDidChangeActiveTextEditor` - the provider never reads `vscode.window.activeTextEditor` itself, so a click into the tree cannot empty it. */
 	setActiveDocument(document: vscode.TextDocument | undefined): void {
 		this.activeDocument = document?.languageId === 'java' ? document : undefined;
 		this.changeEmitter.fire(undefined);
+	}
+
+	/**
+	 * Faz 19: "sorunsuzları kaldır, sadece cover edilmeyenleri göster gibi".
+	 * Açıkken yalnızca gerçekten bakılması gereken satırlar kalır: cover
+	 * eden testlerden en az birinin doğrulaması eksik/zayıf ya da
+	 * çözülemedi. Hepsi `ok` olan satırlar gizlenir. Kapalıyken hiçbir şey
+	 * gizlenmez - varsayılan bu, çünkü bir şeyi gizlemek varsayılan
+	 * davranış olmamalı.
+	 */
+	toggleProblemsOnly(): boolean {
+		this.problemsOnly = !this.problemsOnly;
+		this.changeEmitter.fire(undefined);
+		return this.problemsOnly;
+	}
+
+	isProblemsOnly(): boolean {
+		return this.problemsOnly;
 	}
 
 	refresh(): void {
@@ -123,8 +142,13 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 			return [{ kind: 'empty', message: noPerTestDataMessage() }, { kind: 'collectHint' }];
 		}
 		if (view.kind === 'production') {
-			return groupConsecutiveLines(view.linesToTests)
-				.map((group): LineTestsNode => ({ kind: 'prodLine', startLine: group.startLine, endLine: group.endLine, tests: group.tests }));
+			const findingsByTestMethod = indexFindingsByTestMethod(getCoverageState()?.findings ?? []);
+			const groups = groupConsecutiveLines(view.linesToTests)
+				.filter((group) => !this.problemsOnly || hasProblem(group.tests, findingsByTestMethod));
+			if (groups.length === 0) {
+				return [{ kind: 'empty', message: this.problemsOnly ? 'Bu dosyada sorunlu satır yok - cover eden her testin doğrulaması var. (Filtreyi kaldırmak için başlıktaki süzgece tıklayın.)' : 'Bu sınıf için satır kaydı yok.' }];
+			}
+			return groups.map((group): LineTestsNode => ({ kind: 'prodLine', startLine: group.startLine, endLine: group.endLine, tests: group.tests }));
 		}
 		// test file: group the reverse index's flat refs back into per-method nodes for this class
 		const methods = [...view.reverse.entries()]
@@ -160,6 +184,11 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 		}
 		return { kind: 'noPerTestData' };
 	}
+}
+
+/** Bir satır "sorunlu" sayılır: cover eden testlerden en az biri `ok` değil (doğrulaması yok/zayıf/gereksiz ya da çözülemedi). */
+function hasProblem(tests: readonly string[], findingsByTestMethod: ReturnType<typeof indexFindingsByTestMethod>): boolean {
+	return lineQuality(tests, findingsByTestMethod).tests.some((t) => t.verdict !== 'ok');
 }
 
 function collectHintItem(): vscode.TreeItem {

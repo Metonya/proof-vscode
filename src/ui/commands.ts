@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 
 import { buildAnalyzeArgs, type DiffMode } from '../cli/argsBuilder';
+import { buildPerTestClasspath } from '../cli/classpathBuilder';
 import { locateJar } from '../cli/jarLocator';
 import { run } from '../cli/runner';
 import { buildFalseGreenIndex } from '../model/falseGreenIndex';
@@ -89,8 +90,18 @@ export function registerCopyCommands(sinks: CoverageSinks): vscode.Disposable[] 
 				vscode.window.setStatusBarMessage('coverdict: panoya kopyalandı', 2000);
 			}
 		}),
-		vscode.commands.registerCommand('coverdict.qualityView.groupByRule', () => sinks.qualityView.setGrouping('rule')),
-		vscode.commands.registerCommand('coverdict.qualityView.groupByFile', () => sinks.qualityView.setGrouping('file')),
+		// Faz 19: iki ayrı gruplama butonu yerine tek bir geçiş - tıkla,
+		// diğer görünüme geçer; hangi modda olduğun durum çubuğu mesajında
+		// söylenir (ikonun kendisi VS Code'da anlık değiştirilemiyor).
+		vscode.commands.registerCommand('coverdict.qualityView.toggleGrouping', () => {
+			const next = sinks.qualityView.getGrouping() === 'rule' ? 'file' : 'rule';
+			sinks.qualityView.setGrouping(next);
+			vscode.window.setStatusBarMessage(`coverdict: Test Kalitesi ${next === 'rule' ? 'kurala' : 'dosyaya'} göre gruplandı`, 2000);
+		}),
+		vscode.commands.registerCommand('coverdict.lineTestsView.toggleProblemsOnly', () => {
+			const on = sinks.lineTestsView.toggleProblemsOnly();
+			vscode.window.setStatusBarMessage(on ? 'coverdict: sadece sorunlu satırlar' : 'coverdict: bütün satırlar', 2000);
+		}),
 		vscode.commands.registerCommand('coverdict.qualityView.filter', async () => {
 			const filter = await vscode.window.showInputBox({
 				title: 'Test Kalitesi bulgularını filtrele',
@@ -183,7 +194,7 @@ export function publishAnalysis(sinks: CoverageSinks, workspaceRoot: string, res
 function toggleCoverage(sinks: CoverageSinks): void {
 	const state = getCoverageState();
 	if (!state?.fileCoverage) {
-		vscode.window.showInformationMessage('coverdict: henüz kapsama verisi yok - önce "coverdict: Analiz Et" komutunu çalıştırın.');
+		vscode.window.showInformationMessage('coverdict: henüz coverage verisi yok - önce "coverdict: Analiz Et" komutunu çalıştırın.');
 		return;
 	}
 
@@ -241,7 +252,10 @@ async function runAnalyzePerTest(context: vscode.ExtensionContext, output: vscod
 		return;
 	}
 
-	const classpathPath = vscode.workspace.getConfiguration('coverdict', folder).get<string>('perTestClasspathPath') || 'target/coverdict-classpath.txt';
+	const classpathPath = await ensurePerTestClasspath(folder, output);
+	if (!classpathPath) {
+		return;
+	}
 	const parsed = await runAnalyzeCore(context, output, folder, diffMode, { classpathModuleId: MODULE_ID, classpathPath });
 	if (!parsed) {
 		return;
@@ -282,7 +296,10 @@ async function runPerTestForFile(context: vscode.ExtensionContext, output: vscod
 
 	const fileName = path.basename(editor.document.fileName, '.java');
 	const className = detectClassName(editor.document.getText(), fileName);
-	const classpathPath = vscode.workspace.getConfiguration('coverdict', folder).get<string>('perTestClasspathPath') || 'target/coverdict-classpath.txt';
+	const classpathPath = await ensurePerTestClasspath(folder, output);
+	if (!classpathPath) {
+		return;
+	}
 	const parsed = await runAnalyzeCore(context, output, folder, diffMode, { classpathModuleId: MODULE_ID, classpathPath, targets: [className] });
 	if (!parsed) {
 		return;
@@ -412,35 +429,58 @@ async function runAnalyzeCore(
 				return undefined;
 			}
 
-			// Faz 13 madde 9: tek satır, tek sayı - diğer iki mod zaten durum
-			// çubuğu tooltip'inde ve Kapsama ağacında duruyor, burada tekrar
-			// basmak (önceki sürüm) satırı okunaksız yapıyordu. "Ayrıntılar"
-			// butonu isteyeni doğrudan Kapsama görünümüne götürür.
-			const overall = parsed.value.coverage.overall;
-			const headline = readBadgeMetric(folder.uri.fsPath);
-			const headlineText = `coverdict: analiz ${statusText(parsed.value.analysis.status)} — ${headline} ${percentText(overall[headline].percent)}`;
-			void vscode.window.showInformationMessage(headlineText, 'Ayrıntılar').then((choice) => {
-				if (choice === 'Ayrıntılar') {
-					void vscode.commands.executeCommand('coverdict.coverageView.focus');
-				}
-			});
+			// Faz 19: tarama sonrası açılır bildirim tamamen kaldırıldı.
+			// Aynı sayı zaten durum çubuğunda, Coverage ağacında ve Explorer
+			// rozetlerinde duruyor - her koşuda ekranın köşesinde bir kutu
+			// açmak sadece dikkat dağıtıyordu. `analysis.status` "incomplete"
+			// ise gerçekten bir şey söylenmesi gerekir; o hâlâ uyarılıyor.
+			if (parsed.value.analysis.status === 'incomplete') {
+				vscode.window.showWarningMessage('coverdict: analiz eksik tamamlandı - Coverage görünümündeki "Uyarılar" bölümüne bakın.');
+			}
 
 			return parsed.value;
 		},
 	);
 }
 
+/**
+ * Faz 19: derin taramanın classpath listesi eksikse (ilk kez çalıştırılıyor
+ * ya da `mvn clean` sildi) kullanıcıyı elle üretmeye göndermek yerine
+ * eklenti kendisi üretir. Kullanıcı yalnızca bir kez "Üret" der; iptal
+ * ederse tarama hiç başlamaz - yarım bir listeyle koşup
+ * `PER_TEST_CLASSPATH_MISSING` uyarısına düşmekten iyidir.
+ * Dosya varsa hiçbir şey sorulmaz.
+ */
+async function ensurePerTestClasspath(folder: vscode.WorkspaceFolder, output: vscode.OutputChannel): Promise<string | undefined> {
+	const classpathPath = vscode.workspace.getConfiguration('coverdict', folder).get<string>('perTestClasspathPath') || 'target/coverdict-classpath.txt';
+	if (fs.existsSync(path.join(folder.uri.fsPath, classpathPath))) {
+		return classpathPath;
+	}
+
+	const choice = await vscode.window.showInformationMessage(
+		`coverdict: derin tarama için classpath listesi gerekli ama ${classpathPath} yok. Maven ile şimdi üretilsin mi?`,
+		'Üret',
+		'Vazgeç',
+	);
+	if (choice !== 'Üret') {
+		return undefined;
+	}
+
+	const built = await vscode.window.withProgress(
+		{ location: vscode.ProgressLocation.Notification, title: 'coverdict: classpath listesi üretiliyor (mvn)', cancellable: false },
+		() => buildPerTestClasspath(folder.uri.fsPath, classpathPath, output),
+	);
+	if (!built.ok) {
+		vscode.window.showErrorMessage(`coverdict: ${built.message}`);
+		return undefined;
+	}
+	output.appendLine(`coverdict: ${built.message}`);
+	return classpathPath;
+}
+
 /** `coverdict.badgeMetric`'i tekli okuma noktası - durum çubuğu başlığı, rozetler ve gutter aynı ayarı, aynı şekilde okur (madde 2). */
 function readBadgeMetric(workspaceRoot: string): BadgeMetric {
 	return vscode.workspace.getConfiguration('coverdict', vscode.Uri.file(workspaceRoot)).get<BadgeMetric>('badgeMetric') ?? 'sonar-compatible';
-}
-
-function percentText(percent: number | null): string {
-	return percent === null ? 'yok' : `${percent}%`;
-}
-
-function statusText(status: 'complete' | 'incomplete'): string {
-	return status === 'complete' ? 'tamamlandı' : 'eksik tamamlandı';
 }
 
 /** A blocking configuration problem: shows the reason and a button that opens Settings scrolled to the offending key, instead of a bare error + a manual search. */

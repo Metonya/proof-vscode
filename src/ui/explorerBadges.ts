@@ -20,7 +20,7 @@ import type { FileCoverageBlock, FileCoverageEntry } from '../verdict/types';
  * or a short character"), ve o sağlayıcının o dosya için hiçbir dekorasyonu
  * çizilmiyor. Yani `"100"` sessizce rozetsiz bir dosya demekti - %100
  * kapsanan her sınıf (playground'da `NotifyingCalculator.java`) hiç
- * kapsama verisi yokmuş gibi görünüyordu. Bu yüzden %100 artık `✓`
+ * coverage verisi yokmuş gibi görünüyordu. Bu yüzden %100 artık `✓`
  * (tek code point), gerçek sayı tooltip'te. Bu sınıf `.d.ts`'te
  * belgelenmemiş - gerçek VS Code 1.135.0 kaynağında doğrulandı.
  */
@@ -62,10 +62,10 @@ export class ExplorerBadgeProvider implements vscode.FileDecorationProvider, vsc
 		}
 
 		if (isFileStale(uri.fsPath)) {
-			return new vscode.FileDecoration('!', 'coverdict: bu dosya son taramadan sonra değişti - kapsama bayat olabilir, tekrar tarayın', new vscode.ThemeColor('charts.yellow'));
+			return new vscode.FileDecoration('!', 'coverdict: bu dosya son taramadan sonra değişti - coverage bayat olabilir, tekrar tarayın', new vscode.ThemeColor('charts.yellow'));
 		}
 
-		// Faz 18: kapsama dışı bırakılmış dosyalar artık Explorer'da da
+		// Faz 18: coverage dışı bırakılmış dosyalar artık Explorer'da da
 		// görünüyor - "hiç veri yok" ile "kasten hariç tutuldu" aynı
 		// görünmemeli (hard rule 3a). Kapsama listesinden ÖNCE bakılır:
 		// hariç tutulmuş bir dosya zaten `files[]`'ta olmaz.
@@ -73,7 +73,7 @@ export class ExplorerBadgeProvider implements vscode.FileDecorationProvider, vsc
 			const relative = toRepoRelativePath(this.workspaceRoot, uri.fsPath) ?? uri.fsPath;
 			return new vscode.FileDecoration(
 				EXCLUDED_BADGE,
-				`coverdict: kapsama dışı bırakıldı (coverdict.coverageExclusions)\n${relative}\nBu dosya kapsama yüzdelerine hiç katılmıyor.`,
+				`coverdict: coverage dışı bırakıldı (coverdict.coverageExclusions)\n${relative}\nBu dosya coverage yüzdelerine hiç katılmıyor.`,
 				new vscode.ThemeColor('charts.gray'),
 			);
 		}

@@ -37,7 +37,7 @@ export function createGutterDecorationTypes(): GutterDecorationTypes {
 			overviewRulerColor: new vscode.ThemeColor('charts.gray'),
 			overviewRulerLane: vscode.OverviewRulerLane.Left,
 			after: {
-				contentText: '  coverdict: kapsama dışı bırakılmış',
+				contentText: '  coverdict: coverage dışı bırakılmış',
 				color: new vscode.ThemeColor('descriptionForeground'),
 				fontStyle: 'italic',
 				margin: '0 0 0 1em',
@@ -51,7 +51,7 @@ export function createGutterDecorationTypes(): GutterDecorationTypes {
 			overviewRulerColor: new vscode.ThemeColor('charts.yellow'),
 			overviewRulerLane: vscode.OverviewRulerLane.Left,
 			after: {
-				contentText: '  coverdict: bu dosya son taramadan sonra değişti - kapsama bayat, tekrar tarayın',
+				contentText: '  coverdict: bu dosya son taramadan sonra değişti - coverage bayat, tekrar tarayın',
 				color: new vscode.ThemeColor('editorWarning.foreground'),
 				fontStyle: 'italic',
 				margin: '0 0 0 1em',

@@ -134,6 +134,48 @@ suite('Line tests view (Faz 15c)', () => {
 		assert.deepEqual(provider.nodeForLine(10), roots[0], 'a cursor anywhere inside the merged range resolves to the same range node');
 	});
 
+	/** Faz 19: "sorunsuzları kaldır, sadece cover edilmeyenleri göster gibi" - the filter hides lines whose covering tests all check out. */
+	test('problems-only filter hides lines where every covering test is fine, keeps the rest', async () => {
+		const mixedPerTest: PerTestBlock = {
+			engine: 'pitest',
+			engineVersion: '1.15.8',
+			modules: [{
+				id: 'root',
+				entries: [{
+					className: 'dev.coverdict.playground.Calculator',
+					methodName: 'mixed',
+					lines: [
+						// line 37: covered only by the test that has a NO_RECOGNIZED_ORACLE finding
+						{ line: 37, tests: ['[class:dev.coverdict.playground.CalculatorPseudoTestedTest]/[method:squareHasNoAssertion()]'] },
+						// line 50: covered by a test with no finding at all
+						{ line: 50, tests: ['[class:dev.coverdict.playground.CalculatorGoodTest]/[method:addWorksCorrectly()]'] },
+					],
+				}],
+				ambient: [],
+			}],
+		};
+		setPerTestState({ moduleId: 'root', perTest: mixedPerTest, warnings: [] });
+		setCoverageState(STATE);
+
+		const document = await openJavaFile('dev.coverdict.playground', 'Calculator');
+		const provider = new LineTestsTreeProvider();
+		provider.setActiveDocument(document);
+
+		assert.equal(provider.getChildren().length, 2, 'filtre kapalıyken iki satır da görünür');
+		assert.equal(provider.isProblemsOnly(), false, 'varsayılan: hiçbir şey gizlenmez');
+
+		assert.equal(provider.toggleProblemsOnly(), true);
+		const filtered = provider.getChildren();
+		assert.equal(filtered.length, 1, 'doğrulaması olan testin kapsadığı satır gizlenir');
+		assert.equal(filtered[0].kind, 'prodLine');
+		if (filtered[0].kind === 'prodLine') {
+			assert.equal(filtered[0].startLine, 37);
+		}
+
+		provider.toggleProblemsOnly();
+		assert.equal(provider.getChildren().length, 2, 'tekrar açınca hepsi geri gelir');
+	});
+
 	test('test file (reverse direction): test-method node -> production-line leaf', async () => {
 		setPerTestState({ moduleId: 'root', perTest: PER_TEST, warnings: [] });
 		setCoverageState(STATE);

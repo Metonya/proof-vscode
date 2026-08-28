@@ -11,9 +11,21 @@ import { spawn } from 'node:child_process';
 
 export interface RunOptions {
 	javaExecutable: string;
-	jarPath: string;
+	/**
+	 * `undefined` runs `javaExecutable` with `args` directly, no `-jar`
+	 * wrapper - Faz 19's `cli/classpathBuilder.ts` needs this to invoke
+	 * Maven, which is not a jar.
+	 */
+	jarPath?: string;
 	args: string[];
 	cwd?: string;
+	/**
+	 * Windows `.cmd`/`.bat` launchers (`mvn.cmd`) cannot be spawned
+	 * directly since Node's CVE-2024-27980 fix - only set this for a
+	 * command whose arguments are entirely constructed by us, never for
+	 * anything carrying user text.
+	 */
+	shell?: boolean;
 	onStdoutLine?: (line: string) => void;
 	onStderrLine?: (line: string) => void;
 }
@@ -31,8 +43,10 @@ export interface RunHandle {
 }
 
 export function run(options: RunOptions): RunHandle {
-	const child = spawn(options.javaExecutable, ['-jar', options.jarPath, ...options.args], {
+	const argv = options.jarPath === undefined ? options.args : ['-jar', options.jarPath, ...options.args];
+	const child = spawn(options.javaExecutable, argv, {
 		cwd: options.cwd,
+		shell: options.shell ?? false,
 	});
 
 	let stdoutAll = '';

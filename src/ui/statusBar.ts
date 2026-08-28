@@ -19,8 +19,8 @@ export function createStatusBarItem(): vscode.StatusBarItem {
 }
 
 export function showNoFileCoverageWarning(item: vscode.StatusBarItem): void {
-	item.text = '$(warning) coverdict: kapsama verisi yok';
-	item.tooltip = 'Son analiz koşusunda fileCoverage bloğu yok - kapsama görünümünde hiçbir şey gösterilmiyor.';
+	item.text = '$(warning) coverdict: coverage verisi yok';
+	item.tooltip = 'Son analiz koşusunda fileCoverage bloğu yok - coverage görünümünde hiçbir şey gösterilmiyor.';
 	item.show();
 }
 
@@ -30,7 +30,7 @@ export function showCoverageSummary(item: vscode.StatusBarItem, overall: MetricS
 	item.text = headlinePercent === null ? '$(check) coverdict' : `$(${eyeIcon}) coverdict ${headlinePercent}%`;
 	item.tooltip = new vscode.MarkdownString(
 		[
-			`**coverdict** - ${gutterVisible ? 'kapsama görünümü açık' : 'kapsama görünümü kapalı'} (aç/kapat için tıklayın)`,
+			`**coverdict** - ${gutterVisible ? 'coverage görünümü açık' : 'coverage görünümü kapalı'} (aç/kapat için tıklayın)`,
 			'',
 			'**Genel** (tüm repo)',
 			metricLine('jacoco-line', overall['jacoco-line']),
