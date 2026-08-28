@@ -1,3 +1,4 @@
+import { parseTestIdentity } from '../verdict/testIdentity';
 import type { MutatedMethod, MutationBlock, Mutant } from '../verdict/types';
 
 /**
@@ -71,6 +72,19 @@ export function scoreOf(mutants: readonly Mutant[]): MutationScore {
 
 export function scoreOfMethods(methods: readonly MutatedMethod[]): MutationScore {
 	return scoreOf(methods.flatMap((m) => m.mutants));
+}
+
+/**
+ * Faz 24 (§7.6 madde 7): "skor yok" belirsizliğin **tek** sebebini
+ * söylemiyordu - `NO_COVERAGE`, `RUN_ERROR`, `NON_VIABLE` hepsi aynı
+ * torbaya düşüyordu. Üretilen her mutant `NO_COVERAGE` ise sebep bellidir
+ * ve veriden çıkarımdır (gerçek playground verisi, 2026-08-28:
+ * `negate()`'in tek mutantı `NO_COVERAGE`, `describe()`'ınki karışık
+ * `NO_COVERAGE`+`SURVIVED` - o yüzden `some` değil `every` gerekiyor,
+ * karışık durumda "hiçbir test uğramıyor" iddiası yanlış olurdu).
+ */
+export function allMutantsNoCoverage(mutants: readonly Mutant[]): boolean {
+	return mutants.length > 0 && mutants.every((m) => m.status === 'NO_COVERAGE');
 }
 
 /** Bir sınıfın altındaki metotlar, `mutation.modules[].methods[]`'ten gruplanmış. Sınıflar ve metotlar ada göre sıralı - CLI zaten sıralı yayınlıyor ama ona bel bağlamıyoruz. */
@@ -217,4 +231,43 @@ export function findMutatedMethod(classes: readonly MutatedClass[], className: s
 	const cls = classes.find((c) => c.className === className);
 	const method = cls?.methods.find((m) => m.methodName === methodName && m.methodDescription === methodDescription);
 	return cls && method ? { cls, method } : undefined;
+}
+
+/**
+ * Faz 24 (§7.6 madde 6): L0'ın statik oracle taraması bir testi
+ * çözemeyip `INCONCLUSIVE` derse ama L3 mutasyon kanıtı o **aynı** testin
+ * bir mutantı öldürdüğünü gösteriyorsa, bu gerçek bir çürütmedir - test
+ * davranışı gerçekten gözlüyor. Gerçek playground verisi, 2026-08-28:
+ * `CalculatorUnresolvedOracleTest#addCheckedViaLocalSoftAssertions()`
+ * (AssertJ soft assertion'ı statik olarak çözülemedi) `add()`'in tek
+ * mutantını öldüren testler arasında.
+ *
+ * `killingTests` ham JUnit5 UniqueId'leri taşıyor - `parseTestIdentity`
+ * ile aynı `Class#method()` kimliğine indirgenip karşılaştırılır (aynı
+ * eşleştirme `model/testQuality.ts`'in kullandığı). Eşleşme yoksa
+ * `undefined`, uydurulmaz.
+ */
+export interface KillContribution {
+	className: string;
+	methodName: string;
+	methodDescription: string;
+	mutantLine: number;
+}
+
+export function findKillContribution(mutation: MutationBlock, moduleId: string, testClassName: string, testMethodName: string): KillContribution | undefined {
+	const module = mutation.modules.find((m) => m.id === moduleId);
+	if (!module) {
+		return undefined;
+	}
+	for (const method of module.methods) {
+		for (const mutant of method.mutants) {
+			for (const rawTestId of mutant.killingTests) {
+				const identity = parseTestIdentity(rawTestId);
+				if (identity.className === testClassName && identity.methodName === testMethodName) {
+					return { className: method.className, methodName: method.methodName, methodDescription: method.methodDescription, mutantLine: mutant.line };
+				}
+			}
+		}
+	}
+	return undefined;
 }

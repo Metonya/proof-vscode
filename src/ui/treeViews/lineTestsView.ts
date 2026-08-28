@@ -2,9 +2,10 @@ import * as vscode from 'vscode';
 
 import { detectClassName } from '../../model/classNameDetector';
 import { groupConsecutiveLines, testsForClass, testsToLines, type TestLineRef } from '../../model/lineIndex';
+import { findKillContribution, type KillContribution } from '../../model/mutationModel';
 import { classifySourcePath, toAbsolutePath, toRepoRelativePath, type SourceKind } from '../../model/pathIndex';
 import { buildProductionClassIndex, productionSourceRoots } from '../../model/productionClassIndex';
-import { getCoverageState, getPerTestState } from '../../model/store';
+import { getCoverageState, getMutationState, getPerTestState } from '../../model/store';
 import { indexFindingsByTestMethod, lineQuality, type TestVerdict } from '../../model/testQuality';
 import { parseTestIdentity } from '../../verdict/testIdentity';
 import type { Finding } from '../../verdict/types';
@@ -295,8 +296,26 @@ function prodTestItem(node: Extract<LineTestsNode, { kind: 'prodTest' }>): vscod
 	const item = new vscode.TreeItem(identity.display, vscode.TreeItemCollapsibleState.None);
 	item.iconPath = new vscode.ThemeIcon(verdictIcon(node.verdict), verdictColor(node.verdict));
 	item.description = node.finding?.rule;
+	const tooltipParts: string[] = [];
 	if (node.finding) {
-		item.tooltip = new vscode.MarkdownString(`**${node.finding.confidence}** - ${node.finding.message}\n\n${node.finding.suggestedAction}`);
+		tooltipParts.push(`**${node.finding.confidence}** - ${node.finding.message}\n\n${node.finding.suggestedAction}`);
+	}
+	// Faz 24 (§7.6 madde 6): L0 bu testi çözemeyip INCONCLUSIVE dediyse ama
+	// L3 mutasyon kanıtı aynı testin gerçekten bir mutant öldürdüğünü
+	// gösteriyorsa, bu statik belirsizliği çürüten gerçek bir kanıt -
+	// aracın en değerli anı iki ayrı görünümde birbirinden habersiz
+	// durmasın diye burada bağlanıyor.
+	const contradiction = node.verdict === 'inconclusive' && identity.className && identity.methodName
+		? findContradictionEvidence(identity.className, identity.methodName)
+		: undefined;
+	if (contradiction) {
+		tooltipParts.push(
+			'---\n\n'
+			+ `**Mutasyon kanıtı bunu çürütüyor:** statik analiz bu testi çözemedi, ama bu test gerçekten \`${contradiction.className}#${contradiction.methodName}${contradiction.methodDescription}\`'in bir mutantını (satır ${contradiction.mutantLine}) öldürdü - davranışı gerçekten gözlüyor. Sağ tık → "Mutasyon Ağacında Göster".`,
+		);
+	}
+	if (tooltipParts.length > 0) {
+		item.tooltip = new vscode.MarkdownString(tooltipParts.join('\n\n'));
 	}
 	const state = getCoverageState();
 	if (state && node.finding) {
@@ -304,8 +323,14 @@ function prodTestItem(node: Extract<LineTestsNode, { kind: 'prodTest' }>): vscod
 		const selection = new vscode.Range(node.finding.startLine - 1, 0, node.finding.startLine - 1, 0);
 		item.command = { command: 'vscode.open', title: 'Test Dosyasını Aç', arguments: [uri, { selection }] };
 	}
-	item.contextValue = 'coverdict.prodTest';
+	item.contextValue = contradiction ? 'coverdict.prodTest.contradiction' : 'coverdict.prodTest';
 	return item;
+}
+
+/** `getMutationState()`'te bu test için gerçekten bir `killingTests` kaydı var mı - `ui/commands.ts`'in köprü komutu bunu `findMutationBridgeTarget`'a besler. */
+function findContradictionEvidence(testClassName: string, testMethodName: string): KillContribution | undefined {
+	const state = getMutationState();
+	return state?.mutation ? findKillContribution(state.mutation, state.moduleId, testClassName, testMethodName) : undefined;
 }
 
 function testLineItem(node: Extract<LineTestsNode, { kind: 'testLine' }>): vscode.TreeItem {

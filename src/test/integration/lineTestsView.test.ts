@@ -4,9 +4,9 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 
-import { setCoverageState, setPerTestState, type CoverageState } from '../../model/store';
+import { setCoverageState, setMutationState, setPerTestState, type CoverageState } from '../../model/store';
 import { LineTestsTreeProvider } from '../../ui/treeViews/lineTestsView';
-import type { FileCoverageBlock, Finding, MetricSet, ModuleInput, PerTestBlock } from '../../verdict/types';
+import type { FileCoverageBlock, Finding, MetricSet, ModuleInput, MutationBlock, PerTestBlock } from '../../verdict/types';
 
 const METRIC = { numeratorName: 'a', numerator: 1, denominatorName: 'b', denominator: 1, percent: 100 };
 const METRIC_SET: MetricSet = { 'jacoco-line': METRIC, 'strict-line': METRIC, 'sonar-compatible': METRIC };
@@ -360,5 +360,79 @@ suite('Line tests view (Faz 15c)', () => {
 		assert.equal(roots[0].kind, 'empty');
 		assert.equal(roots[1].kind, 'collectHint');
 		assert.doesNotThrow(() => provider.getTreeItem(roots[1]));
+	});
+
+	/**
+	 * Faz 24 (§7.6 madde 6) - the real contradiction the plan calls "the
+	 * tool's most valuable moment", reproduced verbatim from a live
+	 * `--mutation-report root=...Calculator` run (2026-08-28):
+	 * `CalculatorUnresolvedOracleTest#addCheckedViaLocalSoftAssertions()` is
+	 * `NO_RECOGNIZED_ORACLE` (INCONCLUSIVE) at L0 (an AssertJ soft-assertion
+	 * call the static scan could not resolve), yet it is genuinely in
+	 * `add()`'s single mutant's `killingTests` - real proof the test does
+	 * observe behavior. This must surface where the INCONCLUSIVE badge is
+	 * shown, not stay silent.
+	 */
+	test('a statically INCONCLUSIVE test that really killed a mutant gets a contradiction note and the bridge contextValue', async () => {
+		const rawTestId = 'dev.coverdict.playground.CalculatorUnresolvedOracleTest.[engine:junit-jupiter]/[class:dev.coverdict.playground.CalculatorUnresolvedOracleTest]/[method:addCheckedViaLocalSoftAssertions()]';
+		const addPerTest: PerTestBlock = {
+			engine: 'pitest', engineVersion: '1.15.8',
+			modules: [{ id: 'root', entries: [{ className: 'dev.coverdict.playground.Calculator', methodName: 'add', lines: [{ line: 7, tests: [rawTestId] }] }], ambient: [] }],
+		};
+		const inconclusiveFinding: Finding = {
+			rule: 'NO_RECOGNIZED_ORACLE', confidence: 'INCONCLUSIVE', severity: 'WARNING', module: 'root',
+			path: 'src/test/java/dev/coverdict/playground/CalculatorUnresolvedOracleTest.java', startLine: 27, endLine: 33,
+			message: "Test 'addCheckedViaLocalSoftAssertions' calls an unresolved 'assertThat' that looks oracle-suggestive; it could not be resolved to confirm.",
+			suggestedAction: 'Add an assertion on the observed behavior, or register the helper as a custom oracle in configuration.',
+			fingerprint: '4fbd23ef10fc7678',
+			testMethod: 'dev.coverdict.playground.CalculatorUnresolvedOracleTest#addCheckedViaLocalSoftAssertions()',
+		};
+		const addMutation: MutationBlock = {
+			engine: 'pitest', engineVersion: '1.15.8',
+			modules: [{
+				id: 'root',
+				methods: [{
+					className: 'dev.coverdict.playground.Calculator', methodName: 'add', methodDescription: '(II)I', firstLine: 6, lastLine: 8,
+					mutants: [{ mutator: 'org.pitest.mutationtest.engine.gregor.mutators.returns.PrimitiveReturnsMutator', line: 7, status: 'KILLED', killingTests: [rawTestId] }],
+				}],
+			}],
+		};
+
+		setPerTestState({ moduleId: 'root', perTest: addPerTest, warnings: [] });
+		setMutationState({ moduleId: 'root', mutation: addMutation, warnings: [], targets: [], ranAt: Date.now() });
+		const { document, workspaceRoot } = await openProductionFile('Calculator');
+		setCoverageState({ ...STATE, workspaceRoot, findings: [inconclusiveFinding] });
+
+		const provider = new LineTestsTreeProvider();
+		provider.setActiveDocument(document);
+
+		const line = provider.getChildren()[0];
+		assert.equal(line.kind, 'prodLine');
+		const prodTest = provider.getChildren(line)[0];
+		assert.equal(prodTest.kind, 'prodTest');
+		if (prodTest.kind === 'prodTest') {
+			assert.equal(prodTest.verdict, 'inconclusive');
+		}
+
+		const item = provider.getTreeItem(prodTest);
+		assert.equal(item.contextValue, 'coverdict.prodTest.contradiction');
+		const tooltip = String((item.tooltip as vscode.MarkdownString).value);
+		assert.match(tooltip, /Mutasyon kanıtı bunu çürütüyor/);
+		assert.match(tooltip, /add\(II\)I/);
+	});
+
+	test('an INCONCLUSIVE test that never killed anything gets the plain contextValue, no fabricated contradiction', async () => {
+		setPerTestState({ moduleId: 'root', perTest: PER_TEST, warnings: [] });
+		const inconclusiveFinding: Finding = { ...FINDINGS[0], confidence: 'INCONCLUSIVE' };
+		const { document, workspaceRoot } = await openProductionFile('Calculator');
+		setCoverageState({ ...STATE, workspaceRoot, findings: [inconclusiveFinding] });
+		// No mutation state at all - the "no contribution found" path.
+
+		const provider = new LineTestsTreeProvider();
+		provider.setActiveDocument(document);
+
+		const line = provider.getChildren()[0];
+		const prodTest = provider.getChildren(line)[0];
+		assert.equal(provider.getTreeItem(prodTest).contextValue, 'coverdict.prodTest', 'no mutation evidence at all - must not claim a contradiction');
 	});
 });

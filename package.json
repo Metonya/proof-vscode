@@ -164,6 +164,10 @@
       {
         "command": "coverdict.mutationView.showInQuality",
         "title": "Test Kalitesi'nde Göster"
+      },
+      {
+        "command": "coverdict.lineTestsView.showInMutation",
+        "title": "Mutasyon Ağacında Göster"
       }
     ],
     "menus": {
@@ -216,6 +220,11 @@
           "command": "coverdict.mutationView.showInQuality",
           "when": "view == coverdict.mutationView && viewItem == coverdict.mutationMethod.pseudoTested",
           "group": "coverdict@1"
+        },
+        {
+          "command": "coverdict.lineTestsView.showInMutation",
+          "when": "view == coverdict.lineTestsView && viewItem == coverdict.prodTest.contradiction",
+          "group": "coverdict@1"
         }
       ],
       "commandPalette": [
@@ -229,6 +238,10 @@
         },
         {
           "command": "coverdict.mutationView.showInQuality",
+          "when": "false"
+        },
+        {
+          "command": "coverdict.lineTestsView.showInMutation",
           "when": "false"
         }
       ]

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-import { bucketOf, classesOf, findMutatedMethod, formatRelativeTime, methodLabel, mutatorLabel, productionMethodKey, scoreOf, scoreOfMethods, targetSummary, type MutantBucket, type MutationScore } from '../../model/mutationModel';
+import { allMutantsNoCoverage, bucketOf, classesOf, findMutatedMethod, formatRelativeTime, methodLabel, mutatorLabel, productionMethodKey, scoreOf, scoreOfMethods, targetSummary, type MutantBucket, type MutationScore } from '../../model/mutationModel';
 import { toAbsolutePath } from '../../model/pathIndex';
 import { buildProductionClassIndex, productionSourceRoots } from '../../model/productionClassIndex';
 import { getCoverageState, getMutationState } from '../../model/store';
@@ -81,7 +81,7 @@ export class MutationTreeProvider implements vscode.TreeDataProvider<MutationNod
 			case 'mutant':
 				return mutantItem(node.className, node.mutant);
 			case 'killingTest':
-				return leaf(parseTestIdentity(node.rawTestId).display, 'check');
+				return killingTestItem(node.rawTestId);
 		}
 	}
 
@@ -202,8 +202,9 @@ function classItem(className: string, methods: readonly MutatedMethod[]): vscode
 
 function methodItem(node: Extract<MutationNode, { kind: 'method' }>): vscode.TreeItem {
 	const score = scoreOf(node.method.mutants);
+	const allNoCoverage = allMutantsNoCoverage(node.method.mutants);
 	const item = new vscode.TreeItem(methodLabel(node.method, node.siblings), vscode.TreeItemCollapsibleState.Collapsed);
-	item.description = scoreText(score);
+	item.description = scoreText(score, allNoCoverage);
 	item.iconPath = score.survived > 0
 		? new vscode.ThemeIcon('warning', new vscode.ThemeColor('editorWarning.foreground'))
 		: new vscode.ThemeIcon('symbol-method');
@@ -214,7 +215,7 @@ function methodItem(node: Extract<MutationNode, { kind: 'method' }>): vscode.Tre
 	const bridgeNote = pseudoTestedFinding ? '\n\n---\n\nTest Kalitesi\'nde `PSEUDO_TESTED_METHOD` bulgusu var - sağ tık → "Test Kalitesi\'nde Göster".' : '';
 	item.tooltip = new vscode.MarkdownString(
 		`\`${node.className}#${node.method.methodName}${node.method.methodDescription}\`\n\n`
-		+ `Satır ${node.method.firstLine}-${node.method.lastLine}\n\n${scoreTooltip(score)}${bridgeNote}`,
+		+ `Satır ${node.method.firstLine}-${node.method.lastLine}\n\n${scoreTooltip(score, allNoCoverage)}${bridgeNote}`,
 	);
 	item.command = openCommandFor(node.className, node.method.firstLine, 'Metoda Git');
 	item.id = `coverdict.mutationMethod:${node.className}#${node.method.methodName}${node.method.methodDescription}`;
@@ -226,6 +227,33 @@ function methodItem(node: Extract<MutationNode, { kind: 'method' }>): vscode.Tre
 function findPseudoTestedFinding(className: string, methodName: string, methodDescription: string): Finding | undefined {
 	const key = productionMethodKey(className, methodName, methodDescription);
 	return getCoverageState()?.findings.find((f) => f.rule === 'PSEUDO_TESTED_METHOD' && f.productionMethod === key);
+}
+
+/**
+ * Faz 24 (§7.6 madde 6, ters yön - bilgilendirme amaçlı). Bir mutantı
+ * öldüren test, L0'ın statik taramasında `INCONCLUSIVE` kaldıysa bunu
+ * burada da söylemek gerekir - "Satır → Testler"deki köprü zaten diğer
+ * yöne gidiyor (madde 6'nın asıl komutu), burada sadece aynı çelişkiyi
+ * unutmadığımızı gösteren bir not var, ayrı bir komut gerekmiyor (yön
+ * zaten aktif dosyaya bağlı "Satır → Testler"den buraya geliniyor).
+ * Rule'a göre değil `confidence === 'INCONCLUSIVE'`e göre arıyor - `model/
+ * mutationModel.ts`'in `findKillContribution`'ıyla aynı, kuralı yeniden
+ * türetmiyor.
+ */
+function killingTestItem(rawTestId: string): vscode.TreeItem {
+	const identity = parseTestIdentity(rawTestId);
+	const item = leaf(identity.display, 'check');
+	if (identity.className && identity.methodName) {
+		const key = `${identity.className}#${identity.methodName}()`;
+		const finding = getCoverageState()?.findings.find((f) => f.confidence === 'INCONCLUSIVE' && f.testMethod === key);
+		if (finding) {
+			item.tooltip = new vscode.MarkdownString(
+				`Bu testin L0 statik oracle taramasında **belirsiz** (\`${finding.rule}\`, INCONCLUSIVE) kaldığı bir bulgu var, ama burada gördüğün gibi gerçekten bir mutant öldürdü - davranışı gözlüyor. "Satır → Testler"de bu testin INCONCLUSIVE etiketine bak.`,
+			);
+			item.contextValue = 'coverdict.killingTest.contradiction';
+		}
+	}
+	return item;
 }
 
 /**
@@ -274,23 +302,36 @@ function mutantTooltip(bucket: MutantBucket, mutant: Mutant): string {
 	}
 }
 
-/** Skoru asla tek başına yüzde olarak göstermiyoruz: belirsiz sayısı görünmezse "%100" yanıltıcı olur (hard rule 3a). */
-function scoreText(score: MutationScore): string {
+/**
+ * Skoru asla tek başına yüzde olarak göstermiyoruz: belirsiz sayısı
+ * görünmezse "%100" yanıltıcı olur (hard rule 3a). Faz 24 (§7.6 madde 7):
+ * `allNoCoverage` true ise (bu metodun üretilen **her** mutantı
+ * `NO_COVERAGE`) sebep tahmin değil veriden çıkarım - açıkça yazılır,
+ * genel "N belirsiz"in arkasına gizlenmez.
+ */
+function scoreText(score: MutationScore, allNoCoverage = false): string {
+	if (score.percent === null && allNoCoverage) {
+		return 'skor yok - hiçbir test bu metoda uğramıyor';
+	}
 	const base = score.percent === null
 		? 'skor yok'
 		: `${Math.round(score.percent)}% · ${score.killed}/${score.killed + score.survived} öldürüldü`;
 	return score.indeterminate > 0 ? `${base} · ${score.indeterminate} belirsiz` : base;
 }
 
-function scoreTooltip(score: MutationScore): string {
+function scoreTooltip(score: MutationScore, allNoCoverage = false): string {
 	const lines = [
 		`Öldürüldü: ${score.killed}`,
 		`Hayatta kaldı: ${score.survived}`,
 		`Belirsiz: ${score.indeterminate}`,
 	];
-	lines.push(score.percent === null
-		? '\nSkor hesaplanamıyor: karara bağlanmış (öldürülen ya da hayatta kalan) mutant yok.'
-		: `\nSkor = öldürülen / (öldürülen + hayatta kalan) = ${score.percent.toFixed(1)}%. Belirsizler paydaya girmez.`);
+	if (score.percent === null && allNoCoverage) {
+		lines.push('\nSkor hesaplanamıyor: üretilen her mutant `NO_COVERAGE` - hiçbir test bu metoda hiç uğramıyor, mutasyon motoru davranışını gözlemleyemiyor bile.');
+	} else {
+		lines.push(score.percent === null
+			? '\nSkor hesaplanamıyor: karara bağlanmış (öldürülen ya da hayatta kalan) mutant yok.'
+			: `\nSkor = öldürülen / (öldürülen + hayatta kalan) = ${score.percent.toFixed(1)}%. Belirsizler paydaya girmez.`);
+	}
 	return lines.join('\n\n');
 }
 

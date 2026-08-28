@@ -1,4 +1,5 @@
 import * as assert from 'node:assert';
+import * as vscode from 'vscode';
 
 import { setCoverageState, setMutationState, type CoverageState } from '../../model/store';
 import { findMutationBridgeTarget, MutationTreeProvider } from '../../ui/treeViews/mutationView';
@@ -175,7 +176,35 @@ suite('Mutation view (Faz 20)', () => {
 		assert.match(String(item.description), /NO_COVERAGE/, 'the raw status stays visible - "indeterminate" alone does not say why');
 
 		// The method's own score has no denominator at all.
-		assert.match(String(provider.getTreeItem(negate).description), /skor yok/);
+		const negateItem = provider.getTreeItem(negate);
+		assert.match(String(negateItem.description), /skor yok/);
+		// Faz 24 (§7.6 madde 7): every mutant here is NO_COVERAGE (real negate() shape) - say why plainly, not just "belirsiz".
+		assert.match(String(negateItem.description), /hiçbir test bu metoda uğramıyor/);
+		assert.match(String((negateItem.tooltip as vscode.MarkdownString).value), /hiçbir test bu metoda hiç uğramıyor/);
+	});
+
+	/** Faz 24 (§7.6 madde 7): the mixed real describe() shape (NO_COVERAGE + SURVIVED) must NOT claim "no test reaches it" - a SURVIVED mutant proves a test did reach it. */
+	test('a method with mixed NO_COVERAGE and other statuses does not falsely claim no test reaches it', () => {
+		const mixedMethod: MutationBlock = {
+			engine: 'pitest', engineVersion: '1.15.8',
+			modules: [{
+				id: 'root',
+				methods: [{
+					className: 'dev.coverdict.playground.Calculator', methodName: 'describe', methodDescription: '(I)Ljava/lang/String;',
+					firstLine: 30, lastLine: 33,
+					mutants: [
+						{ mutator: 'org.pitest.mutationtest.engine.gregor.mutators.returns.PrimitiveReturnsMutator', line: 30, status: 'NO_COVERAGE', killingTests: [] },
+						{ mutator: 'org.pitest.mutationtest.engine.gregor.mutators.returns.PrimitiveReturnsMutator', line: 33, status: 'SURVIVED', killingTests: [] },
+					],
+				}],
+			}],
+		};
+		setCoverageState(STATE);
+		setMutationState({ moduleId: 'root', mutation: mixedMethod, warnings: [], targets: [], ranAt: Date.now() });
+		const provider = new MutationTreeProvider();
+
+		const describe = provider.getChildren(classNodes(provider)[0]).find((m) => m.kind === 'method' && m.method.methodName === 'describe')!;
+		assert.doesNotMatch(String(provider.getTreeItem(describe).description), /hiçbir test bu metoda uğramıyor/);
 	});
 
 	test('survivors-only filter keeps the methods worth looking at and can be turned back off', () => {
@@ -259,5 +288,42 @@ suite('Mutation view (Faz 20)', () => {
 		setCoverageState(STATE);
 		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
 		assert.equal(findMutationBridgeTarget('dev.coverdict.playground.Calculator', 'notAMethod', '()V'), undefined);
+	});
+
+	/**
+	 * Faz 24 (§7.6 madde 6, ters yön) - real shape: `divide`'ın killed
+	 * mutantını `CalculatorSubsumedTest#divideNarrow()` öldürdü (bkz.
+	 * MUTATION fixture yukarıda). Bu testin L0'da INCONCLUSIVE bir bulgusu
+	 * olduğu varsayımıyla, mutasyon ağacındaki bu killing test yaprağı da
+	 * çelişkiyi hatırlatmalı - "Satır → Testler"deki köprünün simetriği.
+	 */
+	test('a killing test with a real INCONCLUSIVE finding gets a contradiction tooltip note', () => {
+		const inconclusiveFinding: Finding = {
+			rule: 'NO_RECOGNIZED_ORACLE', confidence: 'INCONCLUSIVE', severity: 'WARNING', module: 'root',
+			path: 'src/test/java/dev/coverdict/playground/CalculatorSubsumedTest.java', startLine: 19, endLine: 19,
+			message: 'looked oracle-suggestive but could not be resolved', suggestedAction: 'add an assertion', fingerprint: 'abc',
+			testMethod: 'dev.coverdict.playground.CalculatorSubsumedTest#divideNarrow()',
+		};
+		setCoverageState({ ...STATE, findings: [inconclusiveFinding] });
+		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: ['dev.coverdict.playground.Calculator'], ranAt: Date.now() });
+		const provider = new MutationTreeProvider();
+
+		const divide = provider.getChildren(classNodes(provider)[0]).find((m) => m.kind === 'method' && m.method.methodName === 'divide')!;
+		const killingTest = provider.getChildren(provider.getChildren(divide)[0])[0];
+		const item = provider.getTreeItem(killingTest);
+		assert.equal(item.contextValue, 'coverdict.killingTest.contradiction');
+		assert.match(String((item.tooltip as vscode.MarkdownString).value), /belirsiz/);
+	});
+
+	test('a killing test with no matching finding at all gets the plain leaf, no fabricated note', () => {
+		setCoverageState({ ...STATE, findings: [] });
+		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+		const provider = new MutationTreeProvider();
+
+		const divide = provider.getChildren(classNodes(provider)[0]).find((m) => m.kind === 'method' && m.method.methodName === 'divide')!;
+		const killingTest = provider.getChildren(provider.getChildren(divide)[0])[0];
+		const item = provider.getTreeItem(killingTest);
+		assert.equal(item.contextValue, undefined);
+		assert.equal(item.tooltip, undefined);
 	});
 });

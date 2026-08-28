@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { bucketOf, classesOf, findMutatedMethod, formatRelativeTime, methodLabel, mutatorLabel, parseProductionMethod, productionMethodKey, scoreOf, targetSummary } from '../../../model/mutationModel';
+import { allMutantsNoCoverage, bucketOf, classesOf, findKillContribution, findMutatedMethod, formatRelativeTime, methodLabel, mutatorLabel, parseProductionMethod, productionMethodKey, scoreOf, targetSummary } from '../../../model/mutationModel';
 import type { MutatedMethod, MutationBlock, Mutant } from '../../../verdict/types';
 
 const mutant = (status: string, line = 10, killingTests: string[] = []): Mutant => ({
@@ -191,4 +191,62 @@ test('findMutatedMethod: gerçek playground şekliyle, method + description eşl
 test('findMutatedMethod: bir eşleşme yoksa (güncel olmayan mutasyon sonucu) undefined döner, uydurmaz', () => {
 	const classes = classesOf({ engine: 'pitest', engineVersion: '1.15.8', modules: [{ id: 'root', methods: [] }] }, 'root');
 	assert.equal(findMutatedMethod(classes, 'dev.coverdict.playground.Calculator', 'square', '(I)I'), undefined);
+});
+
+/**
+ * Faz 24 (§7.6 madde 7): gerçek playground verisi (2026-08-28,
+ * `--mutation-report`, `Calculator.negate`) - tek mutantı `NO_COVERAGE`.
+ * `Calculator.describe` ise karışık `NO_COVERAGE`+`SURVIVED` üretti - bu
+ * durumda "hiçbir test uğramıyor" iddiası yanlış olurdu (`SURVIVED` bir
+ * testin oraya uğradığını ama gözlemlemediğini gösterir), o yüzden
+ * `every`, `some` değil.
+ */
+test('allMutantsNoCoverage: gerçek negate() şekli - tek NO_COVERAGE mutant - true', () => {
+	assert.equal(allMutantsNoCoverage([mutant('NO_COVERAGE')]), true);
+});
+
+test('allMutantsNoCoverage: gerçek describe() şekli - NO_COVERAGE + SURVIVED karışık - false', () => {
+	assert.equal(allMutantsNoCoverage([mutant('NO_COVERAGE'), mutant('SURVIVED')]), false, 'karışık durumda "hiç uğramıyor" iddiası yanlış olur');
+});
+
+test('allMutantsNoCoverage: mutant listesi boşsa false - "hiç mutant yok" ile "hepsi NO_COVERAGE" farklı iddialardır', () => {
+	assert.equal(allMutantsNoCoverage([]), false);
+});
+
+/**
+ * Faz 24 (§7.6 madde 6): gerçek playground çelişkisi (2026-08-28,
+ * `--mutation-report root=...Calculator`) -
+ * `CalculatorUnresolvedOracleTest#addCheckedViaLocalSoftAssertions()` L0'da
+ * `NO_RECOGNIZED_ORACLE` (INCONCLUSIVE) ama `add()`'in tek mutantının
+ * `killingTests`'inde gerçekten var - ham JUnit5 UniqueId biçiminde.
+ */
+const ADD_MUTATION_WITH_CONTRADICTION: MutationBlock = {
+	engine: 'pitest', engineVersion: '1.15.8',
+	modules: [{
+		id: 'root',
+		methods: [{
+			className: 'dev.coverdict.playground.Calculator', methodName: 'add', methodDescription: '(II)I',
+			firstLine: 6, lastLine: 8,
+			mutants: [{
+				mutator: 'org.pitest.mutationtest.engine.gregor.mutators.returns.PrimitiveReturnsMutator', line: 7, status: 'KILLED',
+				killingTests: [
+					'dev.coverdict.playground.CalculatorGoodTest.[engine:junit-jupiter]/[class:dev.coverdict.playground.CalculatorGoodTest]/[method:addWorksCorrectly()]',
+					'dev.coverdict.playground.CalculatorUnresolvedOracleTest.[engine:junit-jupiter]/[class:dev.coverdict.playground.CalculatorUnresolvedOracleTest]/[method:addCheckedViaLocalSoftAssertions()]',
+				],
+			}],
+		}],
+	}],
+};
+
+test('findKillContribution: a test statically INCONCLUSIVE is found in a real mutant\'s killingTests - the contradiction is real', () => {
+	const found = findKillContribution(ADD_MUTATION_WITH_CONTRADICTION, 'root', 'dev.coverdict.playground.CalculatorUnresolvedOracleTest', 'addCheckedViaLocalSoftAssertions');
+	assert.deepEqual(found, { className: 'dev.coverdict.playground.Calculator', methodName: 'add', methodDescription: '(II)I', mutantLine: 7 });
+});
+
+test('findKillContribution: a test that never killed anything -> undefined, no contradiction to report', () => {
+	assert.equal(findKillContribution(ADD_MUTATION_WITH_CONTRADICTION, 'root', 'dev.coverdict.playground.CalculatorNoOracleTest', 'subtractHasNoAssertion'), undefined);
+});
+
+test('findKillContribution: module id not present -> undefined', () => {
+	assert.equal(findKillContribution(ADD_MUTATION_WITH_CONTRADICTION, 'nope', 'dev.coverdict.playground.CalculatorUnresolvedOracleTest', 'addCheckedViaLocalSoftAssertions'), undefined);
 });

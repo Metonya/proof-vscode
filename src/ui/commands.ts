@@ -10,9 +10,10 @@ import { run } from '../cli/runner';
 import { buildFalseGreenIndex } from '../model/falseGreenIndex';
 import type { BadgeMetric } from '../model/metrics';
 import { detectClassName } from '../model/classNameDetector';
-import { parseProductionMethod, productionMethodKey } from '../model/mutationModel';
+import { findKillContribution, parseProductionMethod, productionMethodKey } from '../model/mutationModel';
 import {
 	getCoverageState,
+	getMutationState,
 	getPerTestState,
 	getStaleFiles,
 	isGutterVisible,
@@ -22,6 +23,7 @@ import {
 	setPerTestState,
 } from '../model/store';
 import { parseVerdict } from '../verdict/parse';
+import { parseTestIdentity } from '../verdict/testIdentity';
 import type { ChangedFile, FileCoverageBlock, Finding, MetricSet, ModuleInput, NewCodeCoverage, Reason, VerdictDocument } from '../verdict/types';
 import { publishFindings } from './diagnostics';
 import type { ExplorerBadgeProvider } from './explorerBadges';
@@ -97,12 +99,14 @@ export function registerMutationCommands(context: vscode.ExtensionContext, outpu
 }
 
 /**
- * Faz 24 (§7.6 madde 5): `PSEUDO_TESTED_METHOD` bulgusu (Test Kalitesi) ile
- * mutasyon ağacındaki "HAYATTA KALDI" (Mutasyon) aynı olguyu bağlantısız
- * anlatıyordu - kullanıcı ikisini elle eşleştirmek zorundaydı. `reveal()`
- * her iki yönde de gerçek veriyle eşleşme arıyor; eşleşme yoksa (mutasyon
- * verisi hiç yok ya da güncel değil) sessizce başarısız olmak yerine
- * sebebini söylüyor (hard rule 3a).
+ * Faz 24 (§7.6 madde 5 ve 6): iki ayrı görünümün aynı olguyu bağlantısız
+ * anlattığı iki gerçek durumu birbirine bağlar - `PSEUDO_TESTED_METHOD`
+ * bulgusu (Test Kalitesi) ↔ mutasyon ağacındaki "HAYATTA KALDI" (madde
+ * 5), ve statik analizin `INCONCLUSIVE` dediği bir test ↔ o testin
+ * gerçekten öldürdüğü bir mutant (madde 6, aracın en değerli anı).
+ * `reveal()` her yönde de gerçek veriyle eşleşme arıyor; eşleşme yoksa
+ * (mutasyon verisi hiç yok ya da güncel değil) sessizce başarısız olmak
+ * yerine sebebini söylüyor (hard rule 3a).
  */
 export function registerQualityMutationBridgeCommands(sinks: CoverageSinks): vscode.Disposable[] {
 	return [
@@ -130,6 +134,32 @@ export function registerQualityMutationBridgeCommands(sinks: CoverageSinks): vsc
 				return;
 			}
 			void sinks.qualityTreeView.reveal(target, { select: true, focus: true, expand: true });
+		}),
+		// Faz 24 (§7.6 madde 6): "Satır → Testler"deki bir INCONCLUSIVE test'ten,
+		// o testin gerçekten öldürdüğü mutantın metoduna.
+		vscode.commands.registerCommand('coverdict.lineTestsView.showInMutation', (node: unknown) => {
+			const n = node as { kind?: string; rawTestId?: string } | undefined;
+			if (n?.kind !== 'prodTest' || !n.rawTestId) {
+				return;
+			}
+			const identity = parseTestIdentity(n.rawTestId);
+			if (!identity.className || !identity.methodName) {
+				return;
+			}
+			const mutationState = getMutationState();
+			const contribution = mutationState?.mutation
+				? findKillContribution(mutationState.mutation, mutationState.moduleId, identity.className, identity.methodName)
+				: undefined;
+			if (!contribution) {
+				vscode.window.showInformationMessage('coverdict: bu test için mutasyon kanıtı yok - önce Mutasyon Testi çalıştırın.');
+				return;
+			}
+			const target = findMutationBridgeTarget(contribution.className, contribution.methodName, contribution.methodDescription);
+			if (!target) {
+				vscode.window.showInformationMessage("coverdict: mutasyon verisi güncel değil - bu sınıf için Mutasyon Testi'ni tekrar çalıştırın.");
+				return;
+			}
+			void sinks.mutationTreeView.reveal(target, { select: true, focus: true, expand: true });
 		}),
 	];
 }

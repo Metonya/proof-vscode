@@ -1,6 +1,9 @@
 # coverdict-vscode — devir belgesi ve ileri plan
 
-**Son güncelleme:** 2026-08-28, Faz 24 sonrası (pencere yenileme düzeltmesi dahil).
+**Son güncelleme:** 2026-08-28, Faz 24 sonrası (pencere yenileme
+düzeltmesi, örtük constructor etiketi, Test Kalitesi ↔ Mutasyon köprüsü,
+L0/L3 çelişki köprüsü ve NO_COVERAGE açıklaması dahil - §7.6'nın tüm
+maddeleri kapandı).
 
 ---
 
@@ -374,7 +377,7 @@ Activity Bar'da `coverdict` konteyneri, içinde **5 görünüm**:
    skor `öldürülen/(öldürülen+hayatta kalan)`, belirsizler ayrıca sayılır
    ve asla gizlenmez. Başlıkta "sadece hayatta kalan mutantlar" süzgeci.
 
-### Komutlar (13)
+### Komutlar (14)
 
 `coverdict.analyze` (Hızlı Tarama) · `coverdict.analyzePerTest` (Derin
 Tarama) · `coverdict.mutationForModule` (modül geneli mutasyon, onaylı) ·
@@ -387,7 +390,9 @@ sağ tık, Java) · `coverdict.copyItem` (ağaçlarda sağ tık → Kopyala) ·
 `coverdict.qualityView.showInMutation` (Faz 24, sağ tık, yalnızca
 `PSEUDO_TESTED_METHOD` bulgusunda) ·
 `coverdict.mutationView.showInQuality` (Faz 24, sağ tık, yalnızca
-eşleşen bir bulgu varsa - §7.6 madde 5).
+eşleşen bir bulgu varsa - §7.6 madde 5) ·
+`coverdict.lineTestsView.showInMutation` (Faz 24, sağ tık, yalnızca L0/L3
+çelişkisi gerçekten varsa - §7.6 madde 6).
 
 ### Ayarlar (13)
 
@@ -418,7 +423,7 @@ eşleşen bir bulgu varsa - §7.6 madde 5).
 
 ### Sağlık
 
-151 unit + 42 integration test geçiyor. SonarQube (`coverdict-vscode`,
+157 unit + 47 integration test geçiyor. SonarQube (`coverdict-vscode`,
 `http://localhost:9001`) sıfır açık bulgu.
 
 ---
@@ -847,17 +852,51 @@ kapandı**, 4-7 açık — öncelik kullanıcının kendi sıralaması.
    testleri (`mutationModel.test.ts`, `mutationView.test.ts`,
    `treeViews.test.ts`). `npm run check-types && npm run lint`, temiz koşu
    (151 unit + 42 integration), SonarQube sıfır açık bulgu.
-6. **Gerçek bir çelişki arayüzde sessiz kalıyor.**
+6. ~~**Gerçek bir çelişki arayüzde sessiz kalıyor.**~~ — **KAPANDI
+   (Faz 24).** Gerçek playground verisiyle birebir doğrulandı
+   (2026-08-28, `--mutation-report root=...Calculator`):
    `CalculatorUnresolvedOracleTest#addCheckedViaLocalSoftAssertions()`
-   Satır → Testler'de `NO_RECOGNIZED_ORACLE` (INCONCLUSIVE) damgalı, ama
-   Mutasyon'da `add()`'in mutantını öldüren testler arasında — yani
-   mutasyon kanıtı statik analizin belirsiz kararını çürütüyor, test
-   gerçekten davranışı gözlüyor. Bunu birleştirmek (L0 bulgusu + L3
-   kanıtı) aracın en değerli anı olurdu; bugün iki ayrı görünümde,
-   birbirinden habersiz duruyor.
-7. **`negate()` "skor yok" fazla kapalı.** Bütün mutantları `NO_COVERAGE`
-   ise sebep bellidir: hiçbir test bu metoda uğramıyor. Bu bir tahmin
-   değil, veriden çıkarım — açıkça yazılabilir.
+   L0'da `NO_RECOGNIZED_ORACLE` (INCONCLUSIVE, AssertJ soft-assertion
+   statik çözülemedi) ama `add()`'in tek mutantının `killingTests`'inde
+   gerçekten var.
+
+   `model/mutationModel.ts`'e `findKillContribution` eklendi (saf, tam
+   test edildi): bir test kimliği verildiğinde, mutasyon bloğundaki
+   **her** mutantın `killingTests`'ini `parseTestIdentity` ile normalize
+   edip arıyor - kural yeniden türetilmiyor, kuralı zaten CLI hesapladı.
+   "Satır → Testler"de bir `prodTest` düğümünün `verdict === 'inconclusive'`
+   olduğu her yerde bu arama otomatik çalışıyor; eşleşme varsa tooltip'e
+   "Mutasyon kanıtı bunu çürütüyor: ... bir mutantını (satır N) öldürdü"
+   notu ekleniyor, `contextValue` `coverdict.prodTest.contradiction`
+   oluyor ve sağ tık → "Mutasyon Ağacında Göster"
+   (`coverdict.lineTestsView.showInMutation`) o metodu mutasyon ağacında
+   açıp seçiyor. Ters yönde (bilgilendirme amaçlı, ayrı komut gerekmedi):
+   mutasyon ağacındaki bir `killingTest` yaprağının gerçekten eşleşen bir
+   `INCONCLUSIVE` bulgusu varsa tooltip'i aynı çelişkiyi hatırlatıyor.
+
+   Eşleşme yoksa (mutasyon verisi hiç yok, ya da bu test hiçbir şey
+   öldürmedi) sessizce hiçbir şey söylenmiyor - "çelişki var" iddiası
+   yalnızca gerçekten kanıtlanmışsa gösteriliyor (hard rule 3a).
+
+   Doğrulama: gerçek `add()`/`CalculatorUnresolvedOracleTest` şekliyle
+   yeni birim testleri (`mutationModel.test.ts`) ve iki yönü de kapsayan
+   entegrasyon testleri (`lineTestsView.test.ts`, `mutationView.test.ts`).
+7. ~~**`negate()` "skor yok" fazla kapalı.**~~ — **KAPANDI (Faz 24).**
+   `model/mutationModel.ts`'e `allMutantsNoCoverage` eklendi (saf,
+   `every` - `some` değil, çünkü gerçek `describe()` verisi
+   `NO_COVERAGE`+`SURVIVED` karışımı üretti ve karışık durumda "hiçbir
+   test uğramıyor" iddiası yanlış olurdu). Bir metodun üretilen **her**
+   mutantı `NO_COVERAGE` ise (gerçek `negate()` şekli) skor metni artık
+   "skor yok" yerine "skor yok - hiçbir test bu metoda uğramıyor" diyor,
+   tooltip de aynı sebebi tam cümleyle açıklıyor.
+
+   Doğrulama: gerçek `negate()`/`describe()` şekilleriyle yeni birim
+   testleri ve mutasyon ağacının bu metni doğru bastığını doğrulayan bir
+   entegrasyon testi (`mutationView.test.ts`).
+
+   **Bu üç maddenin ortak doğrulaması:** `npm run check-types && npm run
+   lint`, temiz koşu (157 unit + 47 integration), SonarQube sıfır açık
+   bulgu.
 
 ---
 
