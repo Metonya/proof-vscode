@@ -2,7 +2,7 @@ import * as assert from 'node:assert';
 
 import { setCoverageState, type CoverageState } from '../../model/store';
 import { CoverageTreeProvider } from '../../ui/treeViews/coverageView';
-import { QualityTreeProvider } from '../../ui/treeViews/qualityView';
+import { findQualityBridgeTarget, QualityTreeProvider } from '../../ui/treeViews/qualityView';
 import { RunTreeProvider } from '../../ui/treeViews/runView';
 import type { Finding, MetricSet } from '../../verdict/types';
 
@@ -119,5 +119,62 @@ suite('Sidebar tree views (Faz 11b)', () => {
 		assert.equal(warningNodes.length, 1);
 		assert.equal(warningNodes[0].kind, 'warning');
 		assert.doesNotThrow(() => provider.getTreeItem(warningNodes[0]));
+	});
+
+	/**
+	 * Faz 24 (§7.6 madde 5): Test Kalitesi ↔ Mutasyon köprüsü. Gerçek
+	 * `productionMethod` biçimi (`--mutation-report` koşusundan,
+	 * 2026-08-28): `"dev.coverdict.playground.Calculator#square(I)I"`.
+	 */
+	const PSEUDO_TESTED_FINDING: Finding = {
+		rule: 'PSEUDO_TESTED_METHOD', severity: 'WARNING', confidence: 'HIGH', module: 'root',
+		path: 'src/main/java/dev/coverdict/playground/Calculator.java', startLine: 37, endLine: 37,
+		productionMethod: 'dev.coverdict.playground.Calculator#square(I)I',
+		message: 'dev.coverdict.playground.Calculator#square is covered but every mutant generated for it survived - the tests that reach it never observe its behavior.',
+		suggestedAction: "Add an assertion on this method's return value or observable side effect for at least one covering test.",
+		fingerprint: 'e1f087bbb5ce5bc8',
+	};
+
+	test('a PSEUDO_TESTED_METHOD finding gets the bridge contextValue, an unrelated finding does not', () => {
+		setCoverageState({ ...STATE, findings: [FINDING, PSEUDO_TESTED_FINDING] });
+		const provider = new QualityTreeProvider();
+
+		const rules = provider.getChildren();
+		const pseudoRule = rules.find((r) => r.kind === 'rule' && r.rule === 'PSEUDO_TESTED_METHOD')!;
+		const oracleRule = rules.find((r) => r.kind === 'rule' && r.rule === 'NO_RECOGNIZED_ORACLE')!;
+
+		const pseudoFinding = provider.getChildren(pseudoRule)[0];
+		const oracleFinding = provider.getChildren(oracleRule)[0];
+		assert.equal(provider.getTreeItem(pseudoFinding).contextValue, 'coverdict.qualityFinding.pseudoTested');
+		assert.equal(provider.getTreeItem(oracleFinding).contextValue, 'coverdict.qualityFinding', 'a non-PSEUDO_TESTED_METHOD finding must not get the bridge affordance');
+	});
+
+	test('getParent: a finding node resolves back to its group (rule or file), matching whichever grouping is active', () => {
+		setCoverageState({ ...STATE, findings: [FINDING, PSEUDO_TESTED_FINDING] });
+		const provider = new QualityTreeProvider();
+
+		const ruleGroup = provider.getChildren().find((r) => r.kind === 'rule' && r.rule === 'PSEUDO_TESTED_METHOD')!;
+		const finding = provider.getChildren(ruleGroup)[0];
+		assert.deepEqual(provider.getParent(finding), ruleGroup);
+
+		provider.setGrouping('file');
+		const fileGroup = provider.getChildren().find((f) => f.kind === 'file')!;
+		const findingUnderFile = provider.getChildren(fileGroup).find((f) => f.kind === 'finding' && f.finding.fingerprint === PSEUDO_TESTED_FINDING.fingerprint)!;
+		assert.deepEqual(provider.getParent(findingUnderFile), fileGroup);
+	});
+
+	test('findQualityBridgeTarget: finds the real PSEUDO_TESTED_METHOD finding by its productionMethod key', () => {
+		setCoverageState({ ...STATE, findings: [FINDING, PSEUDO_TESTED_FINDING] });
+		const target = findQualityBridgeTarget('dev.coverdict.playground.Calculator#square(I)I');
+		assert.ok(target);
+		assert.equal(target?.kind, 'finding');
+		if (target?.kind === 'finding') {
+			assert.equal(target.finding.fingerprint, PSEUDO_TESTED_FINDING.fingerprint);
+		}
+	});
+
+	test('findQualityBridgeTarget: no matching finding (stale/mismatched method) -> undefined, not a guess', () => {
+		setCoverageState({ ...STATE, findings: [FINDING] });
+		assert.equal(findQualityBridgeTarget('dev.coverdict.playground.Calculator#square(I)I'), undefined);
 	});
 });

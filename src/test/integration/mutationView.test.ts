@@ -1,8 +1,8 @@
 import * as assert from 'node:assert';
 
 import { setCoverageState, setMutationState, type CoverageState } from '../../model/store';
-import { MutationTreeProvider } from '../../ui/treeViews/mutationView';
-import type { MetricSet, MutationBlock } from '../../verdict/types';
+import { findMutationBridgeTarget, MutationTreeProvider } from '../../ui/treeViews/mutationView';
+import type { Finding, MetricSet, MutationBlock } from '../../verdict/types';
 
 const METRIC = { numeratorName: 'a', numerator: 1, denominatorName: 'b', denominator: 1, percent: 100 };
 const METRIC_SET: MetricSet = { 'jacoco-line': METRIC, 'strict-line': METRIC, 'sonar-compatible': METRIC };
@@ -194,5 +194,70 @@ suite('Mutation view (Faz 20)', () => {
 
 		provider.toggleSurvivorsOnly();
 		assert.equal(provider.getChildren(classNodes(provider)[0]).length, 3);
+	});
+
+	/**
+	 * Faz 24 (§7.6 madde 5): Test Kalitesi ↔ Mutasyon köprüsü. Gerçek bir
+	 * `--mutation-report` koşusu (2026-08-28) `square`'in tek mutantı hayatta
+	 * kaldığı için gerçek bir `PSEUDO_TESTED_METHOD` bulgusu üretti
+	 * (`productionMethod: "dev.coverdict.playground.Calculator#square(I)I"`),
+	 * `divide`'ın (killed mutant) için üretmedi - köprü yalnızca gerçekten
+	 * eşleşen metotta görünmeli.
+	 */
+	const SQUARE_PSEUDO_TESTED_FINDING: Finding = {
+		rule: 'PSEUDO_TESTED_METHOD', severity: 'WARNING', confidence: 'HIGH', module: 'root',
+		path: 'src/main/java/dev/coverdict/playground/Calculator.java', startLine: 37, endLine: 37,
+		productionMethod: 'dev.coverdict.playground.Calculator#square(I)I',
+		message: 'dev.coverdict.playground.Calculator#square is covered but every mutant generated for it survived - the tests that reach it never observe its behavior.',
+		suggestedAction: "Add an assertion on this method's return value or observable side effect for at least one covering test.",
+		fingerprint: 'e1f087bbb5ce5bc8',
+	};
+
+	test('a method with a matching real PSEUDO_TESTED_METHOD finding gets the bridge contextValue, an unrelated method does not', () => {
+		setCoverageState({ ...STATE, findings: [SQUARE_PSEUDO_TESTED_FINDING] });
+		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+		const provider = new MutationTreeProvider();
+
+		const methods = provider.getChildren(classNodes(provider)[0]);
+		const square = methods.find((m) => m.kind === 'method' && m.method.methodName === 'square')!;
+		const divide = methods.find((m) => m.kind === 'method' && m.method.methodName === 'divide')!;
+
+		assert.equal(provider.getTreeItem(square).contextValue, 'coverdict.mutationMethod.pseudoTested');
+		assert.equal(provider.getTreeItem(divide).contextValue, 'coverdict.mutationMethod', 'divide has no matching finding - must not get the bridge affordance');
+	});
+
+	test('getParent: a method node resolves back to its class node, siblings intact for reveal()', () => {
+		setCoverageState(STATE);
+		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+		const provider = new MutationTreeProvider();
+
+		const classNode = classNodes(provider)[0];
+		const square = provider.getChildren(classNode).find((m) => m.kind === 'method' && m.method.methodName === 'square')!;
+		assert.deepEqual(provider.getParent(square), classNode);
+		assert.equal(provider.getParent(classNode), undefined, 'a class node is root-level, has no parent');
+	});
+
+	test('findMutationBridgeTarget: finds the real square() method by its productionMethod-derived identity', () => {
+		setCoverageState(STATE);
+		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+
+		const target = findMutationBridgeTarget('dev.coverdict.playground.Calculator', 'square', '(I)I');
+		assert.ok(target);
+		assert.equal(target?.kind, 'method');
+		if (target?.kind === 'method') {
+			assert.equal(target.method.methodName, 'square');
+		}
+	});
+
+	test('findMutationBridgeTarget: no mutation data at all -> undefined, not a guess', () => {
+		setCoverageState(STATE);
+		setMutationState({ moduleId: 'root', mutation: undefined, warnings: [], targets: [], ranAt: undefined });
+		assert.equal(findMutationBridgeTarget('dev.coverdict.playground.Calculator', 'square', '(I)I'), undefined);
+	});
+
+	test('findMutationBridgeTarget: mutation data present but this method is not in it (stale result) -> undefined', () => {
+		setCoverageState(STATE);
+		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+		assert.equal(findMutationBridgeTarget('dev.coverdict.playground.Calculator', 'notAMethod', '()V'), undefined);
 	});
 });

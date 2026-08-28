@@ -13,7 +13,7 @@ import type { CoverageSinks } from '../../ui/commands';
 import { CoverageTreeProvider } from '../../ui/treeViews/coverageView';
 import { LineTestsTreeProvider, type LineTestsNode } from '../../ui/treeViews/lineTestsView';
 import { MutationTreeProvider, type MutationNode } from '../../ui/treeViews/mutationView';
-import { QualityTreeProvider } from '../../ui/treeViews/qualityView';
+import { QualityTreeProvider, type QualityNode } from '../../ui/treeViews/qualityView';
 import { RunTreeProvider } from '../../ui/treeViews/runView';
 
 const METRIC = { numeratorName: 'a', numerator: 1, denominatorName: 'b', denominator: 1, percent: 100 };
@@ -73,8 +73,12 @@ function buildSinks(): CoverageSinks {
 		runView: new RunTreeProvider(),
 		coverageView: new CoverageTreeProvider(),
 		qualityView: new QualityTreeProvider(),
+		// restoreLastCoverageFrom never calls .reveal() - only the Faz 24
+		// bridge commands do - so these don't need to be real TreeViews here.
+		qualityTreeView: {} as vscode.TreeView<QualityNode>,
 		lineTestsView: new LineTestsTreeProvider(),
 		mutationView: new MutationTreeProvider(),
+		mutationTreeView: {} as vscode.TreeView<MutationNode>,
 	};
 }
 

@@ -12,6 +12,7 @@ import {
 	registerCopyCommands,
 	registerMutationCommands,
 	registerPerTestForFileCommand,
+	registerQualityMutationBridgeCommands,
 	registerToggleCoverageCommand,
 	type CoverageSinks,
 } from './ui/commands';
@@ -46,7 +47,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	const qualityView = new QualityTreeProvider();
 	const lineTestsView = new LineTestsTreeProvider();
 	const mutationView = new MutationTreeProvider();
-	const sinks: CoverageSinks = { context, gutterTypes, explorerBadges, statusBarItem, diagnostics, runView, coverageView, qualityView, lineTestsView, mutationView };
 
 	// Faz 15c: `createTreeView` (not `registerTreeDataProvider`) because
 	// `reveal()` needs it - the cursor-follow listener below uses it to
@@ -56,6 +56,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	// never reads `vscode.window.activeTextEditor` live.
 	const lineTestsTreeView = vscode.window.createTreeView('coverdict.lineTestsView', { treeDataProvider: lineTestsView, showCollapseAll: true });
 	lineTestsView.setActiveDocument(vscode.window.activeTextEditor?.document);
+
+	// Faz 24 (§7.6 madde 5): Test Kalitesi ↔ Mutasyon köprüsü de `reveal()`
+	// kullanıyor, aynı sebeple - her ikisi de plain `registerTreeDataProvider`
+	// ile kalsaydı köprü komutları hedefi ekrana odaklayamazdı.
+	const qualityTreeView = vscode.window.createTreeView('coverdict.qualityView', { treeDataProvider: qualityView, showCollapseAll: true });
+	const mutationTreeView = vscode.window.createTreeView('coverdict.mutationView', { treeDataProvider: mutationView, showCollapseAll: true });
+
+	const sinks: CoverageSinks = { context, gutterTypes, explorerBadges, statusBarItem, diagnostics, runView, coverageView, qualityView, qualityTreeView, lineTestsView, mutationView, mutationTreeView };
 
 	context.subscriptions.push(
 		output,
@@ -71,9 +79,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		diagnostics,
 		vscode.window.registerTreeDataProvider('coverdict.runView', runView),
 		vscode.window.registerTreeDataProvider('coverdict.coverageView', coverageView),
-		vscode.window.registerTreeDataProvider('coverdict.qualityView', qualityView),
+		qualityTreeView,
 		lineTestsTreeView,
-		vscode.window.registerTreeDataProvider('coverdict.mutationView', mutationView),
+		mutationTreeView,
 		registerHoverProvider(),
 		registerAnalyzeCommand(context, output, sinks),
 		registerAnalyzePerTestCommand(context, output, sinks),
@@ -81,6 +89,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		registerToggleCoverageCommand(sinks),
 		...registerCopyCommands(sinks),
 		...registerMutationCommands(context, output, sinks),
+		...registerQualityMutationBridgeCommands(sinks),
 		// setDecorations is per-editor, not global - a newly-visible editor
 		// needs its gutter marks re-applied by hand (Faz 9: always our own
 		// decorations now, no native path that keeps its own state).

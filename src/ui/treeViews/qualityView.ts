@@ -79,6 +79,21 @@ export class QualityTreeProvider implements vscode.TreeDataProvider<QualityNode>
 		return [];
 	}
 
+	/**
+	 * Faz 24 (§7.6 madde 5): Mutasyon ↔ Test Kalitesi köprüsü `reveal()`
+	 * kullanıyor, o da bir bulgunun henüz açılmamış grubunu bulabilmek için
+	 * `getParent`'a ihtiyaç duyuyor. `rootChildren` çağrısı, `getChildren`'ın
+	 * kullandığı **aynı** filtre/gruplama mantığından geçtiği için burada
+	 * ayrı bir kural yazmaya gerek yok - iki yöntem hiçbir zaman ayrışamaz.
+	 */
+	getParent(node: QualityNode): QualityNode | undefined {
+		if (node.kind !== 'finding') {
+			return undefined;
+		}
+		const roots = this.rootChildren(getCoverageState()?.findings);
+		return roots.find((r) => (r.kind === 'rule' || r.kind === 'file') && r.findings.some((f) => f.fingerprint === node.finding.fingerprint));
+	}
+
 	private rootChildren(allFindings: readonly Finding[] | undefined): QualityNode[] {
 		if (!allFindings) {
 			return [{ kind: 'empty', message: 'Önce bir analiz çalıştırın.' }];
@@ -162,10 +177,15 @@ function findingItem(finding: Finding): vscode.TreeItem {
 	const item = new vscode.TreeItem(`${fileName}:${finding.startLine}`, vscode.TreeItemCollapsibleState.None);
 	item.description = finding.testMethod?.split('#').pop() ?? finding.productionMethod ?? info.code;
 	item.iconPath = new vscode.ThemeIcon(finding.severity === 'WARNING' ? 'warning' : 'info');
+	// Faz 24 (§7.6 madde 5): mutasyon ağacındaki "HAYATTA KALDI" ile aynı
+	// olgu - sağ tık menüsü bunu "Mutasyon Ağacında Göster" ile bağlar.
+	const isPseudoTested = finding.rule === 'PSEUDO_TESTED_METHOD';
+	const bridgeNote = isPseudoTested ? '\n\n---\n\nBu, mutasyon ağacındaki "HAYATTA KALDI" ile aynı olgu - sağ tık → "Mutasyon Ağacında Göster".' : '';
 	item.tooltip = new vscode.MarkdownString(
-		`**${info.title}** \`${info.code}\` · güven: ${finding.confidence}\n\n${finding.message}\n\n**Ne yapmalı:** ${finding.suggestedAction}\n\n[Kural dokümanı](${ruleDocsUrl(finding.rule)})`,
+		`**${info.title}** \`${info.code}\` · güven: ${finding.confidence}\n\n${finding.message}\n\n**Ne yapmalı:** ${finding.suggestedAction}\n\n[Kural dokümanı](${ruleDocsUrl(finding.rule)})${bridgeNote}`,
 	);
-	item.contextValue = 'coverdict.qualityFinding';
+	item.id = `coverdict.qualityFinding:${finding.fingerprint}`;
+	item.contextValue = isPseudoTested ? 'coverdict.qualityFinding.pseudoTested' : 'coverdict.qualityFinding';
 
 	const state = getCoverageState();
 	if (state) {
@@ -174,6 +194,18 @@ function findingItem(finding: Finding): vscode.TreeItem {
 		item.command = { command: 'vscode.open', title: 'Dosyayı Aç', arguments: [uri, { selection }] };
 	}
 	return item;
+}
+
+/**
+ * Faz 24 (§7.6 madde 5): mutasyon ağacındaki bir metoda karşılık gelen
+ * Test Kalitesi bulgu düğümü - `ui/commands.ts`'in köprü komutu bunu
+ * `reveal()`'e verir. `productionMethodKey`, `model/mutationModel.ts`'in
+ * ürettiği `"FQCN#method(desc)"` anahtarı - `Finding.productionMethod` ile
+ * birebir aynı biçim. Eşleşme yoksa `undefined`, uydurulmaz.
+ */
+export function findQualityBridgeTarget(productionMethodKey: string): QualityNode | undefined {
+	const finding = getCoverageState()?.findings.find((f) => f.rule === 'PSEUDO_TESTED_METHOD' && f.productionMethod === productionMethodKey);
+	return finding ? { kind: 'finding', finding } : undefined;
 }
 
 function resourceUriFor(repoRelativePath: string): vscode.Uri | undefined {

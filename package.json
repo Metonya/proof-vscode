@@ -156,6 +156,14 @@
         "command": "coverdict.mutationView.toggleSurvivorsOnly",
         "title": "coverdict: Sadece Hayatta Kalan Mutantlar",
         "icon": "$(filter)"
+      },
+      {
+        "command": "coverdict.qualityView.showInMutation",
+        "title": "Mutasyon Ağacında Göster"
+      },
+      {
+        "command": "coverdict.mutationView.showInQuality",
+        "title": "Test Kalitesi'nde Göster"
       }
     ],
     "menus": {
@@ -198,11 +206,29 @@
           "command": "coverdict.copyItem",
           "when": "view == coverdict.qualityView || view == coverdict.coverageView || view == coverdict.lineTestsView || view == coverdict.mutationView",
           "group": "9_cutcopypaste"
+        },
+        {
+          "command": "coverdict.qualityView.showInMutation",
+          "when": "view == coverdict.qualityView && viewItem == coverdict.qualityFinding.pseudoTested",
+          "group": "coverdict@1"
+        },
+        {
+          "command": "coverdict.mutationView.showInQuality",
+          "when": "view == coverdict.mutationView && viewItem == coverdict.mutationMethod.pseudoTested",
+          "group": "coverdict@1"
         }
       ],
       "commandPalette": [
         {
           "command": "coverdict.copyItem",
+          "when": "false"
+        },
+        {
+          "command": "coverdict.qualityView.showInMutation",
+          "when": "false"
+        },
+        {
+          "command": "coverdict.mutationView.showInQuality",
           "when": "false"
         }
       ]

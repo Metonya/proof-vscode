@@ -185,3 +185,36 @@ export function mutatorLabel(mutator: string): string {
 	const trimmed = last.endsWith('Mutator') ? last.slice(0, -'Mutator'.length) : last;
 	return trimmed.length > 0 ? trimmed : mutator;
 }
+
+/**
+ * Faz 24 (§7.6 madde 5): `Finding.productionMethod`'ın gerçek biçimi
+ * `"FQCN#methodName(descriptor)returnType"` (canlı bir CLI koşusundan
+ * doğrulandı, 2026-08-28: `"dev.coverdict.playground.Calculator#square(I)I"`).
+ * JVM descriptor'ları her zaman `(` ile başladığı için ayraç orada -
+ * tahmin değil, biçimin kendisi. Ayrıştırılamıyorsa (beklenmeyen bir
+ * biçim) `undefined` döner, uydurulmaz.
+ */
+export function parseProductionMethod(productionMethod: string): { className: string; methodName: string; methodDescription: string } | undefined {
+	const hashIndex = productionMethod.indexOf('#');
+	const parenIndex = productionMethod.indexOf('(', hashIndex);
+	if (hashIndex < 0 || parenIndex < 0) {
+		return undefined;
+	}
+	return {
+		className: productionMethod.slice(0, hashIndex),
+		methodName: productionMethod.slice(hashIndex + 1, parenIndex),
+		methodDescription: productionMethod.slice(parenIndex),
+	};
+}
+
+/** `parseProductionMethod`'ın tersi - bir `MutatedMethod`'un `finding.productionMethod` ile birebir karşılaştırılabilecek anahtarı. */
+export function productionMethodKey(className: string, methodName: string, methodDescription: string): string {
+	return `${className}#${methodName}${methodDescription}`;
+}
+
+/** Bir sınıfın metotları arasında `parseProductionMethod`'ın verdiği kimliğe tam uyan metodu bulur - `Finding.productionMethod` → mutasyon ağacındaki metot köprüsü. */
+export function findMutatedMethod(classes: readonly MutatedClass[], className: string, methodName: string, methodDescription: string): { cls: MutatedClass; method: MutatedMethod } | undefined {
+	const cls = classes.find((c) => c.className === className);
+	const method = cls?.methods.find((m) => m.methodName === methodName && m.methodDescription === methodDescription);
+	return cls && method ? { cls, method } : undefined;
+}

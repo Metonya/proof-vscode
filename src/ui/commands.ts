@@ -10,6 +10,7 @@ import { run } from '../cli/runner';
 import { buildFalseGreenIndex } from '../model/falseGreenIndex';
 import type { BadgeMetric } from '../model/metrics';
 import { detectClassName } from '../model/classNameDetector';
+import { parseProductionMethod, productionMethodKey } from '../model/mutationModel';
 import {
 	getCoverageState,
 	getPerTestState,
@@ -28,8 +29,8 @@ import { applyGutterCoverage, clearGutterCoverage, type GutterDecorationTypes } 
 import { showCoverageSummary, showNoFileCoverageWarning } from './statusBar';
 import type { CoverageTreeProvider } from './treeViews/coverageView';
 import type { LineTestsTreeProvider } from './treeViews/lineTestsView';
-import type { MutationTreeProvider } from './treeViews/mutationView';
-import type { QualityTreeProvider } from './treeViews/qualityView';
+import { findMutationBridgeTarget, type MutationNode, type MutationTreeProvider } from './treeViews/mutationView';
+import { findQualityBridgeTarget, type QualityNode, type QualityTreeProvider } from './treeViews/qualityView';
 import type { RunTreeProvider } from './treeViews/runView';
 
 /** Faz 15d'nin `model/falseGreenIndex.ts`'i şu an tek bir kaynak modülü varsayıyor - F8'in çoklu modül config UI'ı gelene kadar aynı sınır. */
@@ -55,9 +56,13 @@ export interface CoverageSinks {
 	runView: RunTreeProvider;
 	coverageView: CoverageTreeProvider;
 	qualityView: QualityTreeProvider;
+	/** Faz 24: Mutasyon ↔ Test Kalitesi köprüsü `reveal()` için bir `TreeView` handle'ı gerektiriyor - salt veri sağlayıcısı yetmiyor. */
+	qualityTreeView: vscode.TreeView<QualityNode>;
 	lineTestsView: LineTestsTreeProvider;
 	/** Faz 20: L3 mutasyon raporu - beşinci görünüm. */
 	mutationView: MutationTreeProvider;
+	/** Faz 24: bkz. `qualityTreeView`. */
+	mutationTreeView: vscode.TreeView<MutationNode>;
 }
 
 export function registerAnalyzeCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
@@ -87,6 +92,44 @@ export function registerMutationCommands(context: vscode.ExtensionContext, outpu
 		vscode.commands.registerCommand('coverdict.mutationView.toggleSurvivorsOnly', () => {
 			const on = sinks.mutationView.toggleSurvivorsOnly();
 			vscode.window.setStatusBarMessage(on ? 'coverdict: sadece hayatta kalan mutantlar' : 'coverdict: bütün mutantlar', 2000);
+		}),
+	];
+}
+
+/**
+ * Faz 24 (§7.6 madde 5): `PSEUDO_TESTED_METHOD` bulgusu (Test Kalitesi) ile
+ * mutasyon ağacındaki "HAYATTA KALDI" (Mutasyon) aynı olguyu bağlantısız
+ * anlatıyordu - kullanıcı ikisini elle eşleştirmek zorundaydı. `reveal()`
+ * her iki yönde de gerçek veriyle eşleşme arıyor; eşleşme yoksa (mutasyon
+ * verisi hiç yok ya da güncel değil) sessizce başarısız olmak yerine
+ * sebebini söylüyor (hard rule 3a).
+ */
+export function registerQualityMutationBridgeCommands(sinks: CoverageSinks): vscode.Disposable[] {
+	return [
+		vscode.commands.registerCommand('coverdict.qualityView.showInMutation', (node: unknown) => {
+			const finding = (node as { kind?: string; finding?: Finding } | undefined)?.finding;
+			const parsed = finding?.productionMethod ? parseProductionMethod(finding.productionMethod) : undefined;
+			if (!parsed) {
+				return;
+			}
+			const target = findMutationBridgeTarget(parsed.className, parsed.methodName, parsed.methodDescription);
+			if (!target) {
+				vscode.window.showInformationMessage("coverdict: bu metot için güncel mutasyon verisi yok - önce bu sınıf için Mutasyon Testi çalıştırın.");
+				return;
+			}
+			void sinks.mutationTreeView.reveal(target, { select: true, focus: true, expand: true });
+		}),
+		vscode.commands.registerCommand('coverdict.mutationView.showInQuality', (node: unknown) => {
+			const n = node as MutationNode | undefined;
+			if (n?.kind !== 'method') {
+				return;
+			}
+			const target = findQualityBridgeTarget(productionMethodKey(n.className, n.method.methodName, n.method.methodDescription));
+			if (!target) {
+				vscode.window.showInformationMessage("coverdict: bu metot için Test Kalitesi'nde bir PSEUDO_TESTED_METHOD bulgusu yok.");
+				return;
+			}
+			void sinks.qualityTreeView.reveal(target, { select: true, focus: true, expand: true });
 		}),
 	];
 }

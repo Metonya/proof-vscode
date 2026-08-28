@@ -339,9 +339,9 @@ komut (ui/commands.ts)
 | `ui/testFileLocator.ts` | Test dosyasını bulur; bulamazsa **tahmin etmez**, `undefined` döner. |
 | `ui/treeViews/runView.ts` | Çalıştır görünümü. |
 | `ui/treeViews/coverageView.ts` | Overall / new code / uncovered new ranges / Uyarılar. |
-| `ui/treeViews/qualityView.ts` | Bulgular; rule↔dosya gruplama, serbest metin filtre. |
-| `ui/treeViews/lineTestsView.ts` | Satır → Testler; aralık gruplama, "sadece sorunlu satırlar" filtresi. |
-| `ui/treeViews/mutationView.ts` | Mutasyon raporu; sınıf → metot → mutant → öldüren testler. |
+| `ui/treeViews/qualityView.ts` | Bulgular; rule↔dosya gruplama, serbest metin filtre. Faz 24: `getParent` + Mutasyon köprüsü hedefi (`findQualityBridgeTarget`). |
+| `ui/treeViews/lineTestsView.ts` | Satır → Testler; aralık gruplama, "sadece sorunlu satırlar" filtresi. Faz 24: satır grupları gerçek `methodName` de taşır (örtük constructor etiketi). |
+| `ui/treeViews/mutationView.ts` | Mutasyon raporu; sınıf → metot → mutant → öldüren testler. Faz 24: `getParent` + Test Kalitesi köprüsü hedefi (`findMutationBridgeTarget`). |
 
 **Silinmiş, tekrar yazma:** `src/ui/panelView.ts` (webview paneli, Faz
 15c'de kaldırıldı — kendi kendini boşaltıyordu; yerine hover + TreeView).
@@ -374,7 +374,7 @@ Activity Bar'da `coverdict` konteyneri, içinde **5 görünüm**:
    skor `öldürülen/(öldürülen+hayatta kalan)`, belirsizler ayrıca sayılır
    ve asla gizlenmez. Başlıkta "sadece hayatta kalan mutantlar" süzgeci.
 
-### Komutlar (11)
+### Komutlar (13)
 
 `coverdict.analyze` (Hızlı Tarama) · `coverdict.analyzePerTest` (Derin
 Tarama) · `coverdict.mutationForModule` (modül geneli mutasyon, onaylı) ·
@@ -383,7 +383,11 @@ yol**) · `coverdict.toggleCoverage` · `coverdict.perTestForFile` (editör
 sağ tık, Java) · `coverdict.copyItem` (ağaçlarda sağ tık → Kopyala) ·
 `coverdict.qualityView.filter` · `coverdict.qualityView.toggleGrouping` ·
 `coverdict.lineTestsView.toggleProblemsOnly` ·
-`coverdict.mutationView.toggleSurvivorsOnly`.
+`coverdict.mutationView.toggleSurvivorsOnly` ·
+`coverdict.qualityView.showInMutation` (Faz 24, sağ tık, yalnızca
+`PSEUDO_TESTED_METHOD` bulgusunda) ·
+`coverdict.mutationView.showInQuality` (Faz 24, sağ tık, yalnızca
+eşleşen bir bulgu varsa - §7.6 madde 5).
 
 ### Ayarlar (13)
 
@@ -414,7 +418,7 @@ sağ tık, Java) · `coverdict.copyItem` (ağaçlarda sağ tık → Kopyala) ·
 
 ### Sağlık
 
-145 unit + 33 integration test geçiyor. SonarQube (`coverdict-vscode`,
+151 unit + 42 integration test geçiyor. SonarQube (`coverdict-vscode`,
 `http://localhost:9001`) sıfır açık bulgu.
 
 ---
@@ -813,9 +817,36 @@ kapandı**, 4-7 açık — öncelik kullanıcının kendi sıralaması.
    `<init>` satırı → etiket + tooltip). `npm run check-types && npm run
    lint`, temiz koşu (145 unit + 33 integration), SonarQube sıfır açık
    bulgu.
-5. **Test Kalitesi ve Mutasyon aynı kanıtı bağlantısız söylüyor.**
-   `PSEUDO_TESTED_METHOD` bulgusu ile mutasyon ağacındaki "HAYATTA KALDI"
-   aynı olgunun iki görünümü ama aralarında tıklanabilir bir bağ yok.
+5. ~~**Test Kalitesi ve Mutasyon aynı kanıtı bağlantısız söylüyor.**~~ —
+   **KAPANDI (Faz 24).** İki yönlü, gerçek veriyle çalışan bir köprü
+   kuruldu. Test Kalitesi'nde bir `PSEUDO_TESTED_METHOD` bulgusuna sağ tık
+   → "Mutasyon Ağacında Göster" o metodu mutasyon ağacında açıp seçiyor;
+   Mutasyon ağacında hayatta kalan mutantlı bir metoda (yalnızca gerçekten
+   eşleşen bir bulgu varsa) sağ tık → "Test Kalitesi'nde Göster" tersini
+   yapıyor. Anahtar `Finding.productionMethod`'ın gerçek biçimi - canlı bir
+   `--mutation-report` koşusundan doğrulandı (2026-08-28, üç ayrı metotla:
+   `subtract`, `isPositive`, `square`):
+   `"dev.coverdict.playground.Calculator#square(I)I"`
+   (`FQCN#methodName(descriptor)dönüşTipi`), `MutatedMethod.methodDescription`
+   ile birebir aynı format.
+
+   `model/mutationModel.ts`'e `parseProductionMethod`/`productionMethodKey`/
+   `findMutatedMethod` eklendi (saf, tam test edildi). Köprü, kuralı
+   yeniden türetmiyor - gerçek `findings[]`'te eşleşen bir
+   `PSEUDO_TESTED_METHOD` var mı diye bakıyor (CLI zaten hesapladı).
+   `QualityTreeProvider`/`MutationTreeProvider`'a `getParent` eklendi
+   (`reveal()`'in gerektirdiği); ikisi de artık `createTreeView` ile
+   kayıtlı (`extension.ts`), stabil `TreeItem.id` taşıyorlar. Eşleşme
+   yoksa (mutasyon verisi hiç yok ya da güncel değil) sessizce başarısız
+   olmak yerine sebebini söylüyor (hard rule 3a) -
+   `coverdict.qualityView.showInMutation`/`coverdict.mutationView.
+   showInQuality` komutları.
+
+   Doğrulama: gerçek playground verisiyle (`square`'in tek survived
+   mutantı + gerçek `productionMethod` string'i) yeni birim ve entegrasyon
+   testleri (`mutationModel.test.ts`, `mutationView.test.ts`,
+   `treeViews.test.ts`). `npm run check-types && npm run lint`, temiz koşu
+   (151 unit + 42 integration), SonarQube sıfır açık bulgu.
 6. **Gerçek bir çelişki arayüzde sessiz kalıyor.**
    `CalculatorUnresolvedOracleTest#addCheckedViaLocalSoftAssertions()`
    Satır → Testler'de `NO_RECOGNIZED_ORACLE` (INCONCLUSIVE) damgalı, ama

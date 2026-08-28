@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
 
-import { bucketOf, classesOf, formatRelativeTime, methodLabel, mutatorLabel, scoreOf, scoreOfMethods, targetSummary, type MutantBucket, type MutationScore } from '../../model/mutationModel';
+import { bucketOf, classesOf, findMutatedMethod, formatRelativeTime, methodLabel, mutatorLabel, productionMethodKey, scoreOf, scoreOfMethods, targetSummary, type MutantBucket, type MutationScore } from '../../model/mutationModel';
 import { toAbsolutePath } from '../../model/pathIndex';
 import { buildProductionClassIndex, productionSourceRoots } from '../../model/productionClassIndex';
 import { getCoverageState, getMutationState } from '../../model/store';
 import { parseTestIdentity } from '../../verdict/testIdentity';
-import type { MutatedMethod, Mutant } from '../../verdict/types';
+import type { Finding, MutatedMethod, Mutant } from '../../verdict/types';
 
 /**
  * Faz 20: mutasyon raporu. Kullanıcının isteği: "mutasyon testinde ne kadar
@@ -51,6 +51,19 @@ export class MutationTreeProvider implements vscode.TreeDataProvider<MutationNod
 
 	isSurvivorsOnly(): boolean {
 		return this.survivorsOnly;
+	}
+
+	/**
+	 * Faz 24 (§7.6 madde 5): Test Kalitesi ↔ Mutasyon köprüsü `reveal()`
+	 * kullanıyor, o da (sınıfın altında henüz açılmamış bir metodu
+	 * bulabilmek için) `getParent`'a ihtiyaç duyuyor. Yalnızca `method` ->
+	 * `class` yönü gerekli - köprünün hedefi metot düzeyi, tek tek mutant
+	 * değil. `siblings` zaten `getChildren`'ın ürettiği (süzgeçlenmiş)
+	 * metot listesinin aynısı, o yüzden yeniden hesaplamadan doğrudan
+	 * kullanılabilir.
+	 */
+	getParent(node: MutationNode): MutationNode | undefined {
+		return node.kind === 'method' ? { kind: 'class', className: node.className, methods: node.siblings } : undefined;
 	}
 
 	getTreeItem(node: MutationNode): vscode.TreeItem {
@@ -194,13 +207,42 @@ function methodItem(node: Extract<MutationNode, { kind: 'method' }>): vscode.Tre
 	item.iconPath = score.survived > 0
 		? new vscode.ThemeIcon('warning', new vscode.ThemeColor('editorWarning.foreground'))
 		: new vscode.ThemeIcon('symbol-method');
+	// Faz 24 (§7.6 madde 5): Test Kalitesi'nin `PSEUDO_TESTED_METHOD`
+	// bulgusuyla aynı metodu mu anlatıyoruz - gerçek `findings[]`'e bakılır,
+	// kural kendi kendine yeniden türetilmez (CLI zaten hesapladı).
+	const pseudoTestedFinding = findPseudoTestedFinding(node.className, node.method.methodName, node.method.methodDescription);
+	const bridgeNote = pseudoTestedFinding ? '\n\n---\n\nTest Kalitesi\'nde `PSEUDO_TESTED_METHOD` bulgusu var - sağ tık → "Test Kalitesi\'nde Göster".' : '';
 	item.tooltip = new vscode.MarkdownString(
 		`\`${node.className}#${node.method.methodName}${node.method.methodDescription}\`\n\n`
-		+ `Satır ${node.method.firstLine}-${node.method.lastLine}\n\n${scoreTooltip(score)}`,
+		+ `Satır ${node.method.firstLine}-${node.method.lastLine}\n\n${scoreTooltip(score)}${bridgeNote}`,
 	);
 	item.command = openCommandFor(node.className, node.method.firstLine, 'Metoda Git');
-	item.contextValue = 'coverdict.mutationMethod';
+	item.id = `coverdict.mutationMethod:${node.className}#${node.method.methodName}${node.method.methodDescription}`;
+	item.contextValue = pseudoTestedFinding ? 'coverdict.mutationMethod.pseudoTested' : 'coverdict.mutationMethod';
 	return item;
+}
+
+/** `getCoverageState()?.findings`'te bu tam metoda ait bir `PSEUDO_TESTED_METHOD` bulgusu var mı - varsa köprünün hedefi. */
+function findPseudoTestedFinding(className: string, methodName: string, methodDescription: string): Finding | undefined {
+	const key = productionMethodKey(className, methodName, methodDescription);
+	return getCoverageState()?.findings.find((f) => f.rule === 'PSEUDO_TESTED_METHOD' && f.productionMethod === key);
+}
+
+/**
+ * Faz 24 (§7.6 madde 5): Test Kalitesi'nden gelen bir `PSEUDO_TESTED_METHOD`
+ * bulgusuna karşılık gelen mutasyon ağacı düğümü - `ui/commands.ts`'in
+ * köprü komutu bunu `reveal()`'e verir. Mutasyon verisi hiç yoksa ya da bu
+ * koşuda metot artık orada değilse (güncel olmayan sonuç) `undefined`
+ * döner, uydurulmaz (hard rule 3a).
+ */
+export function findMutationBridgeTarget(className: string, methodName: string, methodDescription: string): MutationNode | undefined {
+	const state = getMutationState();
+	if (!state?.mutation) {
+		return undefined;
+	}
+	const classes = classesOf(state.mutation, state.moduleId, productionClassFilter());
+	const found = findMutatedMethod(classes, className, methodName, methodDescription);
+	return found ? { kind: 'method', className: found.cls.className, method: found.method, siblings: found.cls.methods } : undefined;
 }
 
 function mutantItem(className: string, mutant: Mutant): vscode.TreeItem {

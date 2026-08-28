@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { bucketOf, classesOf, formatRelativeTime, methodLabel, mutatorLabel, scoreOf, targetSummary } from '../../../model/mutationModel';
+import { bucketOf, classesOf, findMutatedMethod, formatRelativeTime, methodLabel, mutatorLabel, parseProductionMethod, productionMethodKey, scoreOf, targetSummary } from '../../../model/mutationModel';
 import type { MutatedMethod, MutationBlock, Mutant } from '../../../verdict/types';
 
 const mutant = (status: string, line = 10, killingTests: string[] = []): Mutant => ({
@@ -140,4 +140,55 @@ test('formatRelativeTime: dakika, saat, gün eşikleri', () => {
 test('formatRelativeTime: gelecekteki bir zaman (saat kayması) negatif süreye düşmez', () => {
 	const now = Date.parse('2026-08-28T12:00:00Z');
 	assert.equal(formatRelativeTime(now + 10_000, now), 'az önce');
+});
+
+/**
+ * Faz 24 (§7.6 madde 5): Test Kalitesi ↔ Mutasyon köprüsü.
+ * `finding.productionMethod`'ın gerçek biçimi (canlı bir
+ * `--mutation-report` koşusundan, 2026-08-28):
+ * `"dev.coverdict.playground.Calculator#square(I)I"`.
+ */
+test('parseProductionMethod: gerçek biçimi (FQCN#method(desc)dönüşTipi) ayrıştırır', () => {
+	assert.deepEqual(
+		parseProductionMethod('dev.coverdict.playground.Calculator#square(I)I'),
+		{ className: 'dev.coverdict.playground.Calculator', methodName: 'square', methodDescription: '(I)I' },
+	);
+});
+
+test('parseProductionMethod: parametresiz/void bir metodun descriptor\'ı da doğru ayrılır', () => {
+	assert.deepEqual(
+		parseProductionMethod('dev.coverdict.playground.Calculator#describe()Ljava/lang/String;'),
+		{ className: 'dev.coverdict.playground.Calculator', methodName: 'describe', methodDescription: '()Ljava/lang/String;' },
+	);
+});
+
+test('parseProductionMethod: # ya da ( yoksa uydurmaz, undefined döner', () => {
+	assert.equal(parseProductionMethod('no hash here'), undefined);
+	assert.equal(parseProductionMethod('dev.coverdict.playground.Calculator#square'), undefined);
+});
+
+test('productionMethodKey: parseProductionMethod\'ın tam tersi, finding.productionMethod ile birebir eşleşir', () => {
+	assert.equal(productionMethodKey('dev.coverdict.playground.Calculator', 'square', '(I)I'), 'dev.coverdict.playground.Calculator#square(I)I');
+});
+
+test('findMutatedMethod: gerçek playground şekliyle, method + description eşleşince bulunur', () => {
+	const classes = classesOf({
+		engine: 'pitest', engineVersion: '1.15.8',
+		modules: [{
+			id: 'root',
+			methods: [
+				{ className: 'dev.coverdict.playground.Calculator', methodName: 'square', methodDescription: '(I)I', firstLine: 37, lastLine: 37, mutants: [] },
+				{ className: 'dev.coverdict.playground.Calculator', methodName: 'add', methodDescription: '(II)I', firstLine: 6, lastLine: 8, mutants: [] },
+			],
+		}],
+	}, 'root');
+	const found = findMutatedMethod(classes, 'dev.coverdict.playground.Calculator', 'square', '(I)I');
+	assert.ok(found);
+	assert.equal(found?.method.methodName, 'square');
+	assert.equal(found?.cls.className, 'dev.coverdict.playground.Calculator');
+});
+
+test('findMutatedMethod: bir eşleşme yoksa (güncel olmayan mutasyon sonucu) undefined döner, uydurmaz', () => {
+	const classes = classesOf({ engine: 'pitest', engineVersion: '1.15.8', modules: [{ id: 'root', methods: [] }] }, 'root');
+	assert.equal(findMutatedMethod(classes, 'dev.coverdict.playground.Calculator', 'square', '(I)I'), undefined);
 });
