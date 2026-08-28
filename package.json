@@ -99,6 +99,12 @@
           ],
           "default": "sonar-compatible",
           "description": "Dosya Gezgini rozetlerinde ve satır boyamasında hangi kapsama modu kullanılsın. sonar-compatible (varsayılan): SonarQube'un gösterdiği yüzdeyle ±0.1 içinde eşleşir - dal (branch) kapsamını da sayar, bu yüzden jacoco-line'dan genelde daha düşük çıkar. jacoco-line: bir satırdaki herhangi bir komut çalıştıysa o satır kapsanmış sayılır (en yüksek çıkan sayı). strict-line: bir satırın kapsanmış sayılması için o satırdaki HER komutun çalışmış olması gerekir (en katı, genelde en düşük sayı). Durum çubuğu ve tooltip'ler her zaman üçünü birden gösterir; bu ayar sadece rozet/satır rengi için tek bir sayı seçer."
+        },
+        "coverdict.mutationTimeout": {
+          "type": "number",
+          "default": 300,
+          "minimum": 1,
+          "description": "Mutasyon testinde bir modül için saniye cinsinden zaman bütçesi (--mutation-timeout). Aşılırsa koşu durdurulur ve sonuç kısmi kalır - kısmi sonuç yine gösterilir, sessizce atılmaz. Tek sınıf koşuları genelde saniyeler sürer; modül geneli koşular için artırmanız gerekebilir."
         }
       }
     },
@@ -137,12 +143,30 @@
         "command": "coverdict.lineTestsView.toggleProblemsOnly",
         "title": "coverdict: Sadece Sorunlu Satırlar",
         "icon": "$(filter)"
+      },
+      {
+        "command": "coverdict.mutationForFile",
+        "title": "coverdict: Bu Sınıf İçin Mutasyon Testi"
+      },
+      {
+        "command": "coverdict.mutationForModule",
+        "title": "coverdict: Mutasyon Testi (Modül Geneli)"
+      },
+      {
+        "command": "coverdict.mutationView.toggleSurvivorsOnly",
+        "title": "coverdict: Sadece Hayatta Kalan Mutantlar",
+        "icon": "$(filter)"
       }
     ],
     "menus": {
       "editor/context": [
         {
           "command": "coverdict.perTestForFile",
+          "when": "resourceLangId == java",
+          "group": "coverdict"
+        },
+        {
+          "command": "coverdict.mutationForFile",
           "when": "resourceLangId == java",
           "group": "coverdict"
         }
@@ -162,12 +186,17 @@
           "command": "coverdict.lineTestsView.toggleProblemsOnly",
           "when": "view == coverdict.lineTestsView",
           "group": "navigation@1"
+        },
+        {
+          "command": "coverdict.mutationView.toggleSurvivorsOnly",
+          "when": "view == coverdict.mutationView",
+          "group": "navigation@1"
         }
       ],
       "view/item/context": [
         {
           "command": "coverdict.copyItem",
-          "when": "view == coverdict.qualityView || view == coverdict.coverageView || view == coverdict.lineTestsView",
+          "when": "view == coverdict.qualityView || view == coverdict.coverageView || view == coverdict.lineTestsView || view == coverdict.mutationView",
           "group": "9_cutcopypaste"
         }
       ],
@@ -204,6 +233,10 @@
         {
           "id": "coverdict.lineTestsView",
           "name": "Satır → Testler"
+        },
+        {
+          "id": "coverdict.mutationView",
+          "name": "Mutasyon"
         }
       ]
     }

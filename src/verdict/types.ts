@@ -60,6 +60,42 @@ export interface PerTestBlock {
 	modules: readonly PerTestModuleEvidence[];
 }
 
+/**
+ * Faz 20: L3 mutasyon kanıtı (`--mutation-report`). `status` PIT'in kendi
+ * `DetectionStatus` enum'u - dokuz değer, pitest 1.15.8'e karşı doğrulandı.
+ * Burada bilerek `string` olarak tutuluyor: tanımadığımız bir statü
+ * gelirse `model/mutationModel.ts` onu "belirsiz" sayar, tip hatası ya da
+ * sessiz bir yanlış sınıflandırma değil (hard rule 3a).
+ */
+export interface Mutant {
+	mutator: string;
+	line: number;
+	status: string;
+	/** `fullMutationMatrix` açık olduğu için mutantı öldüren **her** test burada - ilki değil. */
+	killingTests: readonly string[];
+}
+
+export interface MutatedMethod {
+	className: string;
+	methodName: string;
+	/** JVM descriptor, ör. `(II)I` - aynı isimli aşırı yüklemeleri ayırmanın tek yolu. */
+	methodDescription: string;
+	firstLine: number;
+	lastLine: number;
+	mutants: readonly Mutant[];
+}
+
+export interface MutationModuleEvidence {
+	id: string;
+	methods: readonly MutatedMethod[];
+}
+
+export interface MutationBlock {
+	engine: string;
+	engineVersion: string;
+	modules: readonly MutationModuleEvidence[];
+}
+
 export interface Reason {
 	code: string;
 	message: string;
@@ -150,4 +186,6 @@ export interface VerdictDocument {
 	fileCoverage?: FileCoverageBlock;
 	/** Absent (never null) unless --per-test-report was passed (D-46/D-55's opt-in contract). */
 	perTest?: PerTestBlock;
+	/** Absent (never null) unless --mutation-report was passed (Faz 20). */
+	mutation?: MutationBlock;
 }

@@ -2,13 +2,14 @@ import * as fs from 'node:fs';
 import * as vscode from 'vscode';
 
 import { toAbsolutePath } from './model/pathIndex';
-import { getCoverageState, getStaleFiles, isGutterVisible, setPerTestState } from './model/store';
+import { getCoverageState, getStaleFiles, isGutterVisible, setMutationState, setPerTestState } from './model/store';
 import {
 	analysisResultFrom,
 	publishAnalysis,
 	registerAnalyzeCommand,
 	registerAnalyzePerTestCommand,
 	registerCopyCommands,
+	registerMutationCommands,
 	registerPerTestForFileCommand,
 	registerToggleCoverageCommand,
 	type CoverageSinks,
@@ -20,6 +21,7 @@ import { registerHoverProvider } from './ui/hoverProvider';
 import { createStatusBarItem } from './ui/statusBar';
 import { CoverageTreeProvider } from './ui/treeViews/coverageView';
 import { LineTestsTreeProvider, type LineTestsNode } from './ui/treeViews/lineTestsView';
+import { MutationTreeProvider } from './ui/treeViews/mutationView';
 import { QualityTreeProvider } from './ui/treeViews/qualityView';
 import { RunTreeProvider } from './ui/treeViews/runView';
 import { parseVerdict } from './verdict/parse';
@@ -42,7 +44,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	const coverageView = new CoverageTreeProvider();
 	const qualityView = new QualityTreeProvider();
 	const lineTestsView = new LineTestsTreeProvider();
-	const sinks: CoverageSinks = { context, gutterTypes, explorerBadges, statusBarItem, diagnostics, runView, coverageView, qualityView, lineTestsView };
+	const mutationView = new MutationTreeProvider();
+	const sinks: CoverageSinks = { context, gutterTypes, explorerBadges, statusBarItem, diagnostics, runView, coverageView, qualityView, lineTestsView, mutationView };
 
 	// Faz 15c: `createTreeView` (not `registerTreeDataProvider`) because
 	// `reveal()` needs it - the cursor-follow listener below uses it to
@@ -69,12 +72,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		vscode.window.registerTreeDataProvider('coverdict.coverageView', coverageView),
 		vscode.window.registerTreeDataProvider('coverdict.qualityView', qualityView),
 		lineTestsTreeView,
+		vscode.window.registerTreeDataProvider('coverdict.mutationView', mutationView),
 		registerHoverProvider(),
 		registerAnalyzeCommand(context, output, sinks),
 		registerAnalyzePerTestCommand(context, output, sinks),
 		registerPerTestForFileCommand(context, output, sinks),
 		registerToggleCoverageCommand(sinks),
 		...registerCopyCommands(sinks),
+		...registerMutationCommands(context, output, sinks),
 		// setDecorations is per-editor, not global - a newly-visible editor
 		// needs its gutter marks re-applied by hand (Faz 9: always our own
 		// decorations now, no native path that keeps its own state).
@@ -166,6 +171,14 @@ async function restoreLastCoverage(context: vscode.ExtensionContext, sinks: Cove
 	// perTest restores independently of fileCoverage - a run can carry one
 	// without the other depending on which command produced it.
 	setPerTestState({ moduleId: MODULE_ID, perTest: parsed.value.perTest, warnings: parsed.value.warnings });
+	// Faz 20: mutasyon da geri yüklenir - ama yalnızca blok gerçekten
+	// varsa. Blok yoksa `setMutationState` çağrılmaz, böylece görünüm
+	// "henüz çalıştırılmadı" der; boş bir durum yazmak "çalıştırıldı ama
+	// sonuç yok" demek olurdu, ki bu farklı bir iddia (hard rule 3a).
+	// `targets` bilinmiyor: kaydedilen verdict onu taşımıyor.
+	if (parsed.value.mutation) {
+		setMutationState({ moduleId: MODULE_ID, mutation: parsed.value.mutation, warnings: parsed.value.warnings, targets: [] });
+	}
 }
 
 /** `coverdict.show.*`/`coverdict.badgeMetric` changed while a run's data is still current - repaint from `model/store`'s own state, no re-parse needed. */

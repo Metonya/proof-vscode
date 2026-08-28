@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { join } from 'node:path';
 
 /**
  * Spawns `java -jar <jarPath> <args>`, no `vscode` import (child_process is
@@ -47,6 +48,11 @@ export function run(options: RunOptions): RunHandle {
 	const child = spawn(options.javaExecutable, argv, {
 		cwd: options.cwd,
 		shell: options.shell ?? false,
+		// POSIX'te kendi süreç grubunu kurar, böylece iptal PIT'in çocuk
+		// JVM'lerini de kapsar (bkz. killTree). Windows'ta anlamsız ve
+		// `shell: true` ile birlikte konsol penceresi açtırabildiği için
+		// verilmiyor - orada `taskkill /T` işi görüyor.
+		detached: process.platform !== 'win32',
 	});
 
 	let stdoutAll = '';
@@ -74,8 +80,49 @@ export function run(options: RunOptions): RunHandle {
 
 	return {
 		result,
-		cancel: () => child.kill(),
+		cancel: () => killTree(child.pid),
 	};
+}
+
+/**
+ * Faz 20: `child.kill()` (çıplak SIGTERM) yetmiyor. PIT kendi çocuk
+ * JVM'lerini ("minion") doğuruyor; yalnızca ana süreci öldürmek onları
+ * arkada bırakır - Windows'ta bunlar dakikalarca CPU yakmaya devam eder
+ * ve bir sonraki koşu classpath'i kilitli bulur. Saatler sürebilen bir
+ * mutasyon koşusunda iptalin gerçekten iptal etmesi şart.
+ *
+ * Windows'ta süreç grubu kavramı yok, o yüzden `taskkill /T` (ağaç) ile
+ * öldürülüyor. POSIX'te `spawn` `detached: true` ile kendi süreç grubunu
+ * kurar ve negatif pid tüm gruba sinyal gönderir.
+ *
+ * Öldürme başarısızlığı yutuluyor: süreç zaten bitmiş olabilir (yarış),
+ * ve iptal yolunda hata fırlatmak kullanıcıya gösterilecek bir şey
+ * değildir - koşunun kendi `close` olayı sonucu zaten bildirecek.
+ */
+function killTree(pid: number | undefined): void {
+	if (pid === undefined) {
+		return;
+	}
+	if (process.platform === 'win32') {
+		// `taskkill` PATH'ten çözülmüyor: PATH'e yazma hakkı olan biri araya
+		// kendi `taskkill.exe`'sini koyabilirdi (Sonar S4036). Mutlak yol
+		// `%SystemRoot%` üzerinden kuruluyor, değişken yoksa Windows'un
+		// kendi varsayılanı kullanılıyor. Argümanların tamamı bizim
+		// ürettiğimiz sabitler + sayısal pid.
+		const systemRoot = process.env.SystemRoot || process.env.SYSTEMROOT || String.raw`C:\Windows`;
+		const taskkill = join(systemRoot, 'System32', 'taskkill.exe');
+		try {
+			spawn(taskkill, ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' }).on('error', () => { /* zaten bitmiş */ });
+		} catch { /* zaten bitmiş */ }
+		return;
+	}
+	try {
+		process.kill(-pid, 'SIGTERM');
+	} catch {
+		try {
+			process.kill(pid, 'SIGTERM');
+		} catch { /* zaten bitmiş */ }
+	}
 }
 
 /** Buffers partial chunks until a full line is available - spawn gives no guarantee a chunk boundary lands on a newline. */

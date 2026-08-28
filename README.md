@@ -14,15 +14,16 @@ which rules are never broken, what works today, and what is still open.
 [`docs/NOTES.md`](docs/NOTES.md) is the chronological log behind those
 decisions; `PLAN.md` wins where they disagree.
 
-Faz 19 done (2026-08-28): the extension runs coverdict, renders Explorer
+Faz 21 done (2026-08-28): the extension runs coverdict, renders Explorer
 coverage badges and an editor gutter through its own decoration types
 (the native VS Code Test Coverage API was dropped - it has no documented
 way to clear or independently control its two rendering surfaces), shows
 per-line test evidence and its oracle quality via hover and a tree,
-lists every finding in the Problems panel, and has its own Activity Bar
-container (Çalıştır / Coverage / Test Kalitesi / Satır → Testler) so no
-step requires the Command Palette. Mutation testing has CLI support but
-**no UI yet** - that is Faz 20, planned in `docs/PLAN.md` §8.
+reports mutation results (class → method → mutant → killing tests) with
+live progress and real cancellation, lists every finding in the Problems
+panel, and has its own Activity Bar container (Çalıştır / Coverage / Test
+Kalitesi / Satır → Testler / Mutasyon) so no step requires the Command
+Palette.
 
 ## Layout
 

@@ -1,6 +1,6 @@
 # coverdict-vscode — devir belgesi ve ileri plan
 
-**Son güncelleme:** 2026-08-28, Faz 21 sonrası.
+**Son güncelleme:** 2026-08-28, Faz 21 sonrası (mutasyon arayüzü dahil).
 
 ---
 
@@ -230,7 +230,16 @@ En sık karşılaşılanlar:
 
 `status` PIT'in kendi `DetectionStatus` enum'u, **9 değer**: `KILLED`,
 `SURVIVED`, `TIMED_OUT`, `NON_VIABLE`, `MEMORY_ERROR`, `NOT_STARTED`,
-`STARTED`, `RUN_ERROR`, `NO_COVERAGE`.
+`STARTED`, `RUN_ERROR`, `NO_COVERAGE`. Kovalara eşlemesi §8.3'te.
+
+**Gerçek çıktıdan iki uyarı** (2026-08-28, şemanın golden örneğinden
+farklı — belgeden değil koşudan öğrenildi):
+- `mutator` **tam sınıf adıdır**
+  (`org.pitest.mutationtest.engine.gregor.mutators.returns.PrimitiveReturnsMutator`),
+  golden örnekteki kısa `TRUE_RETURNS` biçimi değil.
+- `methods[]` **test sınıflarını da içerir** — PIT onları da mutasyona
+  sokuyor. `perTest.entries`'teki aynı tuzak; süzgeç yine
+  `fileCoverage.files[]`.
 
 PIT jar'ın **içine gömülüdür** — hedef repoya PIT plugin'i kurulmaz.
 Mutatörler yalnızca `RETURNS` ve `VOID_METHOD_CALLS`, tek thread
@@ -304,7 +313,8 @@ komut (ui/commands.ts)
 | `cli/argsBuilder.ts` | `analyze` argv'sini kurar (saf). `DiffMode` tipi burada. |
 | `cli/runner.ts` | `spawn` ile çalıştırır, stdout/stderr'i ayrı satır tamponlar, `onStderrLine` kancası sunar, `cancel` verir. |
 | `cli/classpathParser.ts` | `mvn dependency:build-classpath` çıktısından classpath satırını ayıklar (saf). |
-| `cli/classpathBuilder.ts` | Maven'ı çalıştırıp `target/coverdict-classpath.txt`'i üretir (Faz 19). |
+| `cli/classpathBuilder.ts` | Maven'ı çalıştırıp `target/coverdict-classpath.txt`'i üretir (Faz 19). Mutasyon da aynı dosyayı kullanır. |
+| `cli/progressParser.ts` | CLI'ın stderr ilerleme satırlarını yapılandırılmış olaya çevirir (saf). Tanımadığını yutmaz. |
 | `verdict/types.ts` | JSON şemasının TypeScript karşılığı. `vscode` import etmez. |
 | `verdict/parse.ts` | `parseVerdict(raw)` — **asla throw etmez**, sonuç nesnesi döner; rule id'lerini doğrular. |
 | `verdict/testIdentity.ts` | CLI'ın `TestIdentity.java`'sının portu (D-49): JUnit5 UniqueId'leri ve `Class#method()` biçimini çözer; tanımadığını **aynen** gösterir. |
@@ -317,10 +327,11 @@ komut (ui/commands.ts)
 | `model/pathIndex.ts` | Yol matematiği + `classifySourcePath` (test mi production mı — "Satır → Testler"in yön kararı). coverdict yolları repo-göreli ve **ileri eğik çizgili**dir (D-22). |
 | `model/classNameDetector.ts` | package + dosya adı → FQCN. Çok sınıflı dosyada tahmin yapmaz. |
 | `model/productionClassIndex.ts` | `fileCoverage.files[]`'ten `className → yol` haritası; diskte arama yapmaz. |
+| `model/mutationModel.ts` | 9 PIT statüsü → 3 kova, skor, sınıf gruplama, mutator adı kısaltma (saf). |
 | `model/ruleCatalog.ts` | 6 rule için Türkçe başlık/özet/eylem. |
 | `model/warningCatalog.ts` | Uyarı kodları için Türkçe açıklama; ham mesaj tooltip'te korunur. |
 | `ui/commands.ts` | En büyük dosya. 8 komut, koşu orkestrasyonu, `paintCoverage`, classpath otomatik üretimi. |
-| `ui/gutterRenderer.ts` | Tek gutter çizici. 6 durum: covered · partial · uncovered · oracleless (turuncu) · excluded · stale. |
+| `ui/gutterRenderer.ts` | Tek gutter çizici. 6 durum: covered · partial · uncovered · oracleless (turuncu) · excluded · stale. Mutasyon için 7. durum **eklenmedi** (bilinçli). |
 | `ui/explorerBadges.ts` | Explorer rozetleri. Dosya yüzdesi CLI'dan, klasör rollup'tan. |
 | `ui/hoverProvider.ts` | Çift yönlü hover: production satırında "hangi testler + kaliteleri", test metodunda "hangi production satırları". |
 | `ui/diagnostics.ts` | Bulguları Problems paneline yazar; `severity` ile `confidence`'ı ayrı tutar. |
@@ -330,22 +341,25 @@ komut (ui/commands.ts)
 | `ui/treeViews/coverageView.ts` | Overall / new code / uncovered new ranges / Uyarılar. |
 | `ui/treeViews/qualityView.ts` | Bulgular; rule↔dosya gruplama, serbest metin filtre. |
 | `ui/treeViews/lineTestsView.ts` | Satır → Testler; aralık gruplama, "sadece sorunlu satırlar" filtresi. |
+| `ui/treeViews/mutationView.ts` | Mutasyon raporu; sınıf → metot → mutant → öldüren testler. |
 
 **Silinmiş, tekrar yazma:** `src/ui/panelView.ts` (webview paneli, Faz
 15c'de kaldırıldı — kendi kendini boşaltıyordu; yerine hover + TreeView).
 
-**Henüz yazılmamış ama koda yorum olarak söz verilmiş:**
-`src/cli/progressParser.ts` — Faz 20'de yazılacak (§8.2).
+Faz 1'den beri koda yorum olarak söz verilip hiç yazılmamış olan
+`src/cli/progressParser.ts` **Faz 20'de yazıldı** — artık uzun koşularda
+gerçek yüzde ve geçen süre gösteriliyor.
 
 ---
 
 ## 4. Bugünkü durum (Faz 19)
 
-Activity Bar'da `coverdict` konteyneri, içinde **4 görünüm**:
+Activity Bar'da `coverdict` konteyneri, içinde **5 görünüm**:
 
 1. **Çalıştır** — "Hızlı Tarama" (coverage + oracle bulguları, saniyeler),
    "Derin Tarama" (üstüne L2: hangi test hangi satırı çalıştırıyor, PIT
-   ile, daha uzun), "Coverage Görünümü" aç/kapat. **Derin Tarama mutasyon
+   ile, daha uzun), "Mutasyon Testi" (modül geneli, onay diyaloğunun
+   arkasında), "Coverage Görünümü" aç/kapat. **Derin Tarama mutasyon
    testi değildir** — tooltip'i bu cümleyle başlar, çünkü kullanıcı bunu
    sordu.
 2. **Coverage** — overall (üç metrik), new code, uncovered yeni satırlar
@@ -354,17 +368,24 @@ Activity Bar'da `coverdict` konteyneri, içinde **4 görünüm**:
    ve rule↔dosya gruplama geçişi (tek düğme, tıkladıkça değişir).
 4. **Satır → Testler** — aktif Java dosyası için; ardışık ve aynı testlerce
    kapsanan satırlar **tek düğümde** birleşir (`Satır 9-11`); başlıkta
-   "sadece sorunlu satırlar" süzgeci (varsayılan kapalı).
+   "sadece sorunlu satırlar" süzgeci (varsayılan kapalı). Yön dosyanın
+   yerine göre seçilir (§7.1).
+5. **Mutasyon** — sınıf → metot → mutant → öldüren testler. Her düzeyde
+   skor `öldürülen/(öldürülen+hayatta kalan)`, belirsizler ayrıca sayılır
+   ve asla gizlenmez. Başlıkta "sadece hayatta kalan mutantlar" süzgeci.
 
-### Komutlar (8)
+### Komutlar (11)
 
 `coverdict.analyze` (Hızlı Tarama) · `coverdict.analyzePerTest` (Derin
-Tarama) · `coverdict.toggleCoverage` · `coverdict.perTestForFile` (editör
+Tarama) · `coverdict.mutationForModule` (modül geneli mutasyon, onaylı) ·
+`coverdict.mutationForFile` (editör sağ tık — **mutasyon için önerilen
+yol**) · `coverdict.toggleCoverage` · `coverdict.perTestForFile` (editör
 sağ tık, Java) · `coverdict.copyItem` (ağaçlarda sağ tık → Kopyala) ·
 `coverdict.qualityView.filter` · `coverdict.qualityView.toggleGrouping` ·
-`coverdict.lineTestsView.toggleProblemsOnly`.
+`coverdict.lineTestsView.toggleProblemsOnly` ·
+`coverdict.mutationView.toggleSurvivorsOnly`.
 
-### Ayarlar (12)
+### Ayarlar (13)
 
 | Ayar | Varsayılan |
 |---|---|
@@ -373,6 +394,7 @@ sağ tık, Java) · `coverdict.copyItem` (ağaçlarda sağ tık → Kopyala) ·
 | `coverdict.mavenExecutable` | `""` → Windows'ta `mvn.cmd`, diğerinde `mvn` |
 | `coverdict.reportPath` | `"target/site/jacoco/jacoco.xml"` |
 | `coverdict.perTestClasspathPath` | `"target/coverdict-classpath.txt"` |
+| `coverdict.mutationTimeout` | `300` (saniye, modül başına bütçe) |
 | `coverdict.coverageExclusions` | `[]` |
 | `coverdict.diffMode` | `"uncommitted"` (`no-vcs` \| `uncommitted` \| `base`) |
 | `coverdict.baseRef` | `""` |
@@ -392,7 +414,7 @@ sağ tık, Java) · `coverdict.copyItem` (ağaçlarda sağ tık → Kopyala) ·
 
 ### Sağlık
 
-107 unit + 22 integration test geçiyor. SonarQube (`coverdict-vscode`,
+136 unit + 27 integration test geçiyor. SonarQube (`coverdict-vscode`,
 `http://localhost:9001`) sıfır açık bulgu.
 
 ---
@@ -470,6 +492,14 @@ Sonuçlar SonarQube MCP araçlarıyla okunur
 (`search_sonar_issues_in_projects`, `get_project_quality_gate_status`).
 Yeni bulgu **sıfır** olmalı; bu repoda Sonar temizliği duran bir kısıttır.
 
+**Kalite kapısı hakkında bilinmesi gereken:** `new_violations` ve
+`new_security_hotspots_reviewed` geçiyor, ama kapının bütünü `new_coverage`
+yüzünden ERROR veriyor (~%59, eşik %80). Sebep yapısal: `c8` yalnızca
+`out/cli`, `out/model`, `out/verdict`'i ölçüyor; `src/ui/**` gerçek
+Extension Host testleriyle test ediliyor ama o koşu enstrümante edilmiyor,
+dolayısıyla Sonar tüm UI kodunu "kapsanmamış" görüyor. Yani bu ERROR
+"UI test edilmemiş" demek **değil**. Karar bekliyor (§7.4).
+
 ---
 
 ## 6. Bilinen tuzaklar
@@ -492,6 +522,13 @@ Yeni bulgu **sıfır** olmalı; bu repoda Sonar temizliği duran bir kısıttır
   L2 hedefleri değişen production sınıflarından türer.
 - **`base` modunda `baseRef = HEAD`** boş diff verir. Hata değil:
   `merge-base(HEAD, HEAD) = HEAD`.
+- **`perTest.entries` ve `mutation.methods` test sınıflarını da içerir.**
+  İkisi de production listesiyle (`fileCoverage.files[]`) süzülmeli, yoksa
+  arayüz testin kendi kodunu ölçüyormuş gibi görünür. Bu tuzak iki ayrı
+  gerçek hataya yol açtı (§7.1, §8.6).
+- **PIT çocuk JVM doğurur.** İptalde çıplak `SIGTERM` yetmez; `killTree`
+  (Windows'ta `taskkill /T`) kullanılır — yoksa minion süreçler arkada
+  kalır ve classpath'i kilitler.
 - **Terminoloji:** `coverage`/`covered`/`uncovered` çevrilmez (§3, kural 4).
 
 ---
@@ -555,102 +592,114 @@ Gerçek yeni-kod akışı ayrı bir branch + push ile denenecek, sonra
 bir `Calculator.negate(int)` var ve hiçbir test onu çağırmıyor — gerçek bir
 uncovered-yeni-satır adayı; `mvn clean test` sonrası raporda görünür.
 
-### 7.4 Faz 20 — mutasyon testi arayüzü
+### 7.4 Sonar kalite kapısı `new_coverage` yüzünden ERROR
 
-§8.
+Yapısal, yeni bir hata değil: UI kodunun coverage'ı hiç ölçülmüyor (§5).
+Üç seçenek var, hiçbiri seçilmedi:
+1. `src/ui/**`'ı `sonar.coverage.exclusions`'a ekle — dürüst ama gerçek
+   boşlukları da gizler.
+2. Integration testlerini enstrümante et (`c8` + Extension Host) — doğru
+   çözüm, ama kurulumu zahmetli.
+3. Eşiği düşür — en kolay, en az bilgilendirici.
+
+`new_violations` sıfır olduğu sürece koşu "temiz" sayılıyor; kapının
+kendisi bu maddeye kadar ERROR kalacak.
+
+### 7.5 Mutasyon arayüzünün kalanı
+
+Faz 20 ile temel arayüz geldi (§8). Bilerek yapılmayanlar:
+- **Gutter'a mutasyon durumu eklenmedi** (7. durum yok). Önce ağacın
+  gerçek kullanımda oturması bekleniyor.
+- **Mutasyon sonucu diske kaydedilip geri yüklenmiyor** — pencere
+  kapanınca gider. Verdict dosyası zaten yazılıyor, `restoreLastCoverage`
+  onu okuyor; ama kaydedilen dosya son *herhangi* bir koşununki olduğu
+  için eski bir mutasyon sonucunu yeni bir taramadan sonra göstermek
+  yanıltıcı olurdu. Ayrı bir dosya gerekiyorsa ayrı bir karar.
+- **`SUBSUMED_TEST` ve `PSEUDO_TESTED_METHOD` bulguları** Test Kalitesi
+  görünümünde çıkıyor ama mutasyon ağacıyla çapraz bağlanmadı.
 
 ---
 
-## 8. Faz 20 — mutasyon testi arayüzü (öneriler, onaya hazır)
+## 8. Faz 20 — mutasyon testi arayüzü (**yapıldı**)
 
-Bugün arayüz **hiç yok**; Faz 12'den beri sırada. CLI tarafı D-71 ile
-hazır. Kullanıcının isteği aynen: *"mutasyon testinde ne kadar ilerledi
-yüzde vs kapsamlı rapor vs baya birşey istiyorum."*
+Kullanıcının isteği aynen: *"mutasyon testinde ne kadar ilerledi yüzde vs
+kapsamlı rapor vs baya birşey istiyorum."* Aşağıdakiler uygulandı ve
+gerçek playground verisiyle doğrulandı.
 
-Aşağıdaki maddeler **öneridir**; uygulamadan önce kullanıcı onayı alınır.
+### 8.1 Nereden başlatılır
 
-### 8.1 Nereden başlatılır — ayrı üçüncü buton + sınıf bazlı giriş
+**Tek sınıf — önerilen ve varsayılan yol:** editör sağ tık → "Bu Sınıf
+İçin Mutasyon Testi" (`coverdict.mutationForFile`) →
+`--mutation-report --mutation-target root=<FQCN>`. Diff gerektirmez,
+`--no-vcs`'te bile çalışır (D-71). Playground'da gerçek ölçüm: **5 saniye**.
 
-Çalıştır görünümüne üçüncü madde: **"Mutasyon Testi"**. **Asla otomatik
-tetiklenmez** — tek sınıf saniyeler sürerken büyük bir modül `ROADMAP.md`'ye
-göre 70–90 dakika sürebiliyor.
+**Modül geneli:** Çalıştır görünümünde "Mutasyon Testi"
+(`coverdict.mutationForModule`), **modal onay diyaloğunun arkasında** —
+metin bütçeyi de söyler. Asla otomatik tetiklenmez: büyük bir modülde
+`ROADMAP.md`'ye göre 70–90 dakika sürebiliyor. `no-vcs` modunda modül
+geneli koşu devre dışı (hedef türetecek diff yok) ve bunu söylüyor.
 
-Varsayılan ve önerilen yol **tek sınıf**: editör sağ tık → "Bu Sınıf İçin
-Mutasyon Testi" → `--mutation-report --mutation-target root=<FQCN>`.
-Diff gerektirmez, `--no-vcs`'te bile çalışır.
+### 8.2 İlerleme — `cli/progressParser.ts` yazıldı
 
-Modül geneli koşu ayrı bir onay diyaloğunun arkasında dursun: *"Bu koşu
-1 saati aşabilir. Devam?"*
+Saf modül. `parseProgressLine(line)` → `ProgressEvent | undefined`
+(`start` / `heartbeat` / `done` / `failed`). §2'deki gerçek satır
+biçimlerini ayrıştırır; **tanımadığı satırı yutmaz**, `undefined` döner ve
+`ui/commands.ts` onu Output'a aynen yazar (hard rule 3a).
 
-### 8.2 İlerleme — `cli/progressParser.ts` nihayet yazılır
+`ui/commands.ts`'te bugüne kadar alınıp hiç kullanılmadan atılan
+`withProgress` progress nesnesine bağlandı. `incrementFor` **fark** üretir
+(VS Code mutlak yüzde değil artış ister) ve toplam bilinmiyorsa hiç artış
+yayınlamaz — uydurma bir ilerleme çubuğu, olmamasından kötüdür.
 
-Saf modül (`vscode` import etmez), tek fonksiyon:
+Heartbeat 30 saniye olduğu için yüzde dakikada en çok iki kez ilerler; bu
+yüzden **geçen süre her zaman yazılır**, yoksa arayüz donmuş görünür.
+Bu iyileştirme derin taramaya da bedava geldi.
 
-```ts
-parseProgressLine(line: string):
-  { kind: 'mutation' | 'perTest'; moduleId: string; done: number; total: number; elapsed: string } | undefined
-```
-
-§2'deki gerçek satır biçimlerini parse eder. **Tanımadığı satırı yutmaz** —
-`undefined` döner ve çağıran onu Output'a aynen yazar (hard rule 3a).
-
-`ui/commands.ts`'te bugün alınıp hiç kullanılmadan atılan `withProgress`
-progress nesnesine bağlanır:
-
-```ts
-progress.report({ increment, message: `${done}/${total} sınıf · ${elapsed}` });
-```
-
-Heartbeat 30 saniye olduğu için yüzde dakikada en çok iki kez ilerler —
-bu yüzden **geçen süre her zaman yazılır**, yoksa arayüz donmuş görünür.
-
-### 8.3 9 PIT statüsü → 3 kova (hard rule 3a)
+### 8.3 9 PIT statüsü → 3 kova
 
 | Kova | Statüler |
 |---|---|
 | **öldürüldü** | `KILLED`, `TIMED_OUT` |
 | **hayatta kaldı** | `SURVIVED` |
-| **belirsiz** | `NON_VIABLE`, `MEMORY_ERROR`, `NOT_STARTED`, `STARTED`, `RUN_ERROR`, `NO_COVERAGE` |
+| **belirsiz** | `NON_VIABLE`, `MEMORY_ERROR`, `NOT_STARTED`, `STARTED`, `RUN_ERROR`, `NO_COVERAGE` + **tanımadığımız her statü** |
 
-Belirsiz olan **asla** ilk iki kovaya katlanmaz ve **asla** gizlenmez.
-Skor `öldürülen / (öldürülen + hayatta kalan)` gösterilir, belirsiz sayısı
-yanında ayrıca yazılır.
+Belirsiz olan asla ilk iki kovaya katlanmaz ve asla gizlenmez. Skor
+`öldürülen / (öldürülen + hayatta kalan)`; belirsiz sayısı yanında ayrıca
+yazılır. Karara bağlanmış mutant yoksa yüzde `null` — "skor yok" gösterilir,
+"%0" değil.
 
-*Tek tartışmalı nokta:* `TIMED_OUT`'u öldürüldü saymak PIT'in kendi
-geleneğidir (mutant kodu sonsuz döngüye soktu = tespit edildi). Kullanıcı
-isterse belirsize alınır — kod bu eşlemeyi **tek bir sabit listeden**
-okusun ki değiştirmek tek satır olsun.
+`TIMED_OUT` = öldürüldü, PIT'in kendi geleneği (kullanıcı onayladı).
+Eşleme `model/mutationModel.ts`'te **tek bir sabit listede**: fikir
+değişirse tek satır. Dokuz statünün hepsi tek tek test ediliyor.
 
-### 8.4 İptal — `runner.ts:cancel` bugün çıplak `SIGTERM`, yetmez
+### 8.4 İptal — süreç ağacı öldürülüyor
 
-PIT çocuk JVM'ler (minion) doğurur; Windows'ta yalnızca ana süreci
-öldürmek onları arkada bırakır. Gereken:
+`runner.ts:cancel` artık `killTree`: Windows'ta `taskkill /PID <pid> /T /F`,
+POSIX'te `spawn(..., { detached: true })` + `process.kill(-pid)`. Çıplak
+`SIGTERM` PIT'in çocuk JVM'lerini ("minion") arkada bırakıyordu.
+`withProgress` zaten `cancellable: true`.
 
-- Windows: `taskkill /PID <pid> /T /F`
-- POSIX: `spawn(..., { detached: true })` + `process.kill(-pid)`
+### 8.5 Rapor yüzeyi — `coverdict.mutationView`
 
-`withProgress` `cancellable: true` olur ve `CancellationToken` buraya
-bağlanır. Saatlerce sürebilen bir işlemde bu **şarttır**, sonraya
-bırakılamaz.
+Sınıf → metot → mutant → **öldüren testler**. Metot ve sınıf düğümlerinde
+skor; hayatta kalanı olan metot uyarı ikonu alır. Mutanta tıklamak satıra
+gider. Öldüren testler `verdict/testIdentity.ts` üzerinden okunabilir
+adlarıyla gösterilir. Başlıkta "sadece hayatta kalan mutantlar" süzgeci.
+Kanıt yoksa **hangi** `MUTATION_*` uyarısının sebep olduğu ve çözümü
+yazılır. Classpath için Faz 19'un `cli/classpathBuilder.ts`'i aynen
+kullanılıyor.
 
-### 8.5 Rapor yüzeyi — beşinci TreeView `coverdict.mutationView`
+### 8.6 Gerçek veri iki sürpriz çıkardı — ikisi de belgeden okunamazdı
 
-Hiyerarşi: **sınıf → metot → mutant**. Metot düğümünde `3/4` özeti (+
-belirsiz sayısı ayrıca). Mutanta tıklayınca ilgili satıra gidilir.
-`killingTests[]` `verdict/testIdentity.ts` üzerinden okunabilir hâle
-getirilir — `model/testQuality.ts`'in `findings` ↔ `perTest` birleştirme
-deseninin aynısı.
-
-Classpath için Faz 19'un `cli/classpathBuilder.ts`'i **aynen** kullanılır
-(`--mutation-classpath`), yeni kod gerekmez.
-
-**Gutter'a 7. durum eklenmez** — önce ağaç çalışsın, gutter sonra
-tartışılır.
-
-### 8.6 Commit bölümlemesi
-
-`progressParser` + birim testleri → süreç ağacı iptali → mutasyon ağacı →
-elle doğrulama. Her biri kendi commit'i.
+1. **`mutator` tam sınıf adı.** Şemanın golden örneği kısa `TRUE_RETURNS`
+   gösteriyor; gerçek çıktı
+   `org.pitest.mutationtest.engine.gregor.mutators.returns.PrimitiveReturnsMutator`.
+   Etikette son parça + `Mutator` soneki atılmış hâli, tooltip'te tam adı.
+2. **PIT test sınıflarını da mutasyona sokuyor.** Tek bir
+   `--mutation-target root=...Calculator` koşusunda üretilen 16 metodun
+   8'i test sınıflarındandı. Süzülmeseydi ağaç `CalculatorSubsumedTest`'in
+   kendi mutant skorunu gösterirdi. `perTest.entries`'teki aynı tuzağın
+   (§7.1) mutasyon tarafındaki eşi — süzgeç yine `fileCoverage.files[]`.
 
 ---
 

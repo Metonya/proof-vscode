@@ -107,3 +107,44 @@ test('--out is always the last two args, so a caller can rely on args[args.lengt
 	assert.equal(args.at(-2), '--out');
 	assert.equal(args.at(-1), '/tmp/out.json');
 });
+
+/**
+ * Faz 20: mutasyon bayrakları. `--mutation-classpath` `--per-test-classpath`
+ * ile aynı dosya biçimini kullanır ama CLI ikisini ayrı opt-in sayar, o
+ * yüzden burada da birleştirilmiyor.
+ */
+test('mutation appends --mutation-report, its own classpath flag and the timeout', () => {
+	const args = buildAnalyzeArgs({
+		repo: '/repo', diffMode: { kind: 'uncommitted' }, reportPath: 'jacoco.xml', outPath: '/tmp/out.json',
+		mutation: { classpathModuleId: 'root', classpathPath: 'target/coverdict-classpath.txt', timeoutSeconds: 300 },
+	});
+	assert.ok(args.includes('--mutation-report'));
+	assert.equal(args[args.indexOf('--mutation-classpath') + 1], 'root=target/coverdict-classpath.txt');
+	assert.equal(args[args.indexOf('--mutation-timeout') + 1], '300');
+	assert.ok(!args.includes('--per-test-report'), 'mutation must not silently drag L2 along - separate opt-ins');
+});
+
+test('mutation targets are passed one --mutation-target per class (D-71, diff-free entry)', () => {
+	const args = buildAnalyzeArgs({
+		repo: '/repo', diffMode: { kind: 'no-vcs' }, reportPath: 'jacoco.xml', outPath: '/tmp/out.json',
+		mutation: { classpathModuleId: 'root', classpathPath: 'cp.txt', targets: ['dev.example.Calculator', 'dev.example.Other'] },
+	});
+	const targets = args.map((a, i) => (a === '--mutation-target' ? args[i + 1] : undefined)).filter(Boolean);
+	assert.deepEqual(targets, ['root=dev.example.Calculator', 'root=dev.example.Other']);
+	assert.ok(args.includes('--no-vcs'), 'the builder does not enforce the diff rule - a target lifts it CLI-side');
+});
+
+test('mutation without a timeout omits the flag rather than inventing the default', () => {
+	const args = buildAnalyzeArgs({
+		repo: '/repo', diffMode: { kind: 'uncommitted' }, reportPath: 'jacoco.xml', outPath: '/tmp/out.json',
+		mutation: { classpathModuleId: 'root', classpathPath: 'cp.txt' },
+	});
+	assert.ok(!args.includes('--mutation-timeout'));
+});
+
+test('no mutation input means no mutation flags at all', () => {
+	const args = buildAnalyzeArgs({
+		repo: '/repo', diffMode: { kind: 'uncommitted' }, reportPath: 'jacoco.xml', outPath: '/tmp/out.json',
+	});
+	assert.ok(!args.some((a) => a.startsWith('--mutation')));
+});

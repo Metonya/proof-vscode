@@ -7,6 +7,10 @@ import type {
 	Metric,
 	MetricSet,
 	ModuleInput,
+	MutatedMethod,
+	Mutant,
+	MutationBlock,
+	MutationModuleEvidence,
 	NewCodeCoverage,
 	PerTestBlock,
 	PerTestEntry,
@@ -48,6 +52,9 @@ export function parseVerdict(raw: string): Result<VerdictDocument> {
 	}
 	if ('perTest' in json && !isPerTestBlock(json.perTest)) {
 		return { ok: false, error: 'perTest is present but malformed' };
+	}
+	if ('mutation' in json && !isMutationBlock(json.mutation)) {
+		return { ok: false, error: 'mutation is present but malformed' };
 	}
 	return { ok: true, value: json };
 }
@@ -165,6 +172,38 @@ function isPerTestLine(value: unknown): value is PerTestLine {
 	return isRecord(value)
 		&& typeof value.line === 'number'
 		&& Array.isArray(value.tests) && value.tests.every((t) => typeof t === 'string');
+}
+
+function isMutationBlock(value: unknown): value is MutationBlock {
+	return isRecord(value)
+		&& typeof value.engine === 'string'
+		&& typeof value.engineVersion === 'string'
+		&& Array.isArray(value.modules) && value.modules.every(isMutationModuleEvidence);
+}
+
+function isMutationModuleEvidence(value: unknown): value is MutationModuleEvidence {
+	return isRecord(value)
+		&& typeof value.id === 'string'
+		&& Array.isArray(value.methods) && value.methods.every(isMutatedMethod);
+}
+
+function isMutatedMethod(value: unknown): value is MutatedMethod {
+	return isRecord(value)
+		&& typeof value.className === 'string'
+		&& typeof value.methodName === 'string'
+		&& typeof value.methodDescription === 'string'
+		&& typeof value.firstLine === 'number'
+		&& typeof value.lastLine === 'number'
+		&& Array.isArray(value.mutants) && value.mutants.every(isMutant);
+}
+
+/** `status` bilerek serbest bir string olarak doğrulanır: tanımadığımız bir PIT statüsü bütün verdict'i reddettirmemeli, "belirsiz" olarak gösterilmeli (hard rule 3a). */
+function isMutant(value: unknown): value is Mutant {
+	return isRecord(value)
+		&& typeof value.mutator === 'string'
+		&& typeof value.line === 'number'
+		&& typeof value.status === 'string'
+		&& Array.isArray(value.killingTests) && value.killingTests.every((t) => typeof t === 'string');
 }
 
 function isMetricSet(value: unknown): value is MetricSet {

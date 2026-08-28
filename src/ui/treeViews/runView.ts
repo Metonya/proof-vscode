@@ -65,18 +65,39 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 				'hızlı taramanın her şeyi + hangi test hangi satırı cover ediyor',
 				'coverdict.analyzePerTest',
 				'beaker',
-				'DERİN TARAMA MUTASYON TESTİ DEĞİLDİR - mutasyon henüz bu arayüzde yok.\n\n'
+				'DERİN TARAMA MUTASYON TESTİ DEĞİLDİR - mutasyon ayrı bir madde (aşağıda).\n\n'
 				+ `Dakikalar sürebilir (testleri PIT motoru altında yeniden çalıştırır, ama sadece hangi testin hangi satıra dokunduğunu kaydetmek için - kodu mutasyona uğratmaz).\n\nHızlı taramanın her şeyine ek olarak:\n· Her satırı hangi testlerin çalıştırdığı ("Satır → Testler" görünümü)\n· "Yalancı yeşil" satırlar - covered ama cover eden hiçbir testin doğrulaması yok\n\nKapsam: ${scopeText} içinde değişen sınıflar.`,
 			));
 		}
 
-		items.push(new RunItem(
-			'Coverage Görünümü',
-			isGutterVisible() ? 'açık - gizlemek için tıklayın' : 'kapalı - göstermek için tıklayın',
-			'coverdict.toggleCoverage',
-			isGutterVisible() ? 'eye' : 'eye-closed',
-			'Editördeki satır renklerini ve Dosya Gezgini rozetlerini birlikte açar/kapatır. Yeniden tarama yapmaz.',
-		));
+		// Faz 20: mutasyon ayrı bir madde. Asla otomatik tetiklenmiyor ve
+		// modül geneli koşu bir onay diyaloğunun arkasında - tek sınıf
+		// saniyeler sürerken büyük bir modül bir saati aşabiliyor.
+		items.push(diffMode === 'no-vcs'
+			? new RunItem(
+				'Mutasyon Testi',
+				'modül geneli no-vcs modunda kullanılamaz - tek sınıf için sağ tık',
+				undefined,
+				'circle-slash',
+				'Modül geneli mutasyon, hedeflerini diff\'te değişen production sınıflarından türetir; "no-vcs" modunda değişen dosya kavramı olmadığı için hedef yok.\n\nTek bir sınıf için bu modda da çalışır: o dosyada sağ tık → "Bu Sınıf İçin Mutasyon Testi".',
+			)
+			: new RunItem(
+				'Mutasyon Testi',
+				'kodu kasten boz, hiçbir testin fark etmediği yerleri bul',
+				'coverdict.mutationForModule',
+				'zap',
+				'GERÇEK MUTASYON TESTİ (Derin Tarama\'dan farklı).\n\n'
+				+ 'Kodun küçük varyantlarını ("mutant") üretip testleri tekrar koşar. Bir mutant hayatta kaldıysa kodu bozduk ve hiçbir test fark etmedi - o davranışı doğrulayan bir assertion eksik demektir.\n\n'
+				+ 'UZUN SÜRER: büyük bir modülde bir saati aşabilir, onay isteyecek. Tek bir sınıf genelde saniyeler sürer - o dosyada sağ tık → "Bu Sınıf İçin Mutasyon Testi".\n\n'
+				+ `Kapsam: ${scopeText} içinde değişen sınıflar. Sonuçlar "Mutasyon" görünümünde.`,
+			),
+			new RunItem(
+				'Coverage Görünümü',
+				isGutterVisible() ? 'açık - gizlemek için tıklayın' : 'kapalı - göstermek için tıklayın',
+				'coverdict.toggleCoverage',
+				isGutterVisible() ? 'eye' : 'eye-closed',
+				'Editördeki satır renklerini ve Dosya Gezgini rozetlerini birlikte açar/kapatır. Yeniden tarama yapmaz.',
+			));
 		return items;
 	}
 }

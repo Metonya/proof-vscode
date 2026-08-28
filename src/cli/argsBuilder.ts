@@ -28,6 +28,19 @@ export interface AnalyzeArgsInput {
 	 * builder does not need to know or enforce the diff-mode rule itself.
 	 */
 	perTest?: { classpathModuleId: string; classpathPath: string; targets?: readonly string[] };
+	/**
+	 * Faz 20: L3 mutasyon kanıtı. `perTest` ile aynı şekil ve aynı kural -
+	 * `targets` (D-71'in `--mutation-target`'ı) verildiğinde CLI'ın diff
+	 * zorunluluğu kalkar, yani `--no-vcs` altında da çalışır. Ayrı bir
+	 * classpath bayrağı var (`--mutation-classpath`), dosya biçimi
+	 * `--per-test-classpath` ile aynı olsa da: CLI ikisini ayrı opt-in
+	 * sayıyor, burada da birleştirilmiyor.
+	 *
+	 * `timeoutSeconds` bir modülün bütçesi; CLI varsayılanı 300. Aşılırsa
+	 * koşu öldürülür ve `MUTATION_BUDGET_EXCEEDED` ile döner - kısmi sonuç
+	 * yine yazılır.
+	 */
+	mutation?: { classpathModuleId: string; classpathPath: string; targets?: readonly string[]; timeoutSeconds?: number };
 }
 
 export function buildAnalyzeArgs(input: AnalyzeArgsInput): string[] {
@@ -56,6 +69,15 @@ export function buildAnalyzeArgs(input: AnalyzeArgsInput): string[] {
 		args.push('--per-test-report', '--per-test-classpath', `${input.perTest.classpathModuleId}=${input.perTest.classpathPath}`);
 		for (const target of input.perTest.targets ?? []) {
 			args.push('--per-test-target', `${input.perTest.classpathModuleId}=${target}`);
+		}
+	}
+	if (input.mutation) {
+		args.push('--mutation-report', '--mutation-classpath', `${input.mutation.classpathModuleId}=${input.mutation.classpathPath}`);
+		for (const target of input.mutation.targets ?? []) {
+			args.push('--mutation-target', `${input.mutation.classpathModuleId}=${target}`);
+		}
+		if (input.mutation.timeoutSeconds !== undefined) {
+			args.push('--mutation-timeout', String(input.mutation.timeoutSeconds));
 		}
 	}
 	args.push('--out', input.outPath);

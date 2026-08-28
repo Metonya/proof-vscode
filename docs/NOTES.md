@@ -1,9 +1,14 @@
 > **Bu dosya kronolojik bir kayıttır, güncel gerçek değil.**
 >
-> Faz 12'den Faz 20'ye kadar her elle test oturumunun bulguları burada,
+> Faz 12'den Faz 21'e kadar her elle test oturumunun bulguları burada,
 > bulundukları sırayla duruyor. Maddelerin **çoğu sonradan kapandı** ama
 > metinleri olduğu gibi bırakıldı — bir kararın *neden* öyle alındığını
 > okumak için buradasın demektir.
+>
+> **Faz 20/21 (2026-08-28) ile kapananlar:** mutasyon testi arayüzü
+> yapıldı (aşağıdaki "Faz 20 (planlanacak)" bölümü artık geçmiş kayıttır,
+> güncel hâli `PLAN.md` §8'de) ve Faz 16 madde 1'in ters yön hatası
+> gerçek veriyle kök nedeni bulunup düzeltildi (`PLAN.md` §7.1).
 >
 > Projeye yeni giriyorsan **önce `docs/PLAN.md`'yi oku**: bugün ne çalıştığı,
 > hangi kuralların çiğnenmediği ve **açık işlerin güncel listesi** oradadır.
@@ -68,6 +73,16 @@ Kalan: madde 6/7 (kullanıcının playground'da kendi yapacağı adım).
 ---
 
 # Faz 20 (planlanacak) — MUTASYON TESTİ ARAYÜZÜ
+
+> **YAPILDI (2026-08-28).** Aşağıdaki metin isteğin ve o günkü durumun
+> kaydıdır, yapılacak iş listesi değil. Uygulanan hâli, alınan kararlar ve
+> gerçek koşunun çıkardığı iki sürpriz `PLAN.md` §8'de.
+>
+> Buradaki tahminlerden biri yanlış çıktı: `--mutation-target` ile tek
+> sınıf koşusu "saniyeler" diye tahmin edilmişti — gerçek ölçüm 5 saniye,
+> doğru. Ama planda hiç öngörülmeyen şey, PIT'in **test sınıflarını da
+> mutasyona sokması** ve `mutator` alanının kısa ad değil tam sınıf adı
+> olmasıydı; ikisi de ancak çalıştırınca görüldü.
 
 Kullanıcının açık isteği (2026-08-28): *"derin taramaya tıkladım onun
 mutasyon testi olduğunu mu anlamalıyım ne yapıyor o? birde mutasyon
@@ -163,6 +178,14 @@ Hiçbiri implement edilmedi - sadece bulgu. Aşağıdaki sıraya göre ele
 alınmalı (1 ve 2 gerçek hata, geri kalanı iyileştirme isteği).
 
 ## 1. GERÇEK HATA: bir test dosyası açılınca ters yön yerine "kendi kendini kapsıyor" görünümü çıkıyor
+
+> **KAPANDI (Faz 21, 2026-08-28).** Aşağıdaki hipotez doğru çıktı ve
+> gerçek bir `--per-test-target` koşusuyla kanıtlandı: PIT'in L2
+> toplayıcısı test sınıflarını da `entries`'e yazıyor. Ama düzeltme
+> tahmin edilenden bir parça büyüktü — yön yol tabanlı seçildikten sonra
+> bile ters indeks testin kendi satırlarını "production satırı" diye
+> listelemeye devam etti; ikinci bir süzgeç gerekti. Ayrıntı `PLAN.md`
+> §7.1'de. Aynı hata `hoverProvider.ts`'te de vardı.
 
 **Gözlem** (CalculatorNullCheckOnlyTest.java açıkken "Satır → Testler"
 ağacı): kök düğümler `Satır 15`, `Satır 17`, `Satır 21`, `Satır 22`,

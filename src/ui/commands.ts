@@ -5,6 +5,7 @@ import * as vscode from 'vscode';
 import { buildAnalyzeArgs, type DiffMode } from '../cli/argsBuilder';
 import { buildPerTestClasspath } from '../cli/classpathBuilder';
 import { locateJar } from '../cli/jarLocator';
+import { incrementFor, parseProgressLine, progressMessage } from '../cli/progressParser';
 import { run } from '../cli/runner';
 import { buildFalseGreenIndex } from '../model/falseGreenIndex';
 import type { BadgeMetric } from '../model/metrics';
@@ -16,6 +17,7 @@ import {
 	isGutterVisible,
 	setCoverageState,
 	setGutterVisible,
+	setMutationState,
 	setPerTestState,
 } from '../model/store';
 import { parseVerdict } from '../verdict/parse';
@@ -26,6 +28,7 @@ import { applyGutterCoverage, clearGutterCoverage, type GutterDecorationTypes } 
 import { showCoverageSummary, showNoFileCoverageWarning } from './statusBar';
 import type { CoverageTreeProvider } from './treeViews/coverageView';
 import type { LineTestsTreeProvider } from './treeViews/lineTestsView';
+import type { MutationTreeProvider } from './treeViews/mutationView';
 import type { QualityTreeProvider } from './treeViews/qualityView';
 import type { RunTreeProvider } from './treeViews/runView';
 
@@ -53,6 +56,8 @@ export interface CoverageSinks {
 	coverageView: CoverageTreeProvider;
 	qualityView: QualityTreeProvider;
 	lineTestsView: LineTestsTreeProvider;
+	/** Faz 20: L3 mutasyon raporu - beşinci görünüm. */
+	mutationView: MutationTreeProvider;
 }
 
 export function registerAnalyzeCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
@@ -72,6 +77,18 @@ export function registerToggleCoverageCommand(sinks: CoverageSinks): vscode.Disp
 /** Faz 14b: diff'siz L2 kanıtı, tek bir açık dosya için (`--per-test-target`, Faz 14a). */
 export function registerPerTestForFileCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
 	return vscode.commands.registerCommand('coverdict.perTestForFile', () => runPerTestForFile(context, output, sinks));
+}
+
+/** Faz 20: mutasyon testi - tek sınıf (önerilen) ve modül geneli (onay arkasında). */
+export function registerMutationCommands(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable[] {
+	return [
+		vscode.commands.registerCommand('coverdict.mutationForFile', () => runMutationForFile(context, output, sinks)),
+		vscode.commands.registerCommand('coverdict.mutationForModule', () => runMutationForModule(context, output, sinks)),
+		vscode.commands.registerCommand('coverdict.mutationView.toggleSurvivorsOnly', () => {
+			const on = sinks.mutationView.toggleSurvivorsOnly();
+			vscode.window.setStatusBarMessage(on ? 'coverdict: sadece hayatta kalan mutantlar' : 'coverdict: bütün mutantlar', 2000);
+		}),
+	];
 }
 
 /**
@@ -259,7 +276,10 @@ async function runAnalyzePerTest(context: vscode.ExtensionContext, output: vscod
 	if (!classpathPath) {
 		return;
 	}
-	const parsed = await runAnalyzeCore(context, output, folder, diffMode, { classpathModuleId: MODULE_ID, classpathPath });
+	const parsed = await runAnalyzeCore(context, output, folder, diffMode, {
+		perTest: { classpathModuleId: MODULE_ID, classpathPath },
+		progressTitle: 'coverdict: derin tarama',
+	});
 	if (!parsed) {
 		return;
 	}
@@ -303,7 +323,10 @@ async function runPerTestForFile(context: vscode.ExtensionContext, output: vscod
 	if (!classpathPath) {
 		return;
 	}
-	const parsed = await runAnalyzeCore(context, output, folder, diffMode, { classpathModuleId: MODULE_ID, classpathPath, targets: [className] });
+	const parsed = await runAnalyzeCore(context, output, folder, diffMode, {
+		perTest: { classpathModuleId: MODULE_ID, classpathPath, targets: [className] },
+		progressTitle: `coverdict: ${className.split('.').pop()} için test kanıtı`,
+	});
 	if (!parsed) {
 		return;
 	}
@@ -314,6 +337,98 @@ async function runPerTestForFile(context: vscode.ExtensionContext, output: vscod
 		vscode.window.showWarningMessage(`coverdict: ${className} için test bazlı kanıt yok - PER_TEST_* uyarıları için çıktı kanalını kontrol edin.`);
 	}
 	revealLineTestsView(sinks);
+}
+
+/**
+ * Faz 20: tek sınıf için mutasyon testi - **önerilen ve varsayılan yol**.
+ * `--mutation-target` (D-71) diff gerektirmez, `--no-vcs` altında bile
+ * çalışır ve tek bir sınıf genelde saniyeler sürer. Modül geneli koşu
+ * ayrı bir komut ve ayrı bir onayın arkasında (`runMutationForModule`),
+ * çünkü büyük bir modülde 70-90 dakikayı bulabiliyor.
+ */
+async function runMutationForFile(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
+	const folder = vscode.workspace.workspaceFolders?.[0];
+	if (!folder) {
+		vscode.window.showErrorMessage('coverdict: önce bir klasör açın.');
+		return;
+	}
+	const editor = vscode.window.activeTextEditor;
+	if (editor?.document.languageId !== 'java') {
+		vscode.window.showErrorMessage('coverdict: mutasyon testi çalıştırmak için bir Java dosyası açın.');
+		return;
+	}
+	const className = detectClassName(editor.document.getText(), path.basename(editor.document.fileName, '.java'));
+	await runMutation(context, output, sinks, folder, [className], `coverdict: ${className.split('.').pop()} mutasyon testi`);
+}
+
+/**
+ * Faz 20: modül geneli mutasyon. Asla otomatik tetiklenmez ve her seferinde
+ * onay ister - süre hedef sayısıyla doğrusal büyüyor ve kullanıcı buna
+ * bilerek girmeli. Onay metni bütçeyi de söyler, çünkü bütçe aşılırsa
+ * sonuç kısmi kalır.
+ */
+async function runMutationForModule(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
+	const folder = vscode.workspace.workspaceFolders?.[0];
+	if (!folder) {
+		vscode.window.showErrorMessage('coverdict: önce bir klasör açın.');
+		return;
+	}
+	const timeout = readMutationTimeout(folder);
+	const choice = await vscode.window.showWarningMessage(
+		'Mutasyon testi tüm modül için çalıştırılacak.',
+		{
+			modal: true,
+			detail: `Bu koşu uzun sürebilir - büyük bir modülde bir saati aşabilir. Modül başına zaman bütçesi ${timeout} saniye (coverdict.mutationTimeout); aşılırsa koşu durdurulur ve sonuç kısmi kalır.\n\nTek bir sınıf için genelde saniyeler yeterlidir: o dosyada sağ tık → "Bu Sınıf İçin Mutasyon Testi".`,
+		},
+		'Devam Et',
+	);
+	if (choice !== 'Devam Et') {
+		return;
+	}
+	// Hedef verilmiyor: CLI diff'teki değişen production sınıflarını hedefler.
+	await runMutation(context, output, sinks, folder, [], 'coverdict: mutasyon testi (modül)');
+}
+
+/** İki mutasyon girişinin ortak gövdesi. `targets` boşsa CLI diff'ten hedef türetir (bu durumda bir diff modu şart). */
+async function runMutation(
+	context: vscode.ExtensionContext,
+	output: vscode.OutputChannel,
+	sinks: CoverageSinks,
+	folder: vscode.WorkspaceFolder,
+	targets: readonly string[],
+	progressTitle: string,
+): Promise<void> {
+	const diffMode = readDiffMode(folder);
+	if (!diffMode) {
+		return;
+	}
+	if (targets.length === 0 && diffMode.kind === 'no-vcs') {
+		vscode.window.showErrorMessage('coverdict: modül geneli mutasyon bir diff gerektirir - coverdict.diffMode "no-vcs" iken hedeflenecek değişen sınıf yok. Tek bir sınıf için o dosyada sağ tık → "Bu Sınıf İçin Mutasyon Testi".');
+		return;
+	}
+
+	const classpathPath = await ensurePerTestClasspath(folder, output);
+	if (!classpathPath) {
+		return;
+	}
+	const parsed = await runAnalyzeCore(context, output, folder, diffMode, {
+		// Faz 19'un classpath üreticisi aynen kullanılıyor - CLI iki bayrağı
+		// ayrı opt-in sayıyor ama dosya biçimi birebir aynı.
+		mutation: { classpathModuleId: MODULE_ID, classpathPath, targets, timeoutSeconds: readMutationTimeout(folder) },
+		progressTitle,
+	});
+	if (!parsed) {
+		return;
+	}
+
+	publishAnalysis(sinks, folder.uri.fsPath, analysisResultFrom(parsed));
+	setMutationState({ moduleId: MODULE_ID, mutation: parsed.mutation, warnings: parsed.warnings, targets });
+	sinks.mutationView.refresh();
+	void vscode.commands.executeCommand('coverdict.mutationView.focus');
+}
+
+function readMutationTimeout(folder: vscode.WorkspaceFolder): number {
+	return vscode.workspace.getConfiguration('coverdict', folder).get<number>('mutationTimeout') ?? 300;
 }
 
 /** Faz 15c/15e: yeni "Satır → Testler" kenar çubuğu görünümüne odaklanır - eski webview'in aksine, tıklanınca kendini boşaltmaz (o hatanın doğrudan dersi, bkz. `ui/treeViews/lineTestsView.ts`). */
@@ -346,12 +461,20 @@ function readDiffMode(folder: vscode.WorkspaceFolder): DiffMode | undefined {
  * rule 3a's exit-3-still-writes-a-document handling included) - callers
  * never need their own error UI for this part.
  */
+interface EvidenceOptions {
+	perTest?: { classpathModuleId: string; classpathPath: string; targets?: readonly string[] };
+	/** Faz 20: L3. Verildiğinde ilerleme bildirimi de mutasyon diliyle konuşur ve iptal süreç ağacını öldürür. */
+	mutation?: { classpathModuleId: string; classpathPath: string; targets?: readonly string[]; timeoutSeconds?: number };
+	/** Bildirim başlığı - mutasyon dakikalar/saatler sürebildiği için "analiz ediliyor" yetersiz kalıyor. */
+	progressTitle?: string;
+}
+
 async function runAnalyzeCore(
 	context: vscode.ExtensionContext,
 	output: vscode.OutputChannel,
 	folder: vscode.WorkspaceFolder,
 	diffMode: DiffMode,
-	perTest?: { classpathModuleId: string; classpathPath: string; targets?: readonly string[] },
+	evidence: EvidenceOptions = {},
 ): Promise<VerdictDocument | undefined> {
 	const jarPath = locateJar(folder);
 	if (!jarPath) {
@@ -383,15 +506,36 @@ async function runAnalyzeCore(
 		outPath: outUri.fsPath,
 		fileCoverage: true,
 		coverageExclusions,
-		perTest,
+		perTest: evidence.perTest,
+		mutation: evidence.mutation,
 	});
 
 	output.appendLine(`coverdict: java -jar ${jarPath} ${args.join(' ')}`);
 
 	return vscode.window.withProgress(
-		{ location: vscode.ProgressLocation.Notification, title: 'coverdict: analiz ediliyor', cancellable: true },
-		async (_progress, token) => {
-			const handle = run({ javaExecutable, jarPath, args, onStderrLine: (line) => output.appendLine(line) });
+		{ location: vscode.ProgressLocation.Notification, title: evidence.progressTitle ?? 'coverdict: analiz ediliyor', cancellable: true },
+		async (progress, token) => {
+			// Faz 20: CLI'ın stderr ilerleme akışı nihayet tüketiliyor
+			// (`cli/progressParser.ts` - Faz 1'den beri yorumda söz verilmiş,
+			// hiç yazılmamıştı). Tanınan satır bildirime yazılır, tanınmayan
+			// satır Output'a **aynen** gider: biçim değişirse yanlış yüzde
+			// göstermektense hiç göstermemek yeğdir (hard rule 3a).
+			let done = 0;
+			const handle = run({
+				javaExecutable, jarPath, args,
+				onStderrLine: (line) => {
+					output.appendLine(line);
+					const event = parseProgressLine(line);
+					if (!event) {
+						return;
+					}
+					const step = incrementFor(event, done);
+					if (step) {
+						done = step.done;
+					}
+					progress.report({ increment: step?.increment, message: progressMessage(event) });
+				},
+			});
 			let cancelled = false;
 			token.onCancellationRequested(() => {
 				cancelled = true;

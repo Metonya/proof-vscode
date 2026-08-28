@@ -1,4 +1,4 @@
-import type { ChangedFile, FileCoverageBlock, Finding, MetricSet, ModuleInput, NewCodeCoverage, PerTestBlock, Reason } from '../verdict/types';
+import type { ChangedFile, FileCoverageBlock, Finding, MetricSet, ModuleInput, MutationBlock, NewCodeCoverage, PerTestBlock, Reason } from '../verdict/types';
 
 /**
  * The one place the last analyze run's data lives (Plan.md Bölüm 2's
@@ -81,4 +81,28 @@ export function setPerTestState(next: PerTestState): void {
 
 export function getPerTestState(): PerTestState | undefined {
 	return perTestState;
+}
+
+/**
+ * Faz 20: son mutasyon koşusunun L3 kanıtı. `perTest` gibi ayrı tutuluyor -
+ * mutasyon kendi komutundan gelir ve dakikalar/saatler sürebilir, bir
+ * kapsama taraması onu ezmemeli. `targets` koşunun neyi hedeflediğini
+ * söyler: "sonuç boş" ile "hiç sorulmadı" ayırt edilebilsin diye
+ * (hard rule 3a).
+ */
+export interface MutationState {
+	moduleId: string;
+	mutation: MutationBlock | undefined;
+	warnings: readonly Reason[];
+	targets: readonly string[];
+}
+
+let mutationState: MutationState | undefined;
+
+export function setMutationState(next: MutationState): void {
+	mutationState = next;
+}
+
+export function getMutationState(): MutationState | undefined {
+	return mutationState;
 }
