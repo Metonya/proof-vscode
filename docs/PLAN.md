@@ -412,6 +412,11 @@ sağ tık, Java) · `coverdict.copyItem` (ağaçlarda sağ tık → Kopyala) ·
 - Coverage dışı bırakılmış dosya gri **`–`** rozeti alır.
 - Rule kodları ham enum olarak da görünür, ama başlık okunabilir Türkçedir.
 
+**Bilinen kırık davranış:** pencere yenilenince (Reload Window) Coverage
+ve Test Kalitesi son taramadan doğru geri gelir, ama **Satır → Testler**
+ve **Mutasyon** boş kalır — disk verisi orada, ekrana yansımıyor. Kök
+nedeni bulundu, düzeltilmedi. Ayrıntı ve hazır düzeltme: §7.0.
+
 ### Sağlık
 
 142 unit + 31 integration test geçiyor. SonarQube (`coverdict-vscode`,
@@ -534,6 +539,110 @@ dolayısıyla Sonar tüm UI kodunu "kapsanmamış" görüyor. Yani bu ERROR
 ---
 
 ## 7. Açık işler (öncelik sırasıyla)
+
+### 7.0 — EN ÖNCELİKLİ: pencere yenilenince "Satır → Testler" ve "Mutasyon" geri yüklenmiyor (Faz 23, kök neden bulundu, düzeltilmedi)
+
+**Kullanıcının bulduğu, henüz dokunulmamış gerçek hata (2026-08-28).**
+Repro: Derin Tarama ve Mutasyon Testi çalıştırılıp gerçek sonuçlar
+ekranda görüldü (iki ekran görüntüsüyle doğrulandı); eklenti yeniden
+derlenip Extension Development Host penceresi yenilendi (`Ctrl+R` /
+"Developer: Reload Window"). Sonuç: **Coverage** ve **Test Kalitesi**
+görünümleri son taramanın verisiyle doğru geri geldi, ama **Satır →
+Testler** ve **Mutasyon** boş/ilk hâlinde kaldı — sanki hiç
+çalıştırılmamışlar gibi. Diskteki `verdict-current.json` doğru veriyi
+taşıyor; kayıp değil, sadece **ekrana yansımıyor**.
+
+**Kök neden bulundu, kod okunarak doğrulandı — tahmin değil.**
+`src/extension.ts`'in `restoreLastCoverage()` fonksiyonu (satır ~148-183):
+
+```ts
+publishAnalysis(sinks, folder.uri.fsPath, analysisResultFrom(parsed.value));
+// perTest restores independently of fileCoverage - ...
+setPerTestState({ moduleId: MODULE_ID, perTest: parsed.value.perTest, warnings: parsed.value.warnings });
+// Faz 20: mutasyon da geri yüklenir - ...
+if (parsed.value.mutation) {
+	setMutationState({ moduleId: MODULE_ID, mutation: parsed.value.mutation, warnings: parsed.value.warnings, targets: [], ranAt: undefined });
+}
+```
+
+`model/store.ts`'teki `setPerTestState`/`setMutationState` **düz değişken
+atamasıdır** — hiçbir `EventEmitter` tetiklemez. Bir `TreeView`'ın
+ekranı yenilemesi için tek sinyal, ilgili provider'ın kendi
+`refresh()`'i (`onDidChangeTreeData` event'ini ateşler). Sırayı takip et:
+
+1. `publishAnalysis(...)` çağrılır. Bu fonksiyonun **içinde**
+   `sinks.lineTestsView.refresh()` (ve `runView`/`coverageView`/
+   `qualityView`) çağrılıyor (`ui/commands.ts:189-192`) — **ama bu anda
+   `perTestState` hâlâ eski/boş değerinde**, çünkü `setPerTestState`
+   henüz çağrılmadı. Yani "Satır → Testler" boş veriyle bir kez
+   yenileniyor.
+2. `setPerTestState(...)` çağrılır — veri artık doğru, ama **bunun
+   ardından hiçbir `refresh()` çağrılmıyor**. `LineTestsTreeProvider`'ın
+   `onDidChangeTreeData` event'i bir daha ateşlenmiyor, VS Code
+   `getChildren()`'ı tekrar sormuyor. Görünüm 1. adımdaki boş hâlde
+   kilitli kalıyor.
+3. `setMutationState(...)` çağrılır (mutasyon bloğu varsa) — **hiçbir
+   yerde `sinks.mutationView.refresh()` çağrılmıyor**, ne önce ne sonra.
+   `MutationTreeProvider` kayıt anındaki ilk render'ında ("Henüz
+   mutasyon testi çalıştırılmadı") donuk kalıyor.
+
+**Coverage ve Test Kalitesi neden etkilenmiyor:** onların verisi
+(`fileCoverage`, `findings`) `setCoverageState(...)` ile
+`publishAnalysis`'in **kendi içinde**, kendi `refresh()` çağrılarından
+**önce** set ediliyor (`ui/commands.ts:176` → `setCoverageState`, sonra
+`paintCoverage`/`showCoverageSummary`, sonra görünüm `refresh()`'leri) —
+sıra orada doğru.
+
+**Neden şimdiye kadar fark edilmedi:** aynı oturumda **canlı** bir
+Derin Tarama/Mutasyon Testi çalıştırıldığında `ui/commands.ts`'teki
+`runAnalyzePerTest`/`runPerTestForFile`/`runMutation` fonksiyonları
+`setPerTestState`/`setMutationState`'i çağırdıktan **hemen sonra**
+kendi `refresh()`'lerini çağırıyor (`revealLineTestsView(sinks)`,
+`sinks.mutationView.refresh()`) — o yüzden canlı koşuda hep doğru
+çalıştı. Hata yalnızca **pencere yenileme / eklenti yeniden başlatma**
+yolunda, yani `extension.ts`'in kendi geri yükleme kodunda.
+
+**Önerilen düzeltme (küçük, iki satır):**
+
+```ts
+setPerTestState({ moduleId: MODULE_ID, perTest: parsed.value.perTest, warnings: parsed.value.warnings });
+sinks.lineTestsView.refresh();               // <-- eklenecek
+
+if (parsed.value.mutation) {
+	setMutationState({ moduleId: MODULE_ID, mutation: parsed.value.mutation, warnings: parsed.value.warnings, targets: [], ranAt: undefined });
+	sinks.mutationView.refresh();             // <-- eklenecek
+}
+```
+
+`refresh()` ucuz bir çağrı (yalnızca event ateşler), gereksiz yere
+çağrılması zararsız — mutasyon bloğu yoksa zaten `if` bloğunun dışında
+kaldığı için hiç çağrılmayacak, bu da doğru (görünüm zaten "henüz
+çalıştırılmadı" ilk hâlinde, ki bu gerçek durum).
+
+**Doğrulama (düzeltmeden önce tekrarlanabilir, düzeltmeden sonra
+kaybolmalı):**
+1. `coverdict-playground`'da Derin Tarama, sonra Mutasyon Testi (tek
+   sınıf, `Calculator`) çalıştır — her iki panel de dolsun.
+2. `npm run watch` açıkken bir kod değişikliği yap ya da doğrudan F5 ile
+   yeniden başlat; Extension Development Host'ta "Developer: Reload
+   Window" çalıştır.
+3. **Düzeltmeden önce:** Coverage ve Test Kalitesi dolu gelir, Satır →
+   Testler "Önce bir Java dosyası açın"/boş, Mutasyon "Henüz mutasyon
+   testi çalıştırılmadı" der — disk verisi orada olmasına rağmen.
+4. **Düzeltmeden sonra:** ikisi de son koşunun verisiyle dolu gelmeli.
+
+**Test boşluğu — bunu da kapat.** `src/test/integration/extension.test.ts`
+şu an yalnızca `activate()`'in patlamadığını doğruluyor;
+`restoreLastCoverage`'ın per-test/mutation geri yüklemesini **hiçbir
+test egzersiz etmiyor** (fonksiyon zaten export edilmiyor, private).
+Düzeltmeyle birlikte bir entegrasyon testi eklenmeli: gerçek bir
+`verdict-current.json` (per-test + mutation bloklu) `context.storageUri`
+altına yazılıp `activate()` çağrılsın, sonra `lineTestsView`/
+`mutationView`'ın **gerçekten** dolu döndüğü doğrulansın (bugünkü haliyle
+bu test **kırmızı** başlar, düzeltmeden sonra yeşile döner — klasik
+regresyon kilidi).
+
+---
 
 ### 7.1 ~~Test dosyasında yanlış yön çiziliyor~~ — **KAPANDI (Faz 21)**
 

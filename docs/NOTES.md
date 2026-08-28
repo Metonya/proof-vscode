@@ -17,6 +17,17 @@
 > tutarsızlığı) kapandı. Kalan 4'ü `PLAN.md` §7.6'da açık işler olarak
 > duruyor.
 >
+> **Faz 23 (2026-08-28) — YENİ, KAPANMADI, EN ÖNCELİKLİ:** kullanıcı
+> eklentiyi yeniden derleyip pencereyi yenileyince "Satır → Testler" ve
+> "Mutasyon" panellerinin (önceden gerçekten çalıştırılmış olmalarına
+> rağmen) boş geldiğini fark etti. Kök nedeni bulundu ve kod satırlarıyla
+> doğrulandı: `extension.ts`'in `restoreLastCoverage()`'ı
+> `setPerTestState`/`setMutationState`'i çağırdıktan sonra ilgili
+> `TreeView`'ların `refresh()`'ini hiç çağırmıyor (canlı koşularda bu
+> çağrı var, sadece geri yükleme yolunda yok). Hazır, iki satırlık bir
+> düzeltme `PLAN.md` §7.0'da bekliyor - **bir sonraki oturumun ilk işi
+> bu olmalı**.
+>
 > Projeye yeni giriyorsan **önce `docs/PLAN.md`'yi oku**: bugün ne çalıştığı,
 > hangi kuralların çiğnenmediği ve **açık işlerin güncel listesi** oradadır.
 > Bu iki dosya çelişirse `PLAN.md` geçerlidir.
