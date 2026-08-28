@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 
-import { getCoverageState } from '../../model/store';
+import { getCoverageState, type CoverageState } from '../../model/store';
 import { toAbsolutePath } from '../../model/pathIndex';
-import type { ChangedFile, Metric, MetricSet } from '../../verdict/types';
+import type { ChangedFile, Metric, MetricSet, Reason } from '../../verdict/types';
 
 /**
  * Faz 11b: "coverdict: Kapsama" - genel kapsama, yeni kod kapsaması, ve
@@ -10,14 +10,22 @@ import type { ChangedFile, Metric, MetricSet } from '../../verdict/types';
  * hazır (D-70: dosya/klasör bazlı yeniden hesaplama yok, sadece
  * `changedFiles[].uncoveredNewRanges`'ın kendisi listelenir - "yeni ve
  * kapsanmış" satırların numaraları şemada yok, bu yüzden hiç gösterilmez).
+ *
+ * Faz 13d: "Genel" ile "Yeni Kod" ayrı görünmesi kasıtlı - biri repo'nun
+ * tamamı, diğeri yalnızca aktif diff'teki satırlar. "Yeni Kod: yok" artık
+ * çıplak durmuyor - `newCodeStatus` iki yeni durumla (`no-changes`,
+ * `stale-report`) *neden* boş olduğunu açıklıyor. Yeni bir "Uyarılar"
+ * bölümü, CLI'ın `warnings[]`'ini (önceden hiçbir view'da görünmüyordu)
+ * gösteriyor - hard rule 3a: "veri yok" ile "sorun yok" asla aynı görünmez.
  */
 export type CoverageNode =
 	| { kind: 'empty'; message: string }
-	| { kind: 'section'; id: 'overall' | 'newCode' | 'uncovered' }
+	| { kind: 'section'; id: 'overall' | 'newCode' | 'uncovered' | 'warnings' }
 	| { kind: 'metric'; name: keyof MetricSet; metric: Metric }
-	| { kind: 'newCodeStatus'; status: string }
+	| { kind: 'newCodeStatus'; status: string; detail?: string }
 	| { kind: 'changedFile'; file: ChangedFile }
-	| { kind: 'range'; file: ChangedFile; range: readonly [number, number] };
+	| { kind: 'range'; file: ChangedFile; range: readonly [number, number] }
+	| { kind: 'warning'; reason: Reason };
 
 export class CoverageTreeProvider implements vscode.TreeDataProvider<CoverageNode> {
 	private readonly changeEmitter = new vscode.EventEmitter<void>();
@@ -36,7 +44,12 @@ export class CoverageTreeProvider implements vscode.TreeDataProvider<CoverageNod
 			case 'metric':
 				return leaf(`${node.name}: ${percentText(node.metric)}`, 'graph', metricTooltip(node.name));
 			case 'newCodeStatus':
-				return leaf(newCodeStatusText(node.status), 'info');
+				return leaf(newCodeStatusText(node.status), 'info', node.detail);
+			case 'warning': {
+				const item = leaf(node.reason.message, 'warning');
+				item.description = node.reason.code;
+				return item;
+			}
 			case 'changedFile': {
 				const item = new vscode.TreeItem(node.file.path, vscode.TreeItemCollapsibleState.Collapsed);
 				item.description = `${node.file.uncoveredNewRanges?.length ?? 0} kapsanmayan aralık`;
@@ -64,7 +77,11 @@ export class CoverageTreeProvider implements vscode.TreeDataProvider<CoverageNod
 			if (!state) {
 				return [{ kind: 'empty', message: 'Önce bir analiz çalıştırın.' }];
 			}
-			return [{ kind: 'section', id: 'overall' }, { kind: 'section', id: 'newCode' }, { kind: 'section', id: 'uncovered' }];
+			const sections: CoverageNode[] = [{ kind: 'section', id: 'overall' }, { kind: 'section', id: 'newCode' }, { kind: 'section', id: 'uncovered' }];
+			if (state.warnings.length > 0) {
+				sections.push({ kind: 'section', id: 'warnings' });
+			}
+			return sections;
 		}
 		if (!state) {
 			return [];
@@ -75,10 +92,10 @@ export class CoverageTreeProvider implements vscode.TreeDataProvider<CoverageNod
 				return metricNodes(state.overall);
 			}
 			if (node.id === 'newCode') {
-				if ('jacoco-line' in state.newCode) {
-					return metricNodes(state.newCode);
-				}
-				return [{ kind: 'newCodeStatus', status: state.newCode.status }];
+				return newCodeChildren(state.newCode, state.changedFiles, state.warnings);
+			}
+			if (node.id === 'warnings') {
+				return state.warnings.map((reason): CoverageNode => ({ kind: 'warning', reason }));
 			}
 			const uncoveredFiles = state.changedFiles.filter((f) => f.classification === 'mapped' && (f.uncoveredNewRanges?.length ?? 0) > 0);
 			return uncoveredFiles.length === 0
@@ -92,6 +109,42 @@ export class CoverageTreeProvider implements vscode.TreeDataProvider<CoverageNod
 	}
 }
 
+/**
+ * Faz 13d: "Yeni Kod: yok" tek başına anlamsızdı - üç ayrı sebep aynı
+ * görünüyordu (no-vcs modu, boş diff, bayat rapor). `newCode.status` zaten
+ * ilk ikisini ayırıyordu (`unavailable_no_vcs`/`unavailable_incomplete`);
+ * burada eklenen iki durum, gerçek bir `MetricSet` geldiğinde (diff modu
+ * çalıştı) ama içi boşken *neden* boş olduğunu söylüyor.
+ */
+function newCodeChildren(newCode: CoverageState['newCode'], changedFiles: CoverageState['changedFiles'], warnings: CoverageState['warnings']): CoverageNode[] {
+	if (!('jacoco-line' in newCode)) {
+		return [{ kind: 'newCodeStatus', status: newCode.status }];
+	}
+	if (changedFiles.length === 0) {
+		return [{ kind: 'newCodeStatus', status: 'no-changes', detail: diffModeDetail() }];
+	}
+	const stale = warnings.find((w) => w.code === 'CHANGED_LINES_ABSENT_FROM_REPORT');
+	if (stale) {
+		return [{ kind: 'newCodeStatus', status: 'stale-report', detail: stale.message }, ...metricNodes(newCode)];
+	}
+	return metricNodes(newCode);
+}
+
+/** `coverdict.diffMode`/`coverdict.baseRef`'i okuyup kullanıcının "hangi mod aktif" sorusuna tek satırlık bir cevap üretir - ayarları değiştirmeden burada tekrar görünür kılmak için. */
+function diffModeDetail(): string {
+	const folder = vscode.workspace.workspaceFolders?.[0];
+	if (!folder) {
+		return '';
+	}
+	const config = vscode.workspace.getConfiguration('coverdict', folder);
+	const diffMode = config.get<string>('diffMode') ?? 'uncommitted';
+	if (diffMode === 'base') {
+		const baseRef = config.get<string>('baseRef')?.trim();
+		return `mod: base, ref: ${baseRef || '(boş - coverdict.baseRef ayarlanmamış)'}`;
+	}
+	return `mod: ${diffMode}`;
+}
+
 function metricNodes(set: MetricSet): CoverageNode[] {
 	return [
 		{ kind: 'metric', name: 'jacoco-line', metric: set['jacoco-line'] },
@@ -100,10 +153,12 @@ function metricNodes(set: MetricSet): CoverageNode[] {
 	];
 }
 
-function section(id: 'overall' | 'newCode' | 'uncovered'): vscode.TreeItem {
-	const labels: Record<typeof id, string> = { overall: 'Genel', newCode: 'Yeni Kod', uncovered: 'Kapsanmayan Yeni Satırlar' };
-	const item = new vscode.TreeItem(labels[id], id === 'uncovered' ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.Expanded);
-	item.iconPath = new vscode.ThemeIcon(id === 'uncovered' ? 'warning' : 'folder');
+function section(id: 'overall' | 'newCode' | 'uncovered' | 'warnings'): vscode.TreeItem {
+	const labels: Record<typeof id, string> = { overall: 'Genel', newCode: 'Yeni Kod', uncovered: 'Kapsanmayan Yeni Satırlar', warnings: 'Uyarılar' };
+	const descriptions: Partial<Record<typeof id, string>> = { overall: 'tüm repo', newCode: 'sadece bu diff\'teki satırlar' };
+	const item = new vscode.TreeItem(labels[id], id === 'overall' || id === 'newCode' ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
+	item.description = descriptions[id];
+	item.iconPath = new vscode.ThemeIcon(id === 'uncovered' || id === 'warnings' ? 'warning' : 'folder');
 	return item;
 }
 
@@ -138,6 +193,12 @@ function newCodeStatusText(status: string): string {
 	}
 	if (status === 'unavailable_incomplete') {
 		return 'diff sırasında bir hata oldu, yeni kod hesaplanamadı';
+	}
+	if (status === 'no-changes') {
+		return 'bu diff\'te değişen dosya yok';
+	}
+	if (status === 'stale-report') {
+		return 'değişen satırlar raporda yok - rapor bu diff\'ten eski olabilir';
 	}
 	return status;
 }

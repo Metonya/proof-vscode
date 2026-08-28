@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 
 import type { BadgeMetric } from '../model/metrics';
-import type { MetricSet } from '../verdict/types';
+import type { MetricSet, NewCodeCoverage } from '../verdict/types';
 
 /**
  * F2's fourth state, "blok hiç yok": when a run had no `fileCoverage` at
@@ -24,7 +24,7 @@ export function showNoFileCoverageWarning(item: vscode.StatusBarItem): void {
 	item.show();
 }
 
-export function showCoverageSummary(item: vscode.StatusBarItem, overall: MetricSet, gutterVisible: boolean, badgeMetric: BadgeMetric): void {
+export function showCoverageSummary(item: vscode.StatusBarItem, overall: MetricSet, gutterVisible: boolean, badgeMetric: BadgeMetric, newCode: NewCodeCoverage): void {
 	const headlinePercent = overall[badgeMetric].percent;
 	const eyeIcon = gutterVisible ? 'eye' : 'eye-closed';
 	item.text = headlinePercent === null ? '$(check) coverdict' : `$(${eyeIcon}) coverdict ${headlinePercent}%`;
@@ -32,12 +32,27 @@ export function showCoverageSummary(item: vscode.StatusBarItem, overall: MetricS
 		[
 			`**coverdict** - ${gutterVisible ? 'kapsama görünümü açık' : 'kapsama görünümü kapalı'} (aç/kapat için tıklayın)`,
 			'',
+			'**Genel** (tüm repo)',
 			metricLine('jacoco-line', overall['jacoco-line']),
 			metricLine('strict-line', overall['strict-line']),
 			metricLine('sonar-compatible', overall['sonar-compatible']),
+			'',
+			'**Yeni Kod** (bu diff\'teki satırlar)',
+			newCodeLines(newCode),
 		].join('\n\n'),
 	);
 	item.show();
+}
+
+function newCodeLines(newCode: NewCodeCoverage): string {
+	if (!('jacoco-line' in newCode)) {
+		return newCode.status === 'unavailable_no_vcs' ? 'no-vcs modunda hesaplanamaz' : 'diff sırasında hata oldu';
+	}
+	return [
+		metricLine('jacoco-line', newCode['jacoco-line']),
+		metricLine('strict-line', newCode['strict-line']),
+		metricLine('sonar-compatible', newCode['sonar-compatible']),
+	].join('\n\n');
 }
 
 function metricLine(name: string, metric: MetricSet['jacoco-line']): string {

@@ -113,7 +113,7 @@ export function publishAnalysis(sinks: CoverageSinks, workspaceRoot: string, res
 
 	if (result.fileCoverage) {
 		paintCoverage(sinks, workspaceRoot, result.fileCoverage);
-		showCoverageSummary(sinks.statusBarItem, result.overall, isGutterVisible(), readBadgeMetric(workspaceRoot));
+		showCoverageSummary(sinks.statusBarItem, result.overall, isGutterVisible(), readBadgeMetric(workspaceRoot), result.newCode);
 	} else {
 		showNoFileCoverageWarning(sinks.statusBarItem);
 		sinks.explorerBadges.clear();
@@ -142,7 +142,7 @@ function toggleCoverage(sinks: CoverageSinks): void {
 		sinks.explorerBadges.clear();
 		clearGutterCoverage(sinks.gutterTypes);
 	}
-	showCoverageSummary(sinks.statusBarItem, state.overall, nextVisible, readBadgeMetric(state.workspaceRoot));
+	showCoverageSummary(sinks.statusBarItem, state.overall, nextVisible, readBadgeMetric(state.workspaceRoot), state.newCode);
 	sinks.runView.refresh();
 }
 
