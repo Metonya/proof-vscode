@@ -8,24 +8,31 @@ real reason to distribute this.
 
 ## Status
 
-Faz 11b done (2026-08-27): the extension runs coverdict, renders Explorer
+**Start here: [`docs/PLAN.md`](docs/PLAN.md)** - the single handoff document.
+It covers what the CLI contract is, how this extension is built and tested,
+which rules are never broken, what works today, and what is still open.
+[`docs/NOTES.md`](docs/NOTES.md) is the chronological log behind those
+decisions; `PLAN.md` wins where they disagree.
+
+Faz 19 done (2026-08-28): the extension runs coverdict, renders Explorer
 coverage badges and an editor gutter through its own decoration types
 (the native VS Code Test Coverage API was dropped - it has no documented
-way to clear or independently control its two rendering surfaces), opens
-a "which tests cover this line" panel, lists every finding in the
-Problems panel, and has its own Activity Bar container (Çalıştır /
-Kapsama / Test Kalitesi) so no step requires the Command Palette. See
-`Plan.md` for the full feature list and phase order.
+way to clear or independently control its two rendering surfaces), shows
+per-line test evidence and its oracle quality via hover and a tree,
+lists every finding in the Problems panel, and has its own Activity Bar
+container (Çalıştır / Coverage / Test Kalitesi / Satır → Testler) so no
+step requires the Command Palette. Mutation testing has CLI support but
+**no UI yet** - that is Faz 20, planned in `docs/PLAN.md` §8.
 
 ## Layout
 
 ```
 src/
   extension.ts   activate/deactivate + registration only, no logic
-  cli/           jar location, argv building, spawn/cancel, stderr progress parsing
-  verdict/       verdict JSON types + parsing, test-identity, metrics (never throws)
-  model/         single-source-of-truth store, path/line indexing, freshness, diff, cache
-  ui/            gutter, hover, panel, tree view, status bar, commands
+  cli/           jar location, argv building, spawn/cancel, Maven classpath generation
+  verdict/       verdict JSON types + parsing, test-identity, line mapping (never throws)
+  model/         single-source-of-truth store, path/line indexing, staleness, test quality
+  ui/            gutter, hover, tree views, explorer badges, status bar, diagnostics, commands
   test/
     unit/          plain node:test - no `vscode` import anywhere under here
     integration/   @vscode/test-cli, runs inside a real Extension Host
@@ -58,6 +65,6 @@ Press F5 (`Run Extension`) to launch a development Extension Host window.
 ## Test
 
 ```bash
-npm test           # compiles tests, runs the integration suite in a real Extension Host
-npm run test:unit  # once verdict/model/ have real logic - plain node:test, no VS Code needed
+npm test           # compiles tests, then unit + integration
+npm run test:unit  # plain node:test, no VS Code needed
 ```

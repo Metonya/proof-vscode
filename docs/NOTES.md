@@ -1,3 +1,19 @@
+> **Bu dosya kronolojik bir kayıttır, güncel gerçek değil.**
+>
+> Faz 12'den Faz 20'ye kadar her elle test oturumunun bulguları burada,
+> bulundukları sırayla duruyor. Maddelerin **çoğu sonradan kapandı** ama
+> metinleri olduğu gibi bırakıldı — bir kararın *neden* öyle alındığını
+> okumak için buradasın demektir.
+>
+> Projeye yeni giriyorsan **önce `docs/PLAN.md`'yi oku**: bugün ne çalıştığı,
+> hangi kuralların çiğnenmediği ve **açık işlerin güncel listesi** oradadır.
+> Bu iki dosya çelişirse `PLAN.md` geçerlidir.
+>
+> Dosya içinde numaralandırma iki kez sıfırlanıyor (Faz 16'nın kendi 1-3'ü
+> ile en alttaki özgün 1-10 listesi ayrı listelerdir) — karıştırma.
+
+---
+
 # Faz 12 (mutasyon) öncesi çözülmesi gereken sorunlar
 
 Kullanıcı testinde (2026-08-27, Faz 11 sonrası) çıkan gerçek kullanım
