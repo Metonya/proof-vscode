@@ -25,6 +25,28 @@ Faz 13'ü playground'da test ederken üç yeni sorun bildirdi ve bunlar da
   Faz 14e): tarama sonrası dosya düzenlenince gutter/rozet artık "bayat"
   diyor, eski veriyi göstermeye devam etmiyor.
 
+**Faz 15 (2026-08-28) - panel bug + coverdict'in asıl kayıp değeri:**
+kullanıcı Faz 14b'nin yeni "Satır → Testler" panelini test ederken iki şey
+bildirdi: (1) panele tıklar tıklamaz kendini siliyor ("kendine tıklayınca
+`activeTextEditor` değişip `noActiveEditor`'a düşüyor" - gerçek bug), (2)
+bu gösterimin daha iyisi olmalı. İkinci soruyu araştırırken çok daha büyük
+bir şey bulundu: `findings[].testMethod` ile `perTest`'in test id'leri
+**birebir eşleşiyor** (17 tam eşleşme, gerçek veriyle doğrulandı) ama
+eklenti bu bağı hiç kurmuyordu - `Calculator.java:37` gutter'da yeşildi
+ama onu kapsayan tek test (`squareHasNoAssertion`) hiçbir şey doğrulamıyor.
+- Webview panel (`ui/panelView.ts`) tamamen silindi - kendini silme hatası
+  o mimarinin doğasındaydı. Yerine: `ui/hoverProvider.ts` (satıra/test
+  metoduna hover, iki yönlü) + `ui/treeViews/lineTestsView.ts`
+  (`window.createTreeView`, imleç takibi, kendini asla boşaltmaz).
+- `model/testQuality.ts`: `findings[]` ↔ `perTest` birleştirme katmanı -
+  her testi ok/noOracle/weak/redundant/inconclusive'a sınıflandırır, bir
+  satırın "yalancı yeşil" olup olmadığını (kapsayan HİÇBİR testin oracle'ı
+  yok) hesaplar.
+- Gutter'a 5. durum: "oracleless" (turuncu) - `coverdict.show.oraclelessLines`
+  ile kapatılabilir.
+- Ters yön eklendi: bir test metoduna hover → hangi production satırlarını
+  çalıştırdığı.
+
 Kalan: madde 6/7 (kullanıcının playground'da kendi yapacağı adım).
 
 ## 1. Toggle'ın geri bildirimi yok
