@@ -11,6 +11,8 @@ import { buildFalseGreenIndex } from '../model/falseGreenIndex';
 import type { BadgeMetric } from '../model/metrics';
 import { detectClassName } from '../model/classNameDetector';
 import { findKillContribution, parseProductionMethod, productionMethodKey } from '../model/mutationModel';
+import { toAbsolutePath } from '../model/pathIndex';
+import { buildProductionClassIndex, productionSourceRoots } from '../model/productionClassIndex';
 import {
 	getCoverageState,
 	getMutationState,
@@ -30,7 +32,7 @@ import type { ExplorerBadgeProvider } from './explorerBadges';
 import { applyGutterCoverage, clearGutterCoverage, type GutterDecorationTypes } from './gutterRenderer';
 import { showCoverageSummary, showNoFileCoverageWarning } from './statusBar';
 import type { CoverageTreeProvider } from './treeViews/coverageView';
-import type { LineTestsTreeProvider } from './treeViews/lineTestsView';
+import type { LineTestsNode, LineTestsTreeProvider } from './treeViews/lineTestsView';
 import { findMutationBridgeTarget, type MutationNode, type MutationTreeProvider } from './treeViews/mutationView';
 import { findQualityBridgeTarget, type QualityNode, type QualityTreeProvider } from './treeViews/qualityView';
 import type { RunTreeProvider } from './treeViews/runView';
@@ -97,6 +99,8 @@ export interface CoverageSinks {
 	/** Faz 24: Mutasyon ↔ Test Kalitesi köprüsü `reveal()` için bir `TreeView` handle'ı gerektiriyor - salt veri sağlayıcısı yetmiyor. */
 	qualityTreeView: vscode.TreeView<QualityNode>;
 	lineTestsView: LineTestsTreeProvider;
+	/** Faz 26: Mutasyon → Satır → Testler köprüsü de `reveal()` kullanıyor. */
+	lineTestsTreeView: vscode.TreeView<LineTestsNode>;
 	/** Faz 20: L3 mutasyon raporu - beşinci görünüm. */
 	mutationView: MutationTreeProvider;
 	/** Faz 24: bkz. `qualityTreeView`. */
@@ -196,6 +200,37 @@ export function registerQualityMutationBridgeCommands(sinks: CoverageSinks): vsc
 				return;
 			}
 			void sinks.mutationTreeView.reveal(target, { select: true, focus: true, expand: true });
+		}),
+		// Faz 26: mutasyon listesinde tıklamak zaten production satırına
+		// gidiyordu ("Satıra Git") - bu, aynı satırı **kapsayan ama
+		// yakalayamayan** testlere gitmenin yolu. SURVIVED bir mutantın
+		// `killingTests`'i boş olduğu için tek kaynak perTest verisi -
+		// "Satır → Testler" zaten o satırın tüm kapsayan testlerini oracle
+		// kaliteleriyle birlikte gösteriyor, burada yeniden icat edilmiyor.
+		vscode.commands.registerCommand('coverdict.mutationView.showInLineTests', async (node: unknown) => {
+			const n = node as MutationNode | undefined;
+			if (n?.kind !== 'mutant') {
+				return;
+			}
+			const state = getCoverageState();
+			const filePath = state?.fileCoverage ? buildProductionClassIndex(state.fileCoverage, productionSourceRoots(state.modules)).get(n.className) : undefined;
+			if (!state || !filePath) {
+				vscode.window.showInformationMessage('coverdict: bu sınıfın dosyası bilinmiyor - önce fileCoverage üreten bir tarama çalıştırın.');
+				return;
+			}
+			const uri = vscode.Uri.file(toAbsolutePath(state.workspaceRoot, filePath));
+			const selection = new vscode.Range(n.mutant.line - 1, 0, n.mutant.line - 1, 0);
+			const editor = await vscode.window.showTextDocument(uri, { selection });
+			// `onDidChangeActiveTextEditor` should also fire this, but not
+			// waiting on that timing - setting it directly from the editor
+			// `showTextDocument` just gave us is unambiguous.
+			sinks.lineTestsView.setActiveDocument(editor.document);
+			const target = sinks.lineTestsView.nodeForLine(n.mutant.line);
+			if (!target) {
+				vscode.window.showInformationMessage("coverdict: bu satır için test bazlı kanıt yok - Derin Tarama ile toplayın.");
+				return;
+			}
+			void sinks.lineTestsTreeView.reveal(target, { select: true, focus: true, expand: true });
 		}),
 	];
 }

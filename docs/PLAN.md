@@ -377,7 +377,7 @@ Activity Bar'da `coverdict` konteyneri, içinde **5 görünüm**:
    skor `öldürülen/(öldürülen+hayatta kalan)`, belirsizler ayrıca sayılır
    ve asla gizlenmez. Başlıkta "sadece hayatta kalan mutantlar" süzgeci.
 
-### Komutlar (14)
+### Komutlar (15)
 
 `coverdict.analyze` (Hızlı Tarama) · `coverdict.analyzePerTest` (Derin
 Tarama) · `coverdict.mutationForModule` (modül geneli mutasyon, onaylı) ·
@@ -392,7 +392,9 @@ sağ tık, Java) · `coverdict.copyItem` (ağaçlarda sağ tık → Kopyala) ·
 `coverdict.mutationView.showInQuality` (Faz 24, sağ tık, yalnızca
 eşleşen bir bulgu varsa - §7.6 madde 5) ·
 `coverdict.lineTestsView.showInMutation` (Faz 24, sağ tık, yalnızca L0/L3
-çelişkisi gerçekten varsa - §7.6 madde 6).
+çelişkisi gerçekten varsa - §7.6 madde 6) ·
+`coverdict.mutationView.showInLineTests` (Faz 26, sağ tık, yalnızca
+o satırın gerçek bir perTest kaydı varsa - §7.7).
 
 ### Ayarlar (13)
 
@@ -423,7 +425,7 @@ eşleşen bir bulgu varsa - §7.6 madde 5) ·
 
 ### Sağlık
 
-157 unit + 51 integration test geçiyor. SonarQube (`coverdict-vscode`,
+157 unit + 54 integration test geçiyor. SonarQube (`coverdict-vscode`,
 `http://localhost:9001`) sıfır açık bulgu.
 
 ---
@@ -919,6 +921,45 @@ kapandı**, 4-7 açık — öncelik kullanıcının kendi sıralaması.
    **Bu üç maddenin ortak doğrulaması:** `npm run check-types && npm run
    lint`, temiz koşu (157 unit + 47 integration), SonarQube sıfır açık
    bulgu.
+
+### 7.7 Mutasyon → Satır → Testler köprüsü (Faz 26, kullanıcı isteği) — **yapıldı**
+
+Kullanıcının isteği: mutasyon listesinde bir mutanta tıklamak zaten
+production satırına gidiyor ("Satıra Git") - ayrıca sağ tıkla "o
+mutasyonu yakalayamayan teste" de gidilsin.
+
+**Gerçek kısıt, kullanıcıya açıklandı ve kabul edildi:** `SURVIVED` bir
+mutantın `killingTests`'i PIT tarafından **boş** yayınlanır - "başarısız
+olan tek bir test" diye bir kayıt yok. Tek kanıt kaynağı `perTest`
+(Derin Tarama ile toplanmışsa): o satırı **kapsayan** testler, ki
+hiçbiri mutantı öldürmediği için hepsi "yakalayamayan" testlerdir.
+"Satır → Testler" zaten tam bunu - kapsayan her testi oracle
+kalitesiyle birlikte - gösterdiği için tekerleği yeniden icat etmek
+yerine oraya yönlendirmek seçildi (3 seçenekten kullanıcının seçtiği).
+
+Uygulama: `ui/treeViews/mutationView.ts`'in `mutantItem`'ı artık
+`getPerTestState()` + `model/lineIndex.ts`'in `testsForClass`'ıyla o
+satırın gerçekten bir `perTest` kaydı olup olmadığını kontrol ediyor;
+varsa `contextValue` `coverdict.mutant.hasLineEvidence` oluyor ve sağ
+tık → "Satır → Testler'de Göster" (`coverdict.mutationView.
+showInLineTests`) production dosyasını o satırda açıp `lineTestsView`'ın
+aktif dosyasını değiştiriyor, ardından `reveal()` ile o satırın düğümünü
+açıp seçiyor. Kanıt yoksa (mutasyon var ama Derin Tarama hiç
+çalıştırılmamış) sağ tık seçeneği hiç çıkmıyor - "boş bir köprü"
+göstermektense hiç göstermemek (hard rule 3a).
+
+Bunun için `CoverageSinks`'e `lineTestsTreeView: vscode.TreeView<
+LineTestsNode>` eklendi (`extension.ts`'te `lineTestsView` zaten
+`createTreeView` ile kayıtlıydı - Faz 15c'den beri `reveal()` için,
+şimdi köprü komutu da aynı handle'ı kullanıyor).
+
+Doğrulama: gerçek `square()`/`divide()` şekilleriyle (`square`'in
+SURVIVED mutantı + gerçek bir Derin Tarama'nın `square` per-test kaydı,
+ikisi de aynı satır 37) yeni entegrasyon testleri
+(`mutationView.test.ts`) - kanıt varken köprü affordance'ı çıkıyor,
+yokken (ne `divide` için ne de perTest hiç toplanmamışken) çıkmıyor.
+`npm run check-types && npm run lint`, temiz koşu (157 unit + 54
+integration), SonarQube sıfır açık bulgu.
 
 ---
 

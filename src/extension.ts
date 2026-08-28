@@ -65,7 +65,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	const qualityTreeView = vscode.window.createTreeView('coverdict.qualityView', { treeDataProvider: qualityView, showCollapseAll: true });
 	const mutationTreeView = vscode.window.createTreeView('coverdict.mutationView', { treeDataProvider: mutationView, showCollapseAll: true });
 
-	const sinks: CoverageSinks = { context, gutterTypes, explorerBadges, statusBarItem, diagnostics, runView, coverageView, qualityView, qualityTreeView, lineTestsView, mutationView, mutationTreeView };
+	const sinks: CoverageSinks = { context, gutterTypes, explorerBadges, statusBarItem, diagnostics, runView, coverageView, qualityView, qualityTreeView, lineTestsView, lineTestsTreeView, mutationView, mutationTreeView };
 
 	context.subscriptions.push(
 		output,

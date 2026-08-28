@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 
+import { testsForClass } from '../../model/lineIndex';
 import { allMutantsNoCoverage, bucketOf, classesOf, findMutatedMethod, formatRelativeTime, methodLabel, mutatorLabel, productionMethodKey, scoreOf, scoreOfMethods, targetSummary, type MutantBucket, type MutationScore } from '../../model/mutationModel';
 import { toAbsolutePath } from '../../model/pathIndex';
 import { buildProductionClassIndex, productionSourceRoots } from '../../model/productionClassIndex';
-import { getCoverageState, getMutationState } from '../../model/store';
+import { getCoverageState, getMutationState, getPerTestState } from '../../model/store';
 import { parseTestIdentity } from '../../verdict/testIdentity';
 import type { Finding, MutatedMethod, Mutant } from '../../verdict/types';
 
@@ -286,10 +287,26 @@ function mutantItem(className: string, mutant: Mutant): vscode.TreeItem {
 	const item = new vscode.TreeItem(`Satır ${mutant.line} · ${mutatorLabel(mutant.mutator)}`, collapsible);
 	item.description = bucketText(bucket, mutant.status);
 	item.iconPath = new vscode.ThemeIcon(bucketIcon(bucket), bucketColor(bucket));
-	item.tooltip = new vscode.MarkdownString(mutantTooltip(bucket, mutant));
+	// Faz 26: SURVIVED bir mutantın `killingTests`'i boştur - "onu
+	// yakalayamayan" testleri görmenin tek yolu perTest verisidir (bu
+	// satırı kapsayan testler, oracle kaliteleriyle birlikte). Yalnızca
+	// gerçekten kanıt varsa köprü affordance'ı gösterilir.
+	const hasLineEvidence = lineHasPerTestEvidence(className, mutant.line);
+	const bridgeNote = hasLineEvidence ? '\n\n---\n\nBu satırı kapsayan testler için sağ tık → "Satır → Testler\'de Göster".' : '';
+	item.tooltip = new vscode.MarkdownString(mutantTooltip(bucket, mutant) + bridgeNote);
 	item.command = openCommandFor(className, mutant.line, 'Satıra Git');
-	item.contextValue = 'coverdict.mutant';
+	item.contextValue = hasLineEvidence ? 'coverdict.mutant.hasLineEvidence' : 'coverdict.mutant';
 	return item;
+}
+
+/** `getPerTestState()`'te bu tam satır için gerçekten kayıt var mı - varsa "Satır → Testler'de Göster" köprüsünün hedefi. */
+function lineHasPerTestEvidence(className: string, line: number): boolean {
+	const perTestState = getPerTestState();
+	if (!perTestState?.perTest) {
+		return false;
+	}
+	const lookup = testsForClass(perTestState.perTest, perTestState.moduleId, className);
+	return lookup.kind === 'found' && lookup.linesToTests.has(line);
 }
 
 function mutantTooltip(bucket: MutantBucket, mutant: Mutant): string {

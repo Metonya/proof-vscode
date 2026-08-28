@@ -93,6 +93,7 @@ function buildSinks(): CoverageSinks {
 		// bridge commands do - so these don't need to be real TreeViews here.
 		qualityTreeView: {} as vscode.TreeView<QualityNode>,
 		lineTestsView: new LineTestsTreeProvider(),
+		lineTestsTreeView: {} as vscode.TreeView<LineTestsNode>,
 		mutationView: new MutationTreeProvider(),
 		mutationTreeView: {} as vscode.TreeView<MutationNode>,
 	};

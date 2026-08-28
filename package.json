@@ -168,6 +168,10 @@
       {
         "command": "coverdict.lineTestsView.showInMutation",
         "title": "Mutasyon Ağacında Göster"
+      },
+      {
+        "command": "coverdict.mutationView.showInLineTests",
+        "title": "Satır → Testler'de Göster"
       }
     ],
     "menus": {
@@ -225,6 +229,11 @@
           "command": "coverdict.lineTestsView.showInMutation",
           "when": "view == coverdict.lineTestsView && viewItem == coverdict.prodTest.contradiction",
           "group": "coverdict@1"
+        },
+        {
+          "command": "coverdict.mutationView.showInLineTests",
+          "when": "view == coverdict.mutationView && viewItem == coverdict.mutant.hasLineEvidence",
+          "group": "coverdict@1"
         }
       ],
       "commandPalette": [
@@ -242,6 +251,10 @@
         },
         {
           "command": "coverdict.lineTestsView.showInMutation",
+          "when": "false"
+        },
+        {
+          "command": "coverdict.mutationView.showInLineTests",
           "when": "false"
         }
       ]

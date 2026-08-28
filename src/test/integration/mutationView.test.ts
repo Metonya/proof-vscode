@@ -1,9 +1,9 @@
 import * as assert from 'node:assert';
 import * as vscode from 'vscode';
 
-import { setCoverageState, setMutationState, type CoverageState } from '../../model/store';
+import { setCoverageState, setMutationState, setPerTestState, type CoverageState } from '../../model/store';
 import { findMutationBridgeTarget, MutationTreeProvider } from '../../ui/treeViews/mutationView';
-import type { Finding, MetricSet, MutationBlock } from '../../verdict/types';
+import type { Finding, MetricSet, MutationBlock, PerTestBlock } from '../../verdict/types';
 
 const METRIC = { numeratorName: 'a', numerator: 1, denominatorName: 'b', denominator: 1, percent: 100 };
 const METRIC_SET: MetricSet = { 'jacoco-line': METRIC, 'strict-line': METRIC, 'sonar-compatible': METRIC };
@@ -325,5 +325,61 @@ suite('Mutation view (Faz 20)', () => {
 		const item = provider.getTreeItem(killingTest);
 		assert.equal(item.contextValue, undefined);
 		assert.equal(item.tooltip, undefined);
+	});
+
+	/**
+	 * Faz 26: a SURVIVED mutant has no `killingTests` at all - the only way
+	 * to see "which tests covered this line but never caught it" is perTest
+	 * data. Real shape: `square`'s SURVIVED mutant is on line 37 (MUTATION
+	 * fixture above), and a real Derin Tarama's perTest entry for `square`
+	 * also lists line 37 - the bridge affordance must appear there, and
+	 * nowhere a line has no such record (`divide`, no perTest entry here).
+	 */
+	const SQUARE_PER_TEST: PerTestBlock = {
+		engine: 'pitest', engineVersion: '1.15.8',
+		modules: [{
+			id: 'root',
+			entries: [{
+				className: 'dev.coverdict.playground.Calculator', methodName: 'square',
+				lines: [{ line: 37, tests: ['[class:dev.coverdict.playground.CalculatorPseudoTestedTest]/[method:squareHasNoAssertion()]'] }],
+			}],
+			ambient: [],
+		}],
+	};
+
+	test('a SURVIVED mutant whose line has real perTest coverage gets the bridge contextValue and tooltip note', () => {
+		setCoverageState(STATE);
+		setPerTestState({ moduleId: 'root', perTest: SQUARE_PER_TEST, warnings: [] });
+		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+		const provider = new MutationTreeProvider();
+
+		const square = provider.getChildren(classNodes(provider)[0]).find((m) => m.kind === 'method' && m.method.methodName === 'square')!;
+		const mutant = provider.getChildren(square)[0];
+		const item = provider.getTreeItem(mutant);
+		assert.equal(item.contextValue, 'coverdict.mutant.hasLineEvidence');
+		assert.match(String((item.tooltip as vscode.MarkdownString).value), /Satır → Testler'de Göster/);
+	});
+
+	test('a mutant whose line has no perTest record at all gets the plain contextValue, no fabricated bridge', () => {
+		setCoverageState(STATE);
+		setPerTestState({ moduleId: 'root', perTest: SQUARE_PER_TEST, warnings: [] });
+		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+		const provider = new MutationTreeProvider();
+
+		const divide = provider.getChildren(classNodes(provider)[0]).find((m) => m.kind === 'method' && m.method.methodName === 'divide')!;
+		const mutant = provider.getChildren(divide)[0];
+		const item = provider.getTreeItem(mutant);
+		assert.equal(item.contextValue, 'coverdict.mutant', 'divide has no perTest entry in this fixture - must not claim a bridge');
+	});
+
+	test('no perTest data collected at all - every mutant gets the plain contextValue', () => {
+		setCoverageState(STATE);
+		setPerTestState({ moduleId: 'root', perTest: undefined, warnings: [] });
+		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+		const provider = new MutationTreeProvider();
+
+		const square = provider.getChildren(classNodes(provider)[0]).find((m) => m.kind === 'method' && m.method.methodName === 'square')!;
+		const mutant = provider.getChildren(square)[0];
+		assert.equal(provider.getTreeItem(mutant).contextValue, 'coverdict.mutant');
 	});
 });
