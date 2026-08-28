@@ -118,8 +118,8 @@ async function testMethodHover(document: vscode.TextDocument, position: vscode.P
 	for (const [outerClassName, lines] of byClass) {
 		const path = productionClassIndex?.get(outerClassName);
 		const label = `${shortName(outerClassName)}.java`;
-		const lineLinks = lines
-			.sort((a, b) => a - b)
+		const sortedLines = [...lines].sort((a, b) => a - b);
+		const lineLinks = sortedLines
 			.map((line) => (path ? openCommandLink(toAbsolutePath(workspaceRoot, path), line, `${line}`) : `${line}`))
 			.join(', ');
 		md.appendMarkdown(`${label}: ${lineLinks}\n\n`);

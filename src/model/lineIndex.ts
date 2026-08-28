@@ -89,20 +89,24 @@ export function testsToLines(perTest: PerTestBlock, moduleId: string): ReadonlyM
 		const outerClassName = stripNestedSuffix(entry.className);
 		for (const line of entry.lines) {
 			for (const rawTestId of line.tests) {
-				const identity = parseTestIdentity(rawTestId);
-				if (identity.className === null || identity.methodName === null) {
-					continue;
-				}
-				const key = `${identity.className}#${identity.methodName}()`;
-				const refs = result.get(key);
-				const ref: TestLineRef = { outerClassName, line: line.line };
-				if (refs) {
-					refs.push(ref);
-				} else {
-					result.set(key, [ref]);
-				}
+				addTestLineRef(result, rawTestId, outerClassName, line.line);
 			}
 		}
 	}
 	return result;
+}
+
+function addTestLineRef(result: Map<string, TestLineRef[]>, rawTestId: string, outerClassName: string, line: number): void {
+	const identity = parseTestIdentity(rawTestId);
+	if (identity.className === null || identity.methodName === null) {
+		return;
+	}
+	const key = `${identity.className}#${identity.methodName}()`;
+	const ref: TestLineRef = { outerClassName, line };
+	const refs = result.get(key);
+	if (refs) {
+		refs.push(ref);
+	} else {
+		result.set(key, [ref]);
+	}
 }

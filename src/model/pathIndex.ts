@@ -32,7 +32,7 @@ export function toRepoRelativePath(workspaceRoot: string, absolutePath: string):
  */
 export function fqcnToRootRelativePath(root: string, fqcn: string): string {
 	const prefix = root.endsWith('/') ? root : `${root}/`;
-	return `${prefix}${fqcn.replace(/\./g, '/')}.java`;
+	return `${prefix}${fqcn.replaceAll('.', '/')}.java`;
 }
 
 /**
@@ -50,7 +50,7 @@ export function classNameFromPath(repoRelativePath: string, sourceRoots: readonl
 	for (const sourceRoot of sourceRoots) {
 		const prefix = sourceRoot.endsWith('/') ? sourceRoot : `${sourceRoot}/`;
 		if (repoRelativePath.startsWith(prefix)) {
-			return repoRelativePath.slice(prefix.length, -'.java'.length).replace(/\//g, '.');
+			return repoRelativePath.slice(prefix.length, -'.java'.length).replaceAll('/', '.');
 		}
 	}
 	return undefined;

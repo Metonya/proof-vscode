@@ -65,58 +65,20 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 		switch (node.kind) {
 			case 'empty':
 				return leaf(node.message, 'info');
-			case 'collectHint': {
-				const item = new vscode.TreeItem('Bu Sınıf İçin Topla', vscode.TreeItemCollapsibleState.None);
-				item.iconPath = new vscode.ThemeIcon('play');
-				item.command = { command: 'coverdict.perTestForFile', title: 'Bu Sınıf İçin Topla' };
-				return item;
-			}
-			case 'prodLine': {
-				const findingsByTestMethod = indexFindingsByTestMethod(getCoverageState()?.findings ?? []);
-				const quality = lineQuality(node.tests, findingsByTestMethod);
-				const weak = quality.byVerdict.noOracle + quality.byVerdict.weak;
-				const item = new vscode.TreeItem(`Satır ${node.line}`, vscode.TreeItemCollapsibleState.Collapsed);
-				item.description = weak > 0 ? `${node.tests.length} test (${weak} oracle'sız/zayıf)` : `${node.tests.length} test`;
-				item.iconPath = new vscode.ThemeIcon(quality.isFalseGreen ? 'warning' : 'circle-filled', quality.isFalseGreen ? new vscode.ThemeColor('editorWarning.foreground') : undefined);
-				if (quality.isFalseGreen) {
-					item.tooltip = 'Bu satırı kapsayan hiçbir testin oracle\'ı yok - kapsama yeşil ama satır gerçekte doğrulanmıyor.';
-				}
-				return item;
-			}
-			case 'prodTest': {
-				const identity = parseTestIdentity(node.rawTestId);
-				const item = new vscode.TreeItem(identity.display, vscode.TreeItemCollapsibleState.None);
-				item.iconPath = new vscode.ThemeIcon(verdictIcon(node.verdict), verdictColor(node.verdict));
-				item.description = node.finding?.rule;
-				if (node.finding) {
-					item.tooltip = new vscode.MarkdownString(`**${node.finding.confidence}** - ${node.finding.message}\n\n${node.finding.suggestedAction}`);
-				}
-				const state = getCoverageState();
-				if (state && node.finding) {
-					const uri = vscode.Uri.file(toAbsolutePath(state.workspaceRoot, node.finding.path));
-					const selection = new vscode.Range(node.finding.startLine - 1, 0, node.finding.startLine - 1, 0);
-					item.command = { command: 'vscode.open', title: 'Test Dosyasını Aç', arguments: [uri, { selection }] };
-				}
-				return item;
-			}
+			case 'collectHint':
+				return collectHintItem();
+			case 'prodLine':
+				return prodLineItem(node);
+			case 'prodTest':
+				return prodTestItem(node);
 			case 'testMethod': {
 				const item = new vscode.TreeItem(`${node.methodName}()`, vscode.TreeItemCollapsibleState.Collapsed);
 				item.description = `${node.refs.length} production satırı`;
 				item.iconPath = new vscode.ThemeIcon('symbol-method');
 				return item;
 			}
-			case 'testLine': {
-				const state = getCoverageState();
-				const item = leaf(`${shortName(node.ref.outerClassName)}.java : ${node.ref.line}`, 'circle-filled');
-				const productionIndex = state?.fileCoverage ? buildProductionClassIndex(state.fileCoverage, DEFAULT_SOURCE_ROOTS) : undefined;
-				const path = productionIndex?.get(node.ref.outerClassName);
-				if (state && path) {
-					const uri = vscode.Uri.file(toAbsolutePath(state.workspaceRoot, path));
-					const selection = new vscode.Range(node.ref.line - 1, 0, node.ref.line - 1, 0);
-					item.command = { command: 'vscode.open', title: 'Dosyayı Aç', arguments: [uri, { selection }] };
-				}
-				return item;
-			}
+			case 'testLine':
+				return testLineItem(node);
 		}
 	}
 
@@ -198,6 +160,56 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 		}
 		return { kind: 'noPerTestData' };
 	}
+}
+
+function collectHintItem(): vscode.TreeItem {
+	const item = new vscode.TreeItem('Bu Sınıf İçin Topla', vscode.TreeItemCollapsibleState.None);
+	item.iconPath = new vscode.ThemeIcon('play');
+	item.command = { command: 'coverdict.perTestForFile', title: 'Bu Sınıf İçin Topla' };
+	return item;
+}
+
+function prodLineItem(node: Extract<LineTestsNode, { kind: 'prodLine' }>): vscode.TreeItem {
+	const findingsByTestMethod = indexFindingsByTestMethod(getCoverageState()?.findings ?? []);
+	const quality = lineQuality(node.tests, findingsByTestMethod);
+	const weak = quality.byVerdict.noOracle + quality.byVerdict.weak;
+	const item = new vscode.TreeItem(`Satır ${node.line}`, vscode.TreeItemCollapsibleState.Collapsed);
+	item.description = weak > 0 ? `${node.tests.length} test (${weak} oracle'sız/zayıf)` : `${node.tests.length} test`;
+	item.iconPath = new vscode.ThemeIcon(quality.isFalseGreen ? 'warning' : 'circle-filled', quality.isFalseGreen ? new vscode.ThemeColor('editorWarning.foreground') : undefined);
+	if (quality.isFalseGreen) {
+		item.tooltip = 'Bu satırı kapsayan hiçbir testin oracle\'ı yok - kapsama yeşil ama satır gerçekte doğrulanmıyor.';
+	}
+	return item;
+}
+
+function prodTestItem(node: Extract<LineTestsNode, { kind: 'prodTest' }>): vscode.TreeItem {
+	const identity = parseTestIdentity(node.rawTestId);
+	const item = new vscode.TreeItem(identity.display, vscode.TreeItemCollapsibleState.None);
+	item.iconPath = new vscode.ThemeIcon(verdictIcon(node.verdict), verdictColor(node.verdict));
+	item.description = node.finding?.rule;
+	if (node.finding) {
+		item.tooltip = new vscode.MarkdownString(`**${node.finding.confidence}** - ${node.finding.message}\n\n${node.finding.suggestedAction}`);
+	}
+	const state = getCoverageState();
+	if (state && node.finding) {
+		const uri = vscode.Uri.file(toAbsolutePath(state.workspaceRoot, node.finding.path));
+		const selection = new vscode.Range(node.finding.startLine - 1, 0, node.finding.startLine - 1, 0);
+		item.command = { command: 'vscode.open', title: 'Test Dosyasını Aç', arguments: [uri, { selection }] };
+	}
+	return item;
+}
+
+function testLineItem(node: Extract<LineTestsNode, { kind: 'testLine' }>): vscode.TreeItem {
+	const state = getCoverageState();
+	const item = leaf(`${shortName(node.ref.outerClassName)}.java : ${node.ref.line}`, 'circle-filled');
+	const productionIndex = state?.fileCoverage ? buildProductionClassIndex(state.fileCoverage, DEFAULT_SOURCE_ROOTS) : undefined;
+	const path = productionIndex?.get(node.ref.outerClassName);
+	if (state && path) {
+		const uri = vscode.Uri.file(toAbsolutePath(state.workspaceRoot, path));
+		const selection = new vscode.Range(node.ref.line - 1, 0, node.ref.line - 1, 0);
+		item.command = { command: 'vscode.open', title: 'Dosyayı Aç', arguments: [uri, { selection }] };
+	}
+	return item;
 }
 
 function leaf(label: string, icon: string): vscode.TreeItem {
