@@ -100,7 +100,7 @@
     "commands": [
       {
         "command": "coverdict.analyze",
-        "title": "coverdict: Kapsama Taraması"
+        "title": "coverdict: Hızlı Tarama"
       },
       {
         "command": "coverdict.toggleCoverage",
@@ -108,11 +108,30 @@
       },
       {
         "command": "coverdict.analyzePerTest",
-        "title": "coverdict: Kapsama + Hangi Test Hangi Satırı Kapsıyor"
+        "title": "coverdict: Derin Tarama"
       },
       {
         "command": "coverdict.perTestForFile",
         "title": "coverdict: Bu Sınıf İçin Hangi Test Hangi Satırı Kapsıyor"
+      },
+      {
+        "command": "coverdict.copyItem",
+        "title": "Kopyala"
+      },
+      {
+        "command": "coverdict.qualityView.filter",
+        "title": "coverdict: Bulguları Filtrele",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "coverdict.qualityView.groupByRule",
+        "title": "coverdict: Kurala Göre Grupla",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "coverdict.qualityView.groupByFile",
+        "title": "coverdict: Dosyaya Göre Grupla",
+        "icon": "$(file-directory)"
       }
     ],
     "menus": {
@@ -121,6 +140,36 @@
           "command": "coverdict.perTestForFile",
           "when": "resourceLangId == java",
           "group": "coverdict"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "coverdict.qualityView.filter",
+          "when": "view == coverdict.qualityView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "coverdict.qualityView.groupByFile",
+          "when": "view == coverdict.qualityView",
+          "group": "navigation@2"
+        },
+        {
+          "command": "coverdict.qualityView.groupByRule",
+          "when": "view == coverdict.qualityView",
+          "group": "navigation@3"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "coverdict.copyItem",
+          "when": "view == coverdict.qualityView || view == coverdict.coverageView || view == coverdict.lineTestsView",
+          "group": "9_cutcopypaste"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "coverdict.copyItem",
+          "when": "false"
         }
       ]
     },

@@ -180,6 +180,7 @@ function prodLineItem(node: Extract<LineTestsNode, { kind: 'prodLine' }>): vscod
 	if (quality.isFalseGreen) {
 		item.tooltip = 'Bu satırı kapsayan hiçbir testin oracle\'ı yok - kapsama yeşil ama satır gerçekte doğrulanmıyor.';
 	}
+	item.contextValue = 'coverdict.prodLine';
 	return item;
 }
 
@@ -197,6 +198,7 @@ function prodTestItem(node: Extract<LineTestsNode, { kind: 'prodTest' }>): vscod
 		const selection = new vscode.Range(node.finding.startLine - 1, 0, node.finding.startLine - 1, 0);
 		item.command = { command: 'vscode.open', title: 'Test Dosyasını Aç', arguments: [uri, { selection }] };
 	}
+	item.contextValue = 'coverdict.prodTest';
 	return item;
 }
 

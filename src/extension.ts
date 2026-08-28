@@ -8,6 +8,7 @@ import {
 	publishAnalysis,
 	registerAnalyzeCommand,
 	registerAnalyzePerTestCommand,
+	registerCopyCommands,
 	registerPerTestForFileCommand,
 	registerToggleCoverageCommand,
 	type CoverageSinks,
@@ -73,6 +74,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		registerAnalyzePerTestCommand(context, output, sinks),
 		registerPerTestForFileCommand(context, output, sinks),
 		registerToggleCoverageCommand(sinks),
+		...registerCopyCommands(sinks),
 		// setDecorations is per-editor, not global - a newly-visible editor
 		// needs its gutter marks re-applied by hand (Faz 9: always our own
 		// decorations now, no native path that keeps its own state).

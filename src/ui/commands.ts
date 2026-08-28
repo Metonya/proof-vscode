@@ -73,6 +73,65 @@ export function registerPerTestForFileCommand(context: vscode.ExtensionContext, 
 	return vscode.commands.registerCommand('coverdict.perTestForFile', () => runPerTestForFile(context, output, sinks));
 }
 
+/**
+ * Faz 18: kullanıcının "bunlar niye sağ tık copy yapılamıyoruz" sorusu.
+ * VS Code'un TreeView'ı kendiliğinden kopyalama sunmuyor - her ağaç
+ * öğesinin metnini panoya almak için açık bir komut gerekiyor. Ağaç
+ * düğümünün kendisi argüman olarak geliyor, ondan okunabilir bir satır
+ * üretiyoruz (kural kodu + dosya:satır + mesaj gibi).
+ */
+export function registerCopyCommands(sinks: CoverageSinks): vscode.Disposable[] {
+	return [
+		vscode.commands.registerCommand('coverdict.copyItem', (node: unknown) => {
+			const text = describeNode(node);
+			if (text) {
+				void vscode.env.clipboard.writeText(text);
+				vscode.window.setStatusBarMessage('coverdict: panoya kopyalandı', 2000);
+			}
+		}),
+		vscode.commands.registerCommand('coverdict.qualityView.groupByRule', () => sinks.qualityView.setGrouping('rule')),
+		vscode.commands.registerCommand('coverdict.qualityView.groupByFile', () => sinks.qualityView.setGrouping('file')),
+		vscode.commands.registerCommand('coverdict.qualityView.filter', async () => {
+			const filter = await vscode.window.showInputBox({
+				title: 'Test Kalitesi bulgularını filtrele',
+				prompt: 'Kural adı, dosya yolu, test metodu veya mesaj içinde arar. Filtreyi kaldırmak için boş bırakın.',
+				value: sinks.qualityView.getFilter(),
+				placeHolder: 'örn. doğrulama, Calculator, TAUTOLOGICAL',
+			});
+			if (filter !== undefined) {
+				sinks.qualityView.setFilter(filter);
+			}
+		}),
+	];
+}
+
+/** Ağaç düğümlerinden panoya yazılacak düz metin - tanımadığımız bir şekle `undefined` döner, uydurmaz. */
+function describeNode(node: unknown): string | undefined {
+	if (!node || typeof node !== 'object') {
+		return undefined;
+	}
+	const n = node as { kind?: string; finding?: Finding; reason?: Reason; rule?: string; path?: string; rawTestId?: string; startLine?: number; endLine?: number };
+	if (n.kind === 'finding' && n.finding) {
+		return `${n.finding.rule} ${n.finding.path}:${n.finding.startLine} ${n.finding.testMethod ?? ''} - ${n.finding.message}`.trim();
+	}
+	if (n.kind === 'warning' && n.reason) {
+		return `${n.reason.code}: ${n.reason.message}`;
+	}
+	if (n.kind === 'rule' && n.rule) {
+		return n.rule;
+	}
+	if (n.kind === 'file' && n.path) {
+		return n.path;
+	}
+	if (n.kind === 'prodTest' && n.rawTestId) {
+		return n.rawTestId;
+	}
+	if (n.kind === 'prodLine' && n.startLine !== undefined) {
+		return n.startLine === n.endLine ? `Satır ${n.startLine}` : `Satır ${n.startLine}-${n.endLine}`;
+	}
+	return undefined;
+}
+
 /** The subset of a parsed verdict `publishAnalysis` needs - deliberately flat so both a fresh CLI run and a restore from storage can build it without a fake `VerdictDocument`. */
 export interface AnalysisResult {
 	fileCoverage: FileCoverageBlock | undefined;

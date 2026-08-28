@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 
 import { getCoverageState, type CoverageState } from '../../model/store';
+import { warningInfo } from '../../model/warningCatalog';
 import { toAbsolutePath } from '../../model/pathIndex';
 import type { ChangedFile, Metric, MetricSet, Reason } from '../../verdict/types';
 
@@ -45,11 +46,8 @@ export class CoverageTreeProvider implements vscode.TreeDataProvider<CoverageNod
 				return leaf(`${node.name}: ${percentText(node.metric)}`, 'graph', metricTooltip(node.name));
 			case 'newCodeStatus':
 				return leaf(newCodeStatusText(node.status), 'info', node.detail);
-			case 'warning': {
-				const item = leaf(node.reason.message, 'warning');
-				item.description = node.reason.code;
-				return item;
-			}
+			case 'warning':
+				return warningItem(node.reason);
 			case 'changedFile': {
 				const item = new vscode.TreeItem(node.file.path, vscode.TreeItemCollapsibleState.Collapsed);
 				item.description = `${node.file.uncoveredNewRanges?.length ?? 0} kapsanmayan aralık`;
@@ -166,6 +164,28 @@ function section(id: 'overall' | 'newCode' | 'uncovered' | 'warnings'): vscode.T
 	const item = new vscode.TreeItem(labels[id], id === 'overall' || id === 'newCode' ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
 	item.description = descriptions[id];
 	item.iconPath = new vscode.ThemeIcon(id === 'uncovered' || id === 'warnings' ? 'warning' : 'folder');
+	return item;
+}
+
+/**
+ * Faz 18: ham CLI kodu ve İngilizce mesajı yerine düz Türkçe başlık +
+ * hover'da "ne demek / ne yapmalı". Ham mesaj tooltip'in sonunda aynen
+ * kalıyor - içindeki gerçek sayılar (kaç satır, kaç dosya) yalnızca orada
+ * var, uydurulamaz (`model/warningCatalog.ts`).
+ */
+function warningItem(reason: Reason): vscode.TreeItem {
+	const info = warningInfo(reason);
+	const item = leaf(info.title, 'warning');
+	item.description = info.code;
+	item.tooltip = new vscode.MarkdownString(
+		[
+			`**${info.title}** \`${info.code}\``,
+			info.explanation,
+			info.action ? `**Ne yapmalı:** ${info.action}` : undefined,
+			`\`\`\`\n${reason.message}\n\`\`\``,
+		].filter(Boolean).join('\n\n'),
+	);
+	item.contextValue = 'coverdict.warning';
 	return item;
 }
 

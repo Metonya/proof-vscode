@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 
 import { toAbsolutePath } from '../model/pathIndex';
+import { ruleDocsUrl, ruleInfo } from '../model/ruleCatalog';
 import type { Finding } from '../verdict/types';
 
 /**
@@ -40,15 +41,20 @@ function toDiagnostic(finding: Finding): vscode.Diagnostic {
 	const endLine = Math.max(startLine, finding.endLine - 1);
 	const range = new vscode.Range(startLine, 0, endLine, 0);
 
+	// Faz 18: the human-readable title leads, the raw enum stays in `code`
+	// (still greppable, still the docs link's anchor) - same catalogue the
+	// Test Kalitesi tree reads, so the two can never describe a rule
+	// differently.
+	const info = ruleInfo(finding.rule);
 	const diagnostic = new vscode.Diagnostic(
 		range,
-		`${finding.message} ${finding.suggestedAction}`,
+		`${info.title}: ${finding.message} ${finding.suggestedAction}`,
 		finding.severity === 'WARNING' ? vscode.DiagnosticSeverity.Warning : vscode.DiagnosticSeverity.Information,
 	);
 	diagnostic.source = 'coverdict';
 	diagnostic.code = {
 		value: `${finding.rule} (${finding.confidence})`,
-		target: vscode.Uri.parse(`https://github.com/Metonya/coverdict/blob/main/docs/rules/${finding.rule}.md`),
+		target: vscode.Uri.parse(ruleDocsUrl(finding.rule)),
 	};
 	return diagnostic;
 }

@@ -72,7 +72,7 @@ suite('Explorer badges (Faz 9 / Faz 13 madde 8)', () => {
 
 		const notifying = provider.provideFileDecoration(vscode.Uri.file(path.join(WORKSPACE_ROOT, 'src/main/java/dev/coverdict/playground/NotifyingCalculator.java')));
 		assert.ok(notifying, 'NotifyingCalculator.java (gerçek veri, %100) rozet almalı');
-		assert.equal(notifying!.badge, '100');
+		assert.equal(notifying!.badge, '✓', '%100 iki karaktere sığmaz ("100"), VS Code onu reddedip dekorasyonu tamamen düşürür - Faz 18');
 
 		const notifier = provider.provideFileDecoration(vscode.Uri.file(path.join(WORKSPACE_ROOT, 'src/main/java/dev/coverdict/playground/Notifier.java')));
 		assert.equal(notifier, undefined, 'Notifier.java saf arayüz - 0 çalıştırılabilir satır, veri yok, rozet olmamalı (hard rule 3a)');
@@ -80,6 +80,52 @@ suite('Explorer badges (Faz 9 / Faz 13 madde 8)', () => {
 		const folder = provider.provideFileDecoration(vscode.Uri.file(path.join(WORKSPACE_ROOT, 'src/main/java/dev/coverdict/playground')));
 		assert.ok(folder, 'klasör rozeti, veri taşıyan iki dosyanın rollup\'ından gelmeli');
 		assert.equal(folder!.badge, '85');
+
+		provider.dispose();
+	});
+
+	/**
+	 * Faz 18, the constraint that silently broke every 100%-covered file:
+	 * VS Code's extension host throws ("The 'badge'-property must be
+	 * undefined or a short character") when a badge exceeds two code
+	 * points, and drops that provider's decoration for the file entirely.
+	 * It is not in the `.d.ts` - confirmed by reading the shipped 1.135.0
+	 * extension host bundle. The previous test asserted `badge === '100'`
+	 * and passed, because the throw happens when VS Code *consumes* the
+	 * decoration, not when we construct it - so this asserts the real
+	 * invariant instead: every badge we ever hand out must fit.
+	 */
+	test('no badge this provider produces ever exceeds two code points (VS Code rejects longer ones)', () => {
+		const provider = new ExplorerBadgeProvider();
+		provider.update(WORKSPACE_ROOT, FILE_COVERAGE, 'sonar-compatible');
+
+		const uris = [
+			'src/main/java/dev/coverdict/playground/Calculator.java',
+			'src/main/java/dev/coverdict/playground/Notifier.java',
+			'src/main/java/dev/coverdict/playground/NotifyingCalculator.java',
+			'src/main/java/dev/coverdict/playground',
+			'src/main/java',
+			'src',
+		].map((p) => vscode.Uri.file(path.join(WORKSPACE_ROOT, p)));
+
+		for (const uri of uris) {
+			const badge = provider.provideFileDecoration(uri)?.badge;
+			if (badge !== undefined) {
+				assert.ok([...badge].length <= 2, `badge ${JSON.stringify(badge)} for ${uri.fsPath} is longer than 2 code points - VS Code would reject it`);
+			}
+		}
+		provider.dispose();
+	});
+
+	/** Faz 18: a file the user deliberately excluded must not look identical to a file coverdict simply has no data for. */
+	test('an excluded file gets its own badge and gray color, distinct from "no data"', () => {
+		const provider = new ExplorerBadgeProvider();
+		provider.update(WORKSPACE_ROOT, { ...FILE_COVERAGE, excluded: ['src/main/java/dev/coverdict/playground/Generated.java'] }, 'sonar-compatible');
+
+		const excluded = provider.provideFileDecoration(vscode.Uri.file(path.join(WORKSPACE_ROOT, 'src/main/java/dev/coverdict/playground/Generated.java')));
+		assert.ok(excluded, 'kapsama dışı bırakılmış dosya da işaretlenmeli');
+		assert.equal(excluded!.badge, '–');
+		assert.match(String(excluded!.tooltip), /kapsama dışı/);
 
 		provider.dispose();
 	});
