@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { describeModuleForReport, toRepoRelativePosix } from '../../../cli/reportDiscovery';
+import { describeModuleForReport, describeSiblingProjects, isProjectRoot, toRepoRelativePosix } from '../../../cli/reportDiscovery';
 
 test('a report at the workspace root needs no module binding', () => {
 	const module = describeModuleForReport('target/site/jacoco/jacoco.xml');
@@ -36,4 +36,23 @@ test('toRepoRelativePosix strips the repo root and normalizes backslashes', () =
 test('toRepoRelativePosix on an already-relative-looking mismatch returns the normalized input unchanged', () => {
 	const rel = toRepoRelativePosix('/elsewhere/jacoco.xml', 'C:\\repo');
 	assert.equal(rel, '/elsewhere/jacoco.xml');
+});
+
+test('isProjectRoot is true when a pom.xml marker is present (gson-shaped: one real multi-module project)', () => {
+	assert.equal(isProjectRoot(['pom.xml']), true);
+});
+
+test('isProjectRoot is true for any recognized Gradle marker too', () => {
+	assert.equal(isProjectRoot(['settings.gradle.kts']), true);
+});
+
+test('isProjectRoot is false with no markers at all (coverdict-corpus-shaped: a folder of unrelated repos)', () => {
+	assert.equal(isProjectRoot([]), false);
+});
+
+test('describeSiblingProjects names every candidate and tells the user to open one directly, never picks for them', () => {
+	const message = describeSiblingProjects(['assertj', 'dropwizard', 'gson', 'junit-framework']);
+	assert.ok(message.includes('assertj, dropwizard, gson, junit-framework'));
+	assert.ok(message.includes('4'));
+	assert.ok(!message.toLowerCase().includes('otomatik')); // never phrased as if one was auto-chosen
 });

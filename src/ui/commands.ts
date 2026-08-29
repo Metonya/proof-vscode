@@ -6,7 +6,7 @@ import { buildAnalyzeArgs, type DiffMode } from '../cli/argsBuilder';
 import { buildPerTestClasspath } from '../cli/classpathBuilder';
 import { locateJar } from '../cli/jarLocator';
 import { incrementFor, parseProgressLine, progressMessage } from '../cli/progressParser';
-import { describeModuleForReport, toRepoRelativePosix } from '../cli/reportDiscovery';
+import { describeModuleForReport, describeSiblingProjects, isProjectRoot, PROJECT_ROOT_MARKER_FILES, toRepoRelativePosix } from '../cli/reportDiscovery';
 import { run } from '../cli/runner';
 import { buildFalseGreenIndex } from '../model/falseGreenIndex';
 import type { BadgeMetric } from '../model/metrics';
@@ -668,11 +668,52 @@ interface ReportBinding {
  * what was bound); more than one asks via `showQuickPick`; zero keeps the
  * original error untouched, `offerToOpenSetting` included.
  */
+/** Impure: a plain existence check against `PROJECT_ROOT_MARKER_FILES` (the pure definition lives in `reportDiscovery.ts` so both this check and its test share one list). */
+function projectMarkersPresentAt(dir: string): string[] {
+	return PROJECT_ROOT_MARKER_FILES.filter((marker) => fs.existsSync(path.join(dir, marker)));
+}
+
+/** A directory "looks like a project" for sibling-detection purposes if it has a build-system marker of its own, or is simply a separate git checkout (a repo that has not been built with coverdict's supported build tools yet is still a real, distinct project - listing it by name costs nothing and is more honest than silently skipping it). */
+function looksLikeASeparateProject(dir: string): boolean {
+	return isProjectRoot(projectMarkersPresentAt(dir)) || fs.existsSync(path.join(dir, '.git'));
+}
+
 async function resolveReportBinding(folder: vscode.WorkspaceFolder, configuredReportPath: string, output: vscode.OutputChannel): Promise<ReportBinding | undefined> {
 	if (fs.existsSync(path.join(folder.uri.fsPath, configuredReportPath))) {
 		return { reportPath: configuredReportPath };
 	}
 
+	// Faz 29 follow-up (§7.8, same-day user feedback): only search *inside*
+	// a real project. A workspace root with no pom.xml/build.gradle of its
+	// own is not one project - it is, at best, a folder someone happens to
+	// keep several independent repos in (coverdict-corpus is exactly this).
+	// Globbing across those and presenting them as "pick a module" would be
+	// choosing among unrelated repos with no principled basis - the thing
+	// the user correctly called out.
+	if (!isProjectRoot(projectMarkersPresentAt(folder.uri.fsPath))) {
+		let siblingEntries: fs.Dirent[];
+		try {
+			siblingEntries = fs.readdirSync(folder.uri.fsPath, { withFileTypes: true });
+		} catch {
+			siblingEntries = [];
+		}
+		const siblingProjects = siblingEntries
+			.filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+			.map((entry) => entry.name)
+			.filter((name) => looksLikeASeparateProject(path.join(folder.uri.fsPath, name)))
+			.sort((a, b) => a.localeCompare(b));
+		if (siblingProjects.length > 0) {
+			vscode.window.showErrorMessage(describeSiblingProjects(siblingProjects));
+			return undefined;
+		}
+		// No pom/gradle here and no recognizable project one level down either - nothing more to say than the original message.
+		void offerToOpenSetting(`coverdict: rapor dosyası bulunamadı: ${configuredReportPath}. Önce testleri JaCoCo ile çalıştırın, ya da coverdict.reportPath ayarını düzeltin.`, 'coverdict.reportPath');
+		return undefined;
+	}
+
+	// Past this point the workspace root is itself a real (single- or
+	// multi-module) project, so every jacoco.xml found below genuinely
+	// belongs to it - a gson-shaped case, not a coverdict-corpus-shaped one.
 	const found = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, '**/target/site/jacoco/jacoco.xml'), '**/node_modules/**', 50);
 
 	if (found.length === 0) {
@@ -684,10 +725,13 @@ async function resolveReportBinding(folder: vscode.WorkspaceFolder, configuredRe
 	if (found.length === 1) {
 		chosenUri = found[0];
 	} else {
-		const picks = found.map((uri) => ({ label: toRepoRelativePosix(uri.fsPath, folder.uri.fsPath), uri }));
+		const picks = found.map((uri) => {
+			const relReportPath = toRepoRelativePosix(uri.fsPath, folder.uri.fsPath);
+			return { label: describeModuleForReport(relReportPath).root, description: relReportPath, uri };
+		});
 		const pick = await vscode.window.showQuickPick(picks, {
-			title: 'coverdict: birden fazla JaCoCo raporu bulundu - hangi modül taransın?',
-			placeHolder: 'Bunu kalıcı yapmak için coverdict.reportPath ayarını bu rapora göre düzeltin',
+			title: 'coverdict: bu proje çok modüllü - hangi modül taransın?',
+			placeHolder: 'Bunu kalıcı yapmak için coverdict.reportPath ayarını bu modülün raporuna göre düzeltin',
 		});
 		if (!pick) {
 			return undefined; // user backed out of the picker - they already know why, say nothing more

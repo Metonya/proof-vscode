@@ -10,6 +10,14 @@
  * that actually has a report - the aggregator pom has none of its own. The
  * gson dogfood hit exactly this. Requiring the user to find and reopen the
  * right subfolder by hand is not a fix; the extension finds it instead.
+ *
+ * A second, sharper distinction was needed after the first version shipped
+ * (same-day user feedback): a directory holding several *unrelated* repos
+ * side by side (`coverdict-corpus`) is not the same shape as one
+ * multi-module project (`gson`), even though both produce several
+ * `jacoco.xml` candidates - `isProjectRoot`/`describeSiblingProjects`
+ * below are what tell them apart, so unrelated repos are never offered as
+ * if picking among them were a real choice.
  */
 
 const JACOCO_SUFFIX = '/target/site/jacoco/jacoco.xml';
@@ -53,5 +61,48 @@ export function toRepoRelativePosix(absolutePath: string, repoRoot: string): str
 	return normalizedAbs.startsWith(normalizedRoot + '/')
 		? normalizedAbs.slice(normalizedRoot.length + 1)
 		: normalizedAbs;
+}
+
+/**
+ * Filenames whose presence at a directory means "this directory is itself
+ * one Maven/Gradle project" (single- or multi-module - a reactor's own
+ * submodules are still part of the *same* project). The caller checks
+ * these against the real filesystem; this file only names them, so both
+ * the workspace-root check and the sibling-project check below agree on
+ * one definition.
+ */
+export const PROJECT_ROOT_MARKER_FILES = ['pom.xml', 'build.gradle', 'build.gradle.kts', 'settings.gradle', 'settings.gradle.kts'] as const;
+
+/**
+ * The real bug the first version of this discovery had (caught by the
+ * user, 2026-08-29): globbing for `**\/target/site/jacoco/jacoco.xml`
+ * across the *whole* workspace conflates two completely different shapes -
+ * "this folder is one multi-module project, pick which module" (gson: a
+ * real root `pom.xml` declaring `<modules>gson, test-jpms, ...</modules>`,
+ * where every candidate genuinely belongs together) and "this folder just
+ * happens to contain several unrelated repos side by side"
+ * (`coverdict-corpus`: no pom.xml/build.gradle of its own at all - `gson`,
+ * `dropwizard`, `assertj` are independent checkouts that only share a
+ * parent directory). Presenting both shapes as one flat "pick a jacoco.xml"
+ * list is exactly the "saçma" the user called out - there is no principled
+ * way to choose among unrelated repos, and pretending there is violates
+ * hard rule 3a.
+ *
+ * `presentMarkers` is whatever subset of `PROJECT_ROOT_MARKER_FILES` the
+ * caller found at a given directory (a plain existence check, done in
+ * `ui/commands.ts` since this file never touches the filesystem).
+ */
+export function isProjectRoot(presentMarkers: readonly string[]): boolean {
+	return PROJECT_ROOT_MARKER_FILES.some((marker) => presentMarkers.includes(marker));
+}
+
+/**
+ * The message shown when the workspace root is not itself a project (per
+ * `isProjectRoot`) and one or more of its immediate children are. Lists the
+ * candidates by name only - it never picks one, because there is no honest
+ * way to prefer one independent repo over another.
+ */
+export function describeSiblingProjects(projectDirNames: readonly string[]): string {
+	return `coverdict: bu klasör kendisi tek bir proje değil - içinde ${projectDirNames.length} farklı proje bulundu: ${projectDirNames.join(', ')}. Analiz etmek istediğiniz projeyi VS Code'da ayrı bir workspace kökü olarak açın (File > Open Folder).`;
 }
 

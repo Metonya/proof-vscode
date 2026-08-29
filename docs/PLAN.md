@@ -1,15 +1,20 @@
 # coverdict-vscode — devir belgesi ve ileri plan
 
-**Son güncelleme:** 2026-08-29, Faz 29 (§7.8): gson dogfood'unun ortaya
-çıkardığı çok-modül workspace-kökü boşluğu gerçekten düzeltildi -
-`resolveReportBinding()` artık rapor bulunamayınca workspace'i tarayıp
-(0/1/çoklu eşleşmeye göre sessiz hata / görünür otomatik bağlama /
-`showQuickPick`) doğru moduüle bağlanıyor, gerçek gson checkout'unda uçtan
-uca doğrulandı (33 bulgu, mevcut korpus kalibrasyonuyla birebir). 165 unit +
-57 integration, hepsi geçti. Önceki: 2026-08-28, Faz 24 sonrası (pencere
-yenileme düzeltmesi, örtük constructor etiketi, Test Kalitesi ↔ Mutasyon
-köprüsü, L0/L3 çelişki köprüsü ve NO_COVERAGE açıklaması dahil - §7.6'nın
-tüm maddeleri kapandı).
+**Son güncelleme:** 2026-08-29, Faz 29 (§7.8, iki geçiş): gson dogfood'unun
+ortaya çıkardığı çok-modül workspace-kökü boşluğu düzeltildi, sonra
+kullanıcının aynı gün verdiği gerçek geri bildirimle (ekran görüntüsüyle)
+ikinci kez düzeltildi - ilk versiyon ilgisiz repoları (`coverdict-corpus`)
+tek bir çok-modüllü projeyle (`gson`) ayırt etmiyordu, ikisini de aynı düz
+"hangi jacoco.xml" listesine koyuyordu. `isProjectRoot()`/
+`describeSiblingProjects()` bu ayrımı yapıyor artık: ilgisiz repolar asla
+bir seçenekmiş gibi sunulmuyor, sadece isimle listelenip kullanıcı doğru
+olanı ayrı açmaya yönlendiriliyor. Gerçek gson checkout'unda (33 bulgu,
+mevcut kalibrasyonla birebir) ve gerçek `coverdict-corpus`'ta (artık hiç
+seçim sunmuyor) uçtan uca doğrulandı. 169 unit + 57 integration, hepsi
+geçti, SonarQube kalite kapısı OK. Önceki: 2026-08-28, Faz 24 sonrası
+(pencere yenileme düzeltmesi, örtük constructor etiketi, Test Kalitesi ↔
+Mutasyon köprüsü, L0/L3 çelişki köprüsü ve NO_COVERAGE açıklaması dahil -
+§7.6'nın tüm maddeleri kapandı).
 
 ---
 
@@ -431,10 +436,10 @@ o satırın gerçek bir perTest kaydı varsa - §7.7).
 
 ### Sağlık
 
-165 unit + 57 integration test geçiyor (Faz 29 - önceki 157+57'ye
-`reportDiscovery`/`argsBuilder`'ın 8 yeni testi eklendi). SonarQube
-(`coverdict-vscode`, `http://localhost:9001`) sıfır açık bulgu, kalite
-kapısı **OK** (Faz 27,
+169 unit + 57 integration test geçiyor (Faz 29, iki geçiş - önceki
+157+57'ye `reportDiscovery`/`argsBuilder`'ın 12 yeni testi eklendi).
+SonarQube (`coverdict-vscode`, `http://localhost:9001`) sıfır açık bulgu,
+kalite kapısı **OK** (Faz 27,
 §7.4).
 
 ---
@@ -1104,6 +1109,48 @@ Artık gereksiz ama zararsız: `gson/gson/.vscode/settings.json` (bu
 oturumun ilk, elle klasör-değiştirme geçici çözümü) - checkout'un kökünü
 açmak artık QuickPick'ten "gson" seçmekle aynı sonucu veriyor, alt modülü
 ayrıca açmaya gerek yok.
+
+**Aynı gün, kullanıcı geri bildirimiyle ikinci bir düzeltme gerekti - ilk
+versiyon yanlış soruyu soruyordu.** Kullanıcı gerçek ekran görüntüsüyle
+gösterdi: `coverdict-corpus`'u (assertj/dropwizard/gson/junit-framework -
+dört **birbirinden bağımsız** git checkout'u, ortak hiçbir pom/git'i yok)
+açsaydı, ilk versiyon bu dört reponun **hepsindeki** `jacoco.xml`'leri tek
+bir düz listede karışık gösterip "hangisini istersiniz" diye soracaktı -
+kullanıcının kendi sözleriyle *"saçma değil mi?"* Haklı: ilgisiz repolar
+arasında seçim yapmanın hiçbir ilkeli yolu yok, bunu bir seçenekmiş gibi
+sunmak hard rule 3a'ya aykırı.
+
+Kök neden: kör `**/jacoco.xml` taraması iki tamamen farklı şekli
+birbirine karıştırıyordu - "bu klasör tek bir çok-modüllü proje, hangi
+modül?" (gson: kendi kök `pom.xml`'i gerçek `<modules>gson, test-jpms,
+...</modules>` bildiriyor, her aday gerçekten aynı projeye ait) ile "bu
+klasör sadece birkaç ilgisiz reponun yan yana durduğu bir dizin"
+(`coverdict-corpus`: kendi pom.xml/build.gradle/git'i hiç yok).
+
+**Düzeltme:** `reportDiscovery.ts`'e `isProjectRoot()` (workspace kökünde
+`pom.xml`/`build.gradle[.kts]`/`settings.gradle[.kts]` var mı) ve
+`describeSiblingProjects()` eklendi - ikisi de saf. `resolveReportBinding()`
+artık önce bunu soruyor:
+- **Kök kendi başına bir proje değilse** → glob'a hiç girmiyor, bir seviye
+  altındaki klasörlere bakıyor (aynı işaretçiler + `.git`), bulduğu her
+  bağımsız projeyi **isimle** listeleyip "hangisini analiz etmek
+  istiyorsanız onu ayrı workspace kökü olarak açın" diyor - **hiçbirini
+  seçmiyor**.
+- **Kök kendi başına bir proje ise** (gson gibi) → eski glob+QuickPick akışı
+  çalışır, artık meşru çünkü bulunan her rapor gerçekten aynı projenin
+  parçası. QuickPick etiketi de iyileştirildi: ham dosya yolu yerine modül
+  kök adı (`gson`, `extras`, ...) gösteriliyor, başlık "birden fazla JaCoCo
+  raporu bulundu" yerine "bu proje çok modüllü - hangi modül taransın?"
+  diyor - rastgele dosya keşfi değil, kasıtlı proje yapısı izlenimi veriyor.
+
+Gerçek dosya sistemine karşı doğrulandı (derlenmiş `reportDiscovery.js`
+doğrudan çalıştırılarak, `vscode` API'sini taklit eden küçük bir script'le):
+`coverdict-corpus` kökünde açılınca artık **hiç seçim sunmuyor**, doğrudan
+"bu klasör kendisi tek bir proje değil - içinde 4 farklı proje bulundu:
+assertj, dropwizard, gson, junit-framework" diyor;
+`coverdict-corpus/gson`'da ise (gerçek 7-modüllü reactor) eski, doğru
+davranış aynen sürüyor. 169 unit + 57 integration (169 = önceki 165 + bu
+ikinci düzeltmenin 4 yeni testi), SonarQube kalite kapısı OK.
 
 **Hâlâ backlog, gerçek bir sonraki adım (F8'in asıl kapsamı):**
 - Birden fazla modülü **aynı koşuda** birlikte bağlamak (coverdict CLI'ın
