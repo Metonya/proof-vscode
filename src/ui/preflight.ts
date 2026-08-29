@@ -5,6 +5,7 @@ import * as vscode from 'vscode';
 import type { ModuleReportBinding } from '../cli/argsBuilder';
 import { runDoctor } from '../cli/doctorRunner';
 import { bindModules, describeSiblingProjects, isProjectRoot, PROJECT_ROOT_MARKER_FILES, toRepoRelativePosix } from '../cli/reportDiscovery';
+import { runTestsTask } from './mavenTestTask';
 
 /**
  * Faz 30 (§7.8 follow-ups, gson dogfood): everything the extension needs
@@ -35,6 +36,49 @@ function looksLikeASeparateProject(dir: string): boolean {
 	return projectMarkersPresentAt(dir) || fs.existsSync(path.join(dir, '.git'));
 }
 
+/** The workspace root has no build-system marker of its own - list whatever independent projects sit one level down, by name, and never pick one (hard rule 3a). */
+function reportNotAProjectRoot(folder: vscode.WorkspaceFolder, configuredReportPath: string): void {
+	let siblingEntries: fs.Dirent[];
+	try {
+		siblingEntries = fs.readdirSync(folder.uri.fsPath, { withFileTypes: true });
+	} catch {
+		siblingEntries = [];
+	}
+	const siblingProjects = siblingEntries
+		.filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+		.map((entry) => entry.name)
+		.filter((name) => looksLikeASeparateProject(path.join(folder.uri.fsPath, name)))
+		.sort((a, b) => a.localeCompare(b));
+	if (siblingProjects.length > 0) {
+		vscode.window.showErrorMessage(describeSiblingProjects(siblingProjects));
+		return;
+	}
+	void offerToOpenSetting(`coverdict: rapor dosyası bulunamadı: ${configuredReportPath}. Önce testleri JaCoCo ile çalıştırın, ya da coverdict.reportPath ayarını düzeltin.`, 'coverdict.reportPath');
+}
+
+/**
+ * Faz 30 (§7.8): the user's explicit ask - offer to run the tests
+ * ourselves rather than just naming the missing file. Returns whether the
+ * task ran and succeeded (`true` = caller should re-discover); a decline,
+ * a failed Maven run, or a declined argLine modal all return `false` and
+ * have already shown their own message.
+ */
+async function offerToRunTestsNow(folder: vscode.WorkspaceFolder, output: vscode.OutputChannel): Promise<boolean> {
+	const choice = await vscode.window.showInformationMessage(
+		'coverdict: bu projede henüz bir JaCoCo raporu yok. Testleri JaCoCo ile şimdi çalıştıralım mı? Maven kendi terminalinde çalışacak, çıktısını göreceksiniz.',
+		'Testleri Çalıştır',
+		'Vazgeç',
+	);
+	if (choice !== 'Testleri Çalıştır') {
+		return false;
+	}
+	const success = await runTestsTask(folder, output);
+	if (success === false) {
+		vscode.window.showErrorMessage('coverdict: Maven başarısız oldu - terminaldeki çıktıya bakın. Tarama başlatılmadı.');
+	}
+	return success === true;
+}
+
 /**
  * Resolves which module(s) to bind for coverage. Never guesses among
  * unrelated repos (hard rule 3a): a workspace root with no build-system
@@ -43,28 +87,13 @@ function looksLikeASeparateProject(dir: string): boolean {
  * a real project binds *every* JaCoCo report found under it (the "hepsinden
  * içerik al, listeden seçtirme" fix - no `showQuickPick` left at all).
  */
-export async function resolveReportBinding(folder: vscode.WorkspaceFolder, configuredReportPath: string, output: vscode.OutputChannel): Promise<ReportBinding | undefined> {
+export async function resolveReportBinding(folder: vscode.WorkspaceFolder, configuredReportPath: string, output: vscode.OutputChannel, alreadyOfferedRunTests = false): Promise<ReportBinding | undefined> {
 	if (fs.existsSync(path.join(folder.uri.fsPath, configuredReportPath))) {
 		return { reportPath: configuredReportPath, allModules: [{ id: 'root', root: '.' }] };
 	}
 
 	if (!isProjectRoot(PROJECT_ROOT_MARKER_FILES.filter((m) => fs.existsSync(path.join(folder.uri.fsPath, m))))) {
-		let siblingEntries: fs.Dirent[];
-		try {
-			siblingEntries = fs.readdirSync(folder.uri.fsPath, { withFileTypes: true });
-		} catch {
-			siblingEntries = [];
-		}
-		const siblingProjects = siblingEntries
-			.filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
-			.map((entry) => entry.name)
-			.filter((name) => looksLikeASeparateProject(path.join(folder.uri.fsPath, name)))
-			.sort((a, b) => a.localeCompare(b));
-		if (siblingProjects.length > 0) {
-			vscode.window.showErrorMessage(describeSiblingProjects(siblingProjects));
-			return undefined;
-		}
-		void offerToOpenSetting(`coverdict: rapor dosyası bulunamadı: ${configuredReportPath}. Önce testleri JaCoCo ile çalıştırın, ya da coverdict.reportPath ayarını düzeltin.`, 'coverdict.reportPath');
+		reportNotAProjectRoot(folder, configuredReportPath);
 		return undefined;
 	}
 
@@ -73,6 +102,9 @@ export async function resolveReportBinding(folder: vscode.WorkspaceFolder, confi
 	// belongs to it - a gson-shaped case, not a coverdict-corpus-shaped one.
 	const found = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, '**/target/site/jacoco/jacoco.xml'), '**/node_modules/**', 50);
 	if (found.length === 0) {
+		if (!alreadyOfferedRunTests && await offerToRunTestsNow(folder, output)) {
+			return resolveReportBinding(folder, configuredReportPath, output, true);
+		}
 		void offerToOpenSetting(`coverdict: rapor dosyası bulunamadı: ${configuredReportPath}. Önce testleri JaCoCo ile çalıştırın, ya da coverdict.reportPath ayarını düzeltin.`, 'coverdict.reportPath');
 		return undefined;
 	}

@@ -30,6 +30,7 @@ import type { ChangedFile, FileCoverageBlock, Finding, MetricSet, ModuleInput, M
 import { publishFindings } from './diagnostics';
 import type { ExplorerBadgeProvider } from './explorerBadges';
 import { applyGutterCoverage, clearGutterCoverage, type GutterDecorationTypes } from './gutterRenderer';
+import { runTestsTask } from './mavenTestTask';
 import { offerToOpenSetting, resolveEvidenceClasspaths, resolveReportBinding, type ClasspathKind } from './preflight';
 import { showCoverageSummary, showNoFileCoverageWarning } from './statusBar';
 import type { CoverageTreeProvider } from './treeViews/coverageView';
@@ -123,6 +124,24 @@ export interface CoverageSinks {
 
 export function registerAnalyzeCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
 	return vscode.commands.registerCommand('coverdict.analyze', () => runAnalyze(context, output, sinks));
+}
+
+/** Faz 30 (§7.8): kullanıcının "kolay tekrar koş" isteği - her zaman erişilebilir, `runAnalyzeCore`'un içindeki "rapor yok, testleri koşalım mı?" teklifinden bağımsız olarak. Maven başarılıysa Hızlı Tarama'yı otomatik tetikler - tek eylem gibi hissettiren şey bu. */
+export function registerRunTestsCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
+	return vscode.commands.registerCommand('coverdict.runTests', async () => {
+		const folder = vscode.workspace.workspaceFolders?.[0];
+		if (!folder) {
+			vscode.window.showErrorMessage('coverdict: önce bir klasör açın.');
+			return;
+		}
+		const success = await runTestsTask(folder, output);
+		if (success) {
+			await runAnalyze(context, output, sinks);
+		} else if (success === false) {
+			vscode.window.showErrorMessage('coverdict: Maven başarısız oldu - terminaldeki çıktıya bakın.');
+		}
+		sinks.runView.refresh();
+	});
 }
 
 /** F3: a diff-mode run with --per-test-report, superset of the plain scan (still paints coverage with the same fileCoverage data). */
