@@ -14,8 +14,8 @@ export interface RunOptions {
 	javaExecutable: string;
 	/**
 	 * `undefined` runs `javaExecutable` with `args` directly, no `-jar`
-	 * wrapper - Faz 19's `cli/classpathBuilder.ts` needs this to invoke
-	 * Maven, which is not a jar.
+	 * wrapper - lets this same runner invoke a non-jar executable (e.g.
+	 * Maven) when a caller needs to, not only `coverdict.jar`.
 	 */
 	jarPath?: string;
 	args: string[];

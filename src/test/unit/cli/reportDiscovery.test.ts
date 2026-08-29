@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { describeModuleForReport, describeSiblingProjects, isProjectRoot, toRepoRelativePosix } from '../../../cli/reportDiscovery';
+import { bindModules, describeModuleForReport, describeSiblingProjects, isProjectRoot, moduleForPath, toRepoRelativePosix } from '../../../cli/reportDiscovery';
 
 test('a report at the workspace root needs no module binding', () => {
 	const module = describeModuleForReport('target/site/jacoco/jacoco.xml');
@@ -55,4 +55,52 @@ test('describeSiblingProjects names every candidate and tells the user to open o
 	assert.ok(message.includes('assertj, dropwizard, gson, junit-framework'));
 	assert.ok(message.includes('4'));
 	assert.ok(!message.toLowerCase().includes('otomatik')); // never phrased as if one was auto-chosen
+});
+
+/** Faz 30: bindModules is the multi-module counterpart of describeModuleForReport - real, distinct ids instead of a fixed 'root'. */
+test('bindModules: gives each discovered report a real id derived from its module root', () => {
+	const bound = bindModules([
+		'gson/target/site/jacoco/jacoco.xml',
+		'extras/target/site/jacoco/jacoco.xml',
+		'test-jpms/target/site/jacoco/jacoco.xml',
+	]);
+	assert.deepEqual(bound.map((m) => m.id), ['gson', 'extras', 'test-jpms']);
+	assert.deepEqual(bound.map((m) => m.root), ['gson', 'extras', 'test-jpms']);
+});
+
+test('bindModules: a report at the workspace root gets id "root"', () => {
+	const bound = bindModules(['target/site/jacoco/jacoco.xml']);
+	assert.deepEqual(bound, [{ id: 'root', root: '.', reportPath: 'target/site/jacoco/jacoco.xml' }]);
+});
+
+test('bindModules: a real id collision (two module roots ending in the same segment) gets a numeric suffix, never silently merges', () => {
+	const bound = bindModules([
+		'backend/util/target/site/jacoco/jacoco.xml',
+		'frontend/util/target/site/jacoco/jacoco.xml',
+	]);
+	assert.deepEqual(bound.map((m) => m.id), ['util', 'util-2']);
+	assert.equal(new Set(bound.map((m) => m.id)).size, 2);
+});
+
+test('bindModules: unsafe characters in a module root are sanitized to a valid CLI token', () => {
+	const bound = bindModules(['my module!/target/site/jacoco/jacoco.xml']);
+	assert.equal(bound[0].id, 'my-module-');
+});
+
+/** Faz 30: which bound module a target file belongs to - longest-root-prefix wins, '.' is the lowest-priority fallback. */
+test('moduleForPath: a file under a module root resolves to that module', () => {
+	const modules = [{ id: 'gson', root: 'gson' }, { id: 'extras', root: 'extras' }];
+	assert.equal(moduleForPath('gson/src/test/java/com/google/gson/GsonTest.java', modules), 'gson');
+	assert.equal(moduleForPath('extras/src/test/java/com/google/gson/extras/ExtraTest.java', modules), 'extras');
+});
+
+test('moduleForPath: a nested module\'s own root outranks its parent\'s (longest prefix wins)', () => {
+	const modules = [{ id: 'root', root: '.' }, { id: 'nested', root: 'gson/nested' }];
+	assert.equal(moduleForPath('gson/nested/src/main/java/Foo.java', modules), 'nested');
+	assert.equal(moduleForPath('gson/src/main/java/Bar.java', modules), 'root');
+});
+
+test('moduleForPath: a path under no bound module\'s root is undefined, not a guess', () => {
+	const modules = [{ id: 'gson', root: 'gson' }];
+	assert.equal(moduleForPath('extras/src/main/java/Foo.java', modules), undefined);
 });

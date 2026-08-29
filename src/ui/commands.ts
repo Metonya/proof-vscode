@@ -2,11 +2,10 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 
-import { buildAnalyzeArgs, type DiffMode } from '../cli/argsBuilder';
-import { buildPerTestClasspath } from '../cli/classpathBuilder';
+import { buildAnalyzeArgs, type DiffMode, type TargetBinding } from '../cli/argsBuilder';
 import { locateJar } from '../cli/jarLocator';
 import { incrementFor, parseProgressLine, progressMessage } from '../cli/progressParser';
-import { describeModuleForReport, describeSiblingProjects, isProjectRoot, PROJECT_ROOT_MARKER_FILES, toRepoRelativePosix } from '../cli/reportDiscovery';
+import { moduleForPath, toRepoRelativePosix } from '../cli/reportDiscovery';
 import { run } from '../cli/runner';
 import { buildFalseGreenIndex } from '../model/falseGreenIndex';
 import type { BadgeMetric } from '../model/metrics';
@@ -31,6 +30,7 @@ import type { ChangedFile, FileCoverageBlock, Finding, MetricSet, ModuleInput, M
 import { publishFindings } from './diagnostics';
 import type { ExplorerBadgeProvider } from './explorerBadges';
 import { applyGutterCoverage, clearGutterCoverage, type GutterDecorationTypes } from './gutterRenderer';
+import { offerToOpenSetting, resolveEvidenceClasspaths, resolveReportBinding, type ClasspathKind } from './preflight';
 import { showCoverageSummary, showNoFileCoverageWarning } from './statusBar';
 import type { CoverageTreeProvider } from './treeViews/coverageView';
 import type { LineTestsNode, LineTestsTreeProvider } from './treeViews/lineTestsView';
@@ -38,15 +38,6 @@ import { findMutationBridgeTarget, type MutationNode, type MutationTreeProvider 
 import { findQualityBridgeTarget, type QualityNode, type QualityTreeProvider } from './treeViews/qualityView';
 import type { RunTreeProvider } from './treeViews/runView';
 
-/**
- * F3's own module id for `--per-test-classpath`/`--mutation-classpath`
- * binding (L2/L3 evidence collection only - coverage/state no longer carry
- * a module id at all, Faz 30). Still `'root'` because L2/L3 module binding
- * itself is still single-module; Faz 30's multi-module work is scoped to
- * merging *evidence already returned*, not to binding several classpaths
- * in one run yet.
- */
-const MODULE_ID = 'root';
 
 /**
  * Faz 25 (§7.5): `verdict-current.json` her koşu üzerine yazılır - bir
@@ -439,12 +430,8 @@ async function runAnalyzePerTest(context: vscode.ExtensionContext, output: vscod
 		return;
 	}
 
-	const classpathPath = await ensurePerTestClasspath(folder, output);
-	if (!classpathPath) {
-		return;
-	}
 	const parsed = await runAnalyzeCore(context, output, folder, diffMode, {
-		perTest: { classpathModuleId: MODULE_ID, classpathPath },
+		perTest: {},
 		progressTitle: 'coverdict: derin tarama',
 	});
 	if (!parsed) {
@@ -492,12 +479,8 @@ async function runPerTestForFile(context: vscode.ExtensionContext, output: vscod
 
 	const fileName = path.basename(editor.document.fileName, '.java');
 	const className = detectClassName(editor.document.getText(), fileName);
-	const classpathPath = await ensurePerTestClasspath(folder, output);
-	if (!classpathPath) {
-		return;
-	}
 	const parsed = await runAnalyzeCore(context, output, folder, diffMode, {
-		perTest: { classpathModuleId: MODULE_ID, classpathPath, targets: [className] },
+		perTest: { targets: [{ filePath: editor.document.fileName, fqcn: className }] },
 		progressTitle: `coverdict: ${className.split('.').pop()} için test kanıtı`,
 	});
 	if (!parsed) {
@@ -534,7 +517,7 @@ async function runMutationForFile(context: vscode.ExtensionContext, output: vsco
 		return;
 	}
 	const className = detectClassName(editor.document.getText(), path.basename(editor.document.fileName, '.java'));
-	await runMutation(context, output, sinks, folder, [className], `coverdict: ${className.split('.').pop()} mutasyon testi`);
+	await runMutation(context, output, sinks, folder, [{ filePath: editor.document.fileName, fqcn: className }], `coverdict: ${className.split('.').pop()} mutasyon testi`);
 }
 
 /**
@@ -571,7 +554,7 @@ async function runMutation(
 	output: vscode.OutputChannel,
 	sinks: CoverageSinks,
 	folder: vscode.WorkspaceFolder,
-	targets: readonly string[],
+	targets: readonly { filePath: string; fqcn: string }[],
 	progressTitle: string,
 ): Promise<void> {
 	const diffMode = readDiffMode(folder);
@@ -583,14 +566,8 @@ async function runMutation(
 		return;
 	}
 
-	const classpathPath = await ensurePerTestClasspath(folder, output);
-	if (!classpathPath) {
-		return;
-	}
 	const parsed = await runAnalyzeCore(context, output, folder, diffMode, {
-		// Faz 19'un classpath üreticisi aynen kullanılıyor - CLI iki bayrağı
-		// ayrı opt-in sayıyor ama dosya biçimi birebir aynı.
-		mutation: { classpathModuleId: MODULE_ID, classpathPath, targets, timeoutSeconds: readMutationTimeout(folder) },
+		mutation: { targets, timeoutSeconds: readMutationTimeout(folder) },
 		progressTitle,
 	});
 	if (!parsed) {
@@ -599,13 +576,14 @@ async function runMutation(
 
 	publishAnalysis(sinks, folder.uri.fsPath, analysisResultFrom(parsed));
 	const ranAtMs = Date.now();
-	setMutationState({ mutation: parsed.mutation, warnings: parsed.warnings, targets, ranAt: ranAtMs });
+	const targetFqcns = targets.map((t) => t.fqcn);
+	setMutationState({ mutation: parsed.mutation, warnings: parsed.warnings, targets: targetFqcns, ranAt: ranAtMs });
 	sinks.mutationView.refresh();
 	void vscode.commands.executeCommand('coverdict.mutationView.focus');
 	// Faz 25: yalnızca blok gerçekten varsa yazılır - yoksa (bütçe aşıldı vb.)
 	// eski bir sonucu yeni ama boş bir "koşu" ile ezmemek için hiç dokunulmaz.
 	if (parsed.mutation) {
-		const snapshot: MutationSnapshot = { mutation: parsed.mutation, warnings: parsed.warnings, targets, ranAtMs };
+		const snapshot: MutationSnapshot = { mutation: parsed.mutation, warnings: parsed.warnings, targets: targetFqcns, ranAtMs };
 		await writeJsonSnapshot(context, output, MUTATION_STORAGE_FILE, snapshot, 'mutasyon sonucu');
 	}
 }
@@ -645,110 +623,64 @@ function readDiffMode(folder: vscode.WorkspaceFolder): DiffMode | undefined {
  * never need their own error UI for this part.
  */
 interface EvidenceOptions {
-	perTest?: { classpathModuleId: string; classpathPath: string; targets?: readonly string[] };
+	/** Present (even empty) to request L2. `targets` names explicit classes by file; omitted/empty lets the CLI derive diff-scoped targets per bound module's classpath. */
+	perTest?: { targets?: readonly { filePath: string; fqcn: string }[] };
 	/** Faz 20: L3. Verildiğinde ilerleme bildirimi de mutasyon diliyle konuşur ve iptal süreç ağacını öldürür. */
-	mutation?: { classpathModuleId: string; classpathPath: string; targets?: readonly string[]; timeoutSeconds?: number };
+	mutation?: { targets?: readonly { filePath: string; fqcn: string }[]; timeoutSeconds?: number };
 	/** Bildirim başlığı - mutasyon dakikalar/saatler sürebildiği için "analiz ediliyor" yetersiz kalıyor. */
 	progressTitle?: string;
 }
 
-interface ReportBinding {
-	reportPath: string;
-	module?: { id: string; root: string };
+/**
+ * Faz 30: resolves each `{filePath, fqcn}` target to the module that owns
+ * it (longest-root-prefix match, `cli/reportDiscovery.ts`'s `moduleForPath`)
+ * and pairs it with the module's own classpath binding id. A target whose
+ * file falls under no bound module's root is dropped rather than guessed
+ * at (hard rule 3a) - the caller is responsible for surfacing that as an
+ * error when it makes the whole request meaningless (a single explicit
+ * per-file target with nowhere to bind it).
+ */
+function resolveTargets(folder: vscode.WorkspaceFolder, allModules: readonly { id: string; root: string }[], targets: readonly { filePath: string; fqcn: string }[] | undefined): TargetBinding[] {
+	if (!targets) {
+		return [];
+	}
+	const result: TargetBinding[] = [];
+	for (const t of targets) {
+		const repoRelative = toRepoRelativePosix(t.filePath, folder.uri.fsPath);
+		const moduleId = moduleForPath(repoRelative, allModules);
+		if (moduleId) {
+			result.push({ moduleId, fqcn: t.fqcn });
+		}
+	}
+	return result;
 }
 
 /**
- * Faz 29 (§7.8, gson dogfood): `coverdict.reportPath` is workspace-root-relative,
- * which breaks the moment a multi-module Maven checkout is opened at its
- * aggregator root instead of the module directory that actually has a
- * report - the aggregator pom has none of its own. Rather than making the
- * user find and reopen the right subfolder by hand (the workaround this
- * replaces), search the workspace for one before giving up.
- *
- * Never guesses among several candidates (hard rule 3a): one match binds
- * automatically but visibly (Output line + an info toast naming exactly
- * what was bound); more than one asks via `showQuickPick`; zero keeps the
- * original error untouched, `offerToOpenSetting` included.
+ * Faz 30: the shared shape `perTest`/`mutation` both resolve to - one
+ * classpath per bound module (generating missing ones via `doctor --fix`
+ * if needed) plus each explicit target paired with the module that owns
+ * its file. `undefined` means resolution failed and the reason was already
+ * shown to the user - the caller just returns.
  */
-/** Impure: a plain existence check against `PROJECT_ROOT_MARKER_FILES` (the pure definition lives in `reportDiscovery.ts` so both this check and its test share one list). */
-function projectMarkersPresentAt(dir: string): string[] {
-	return PROJECT_ROOT_MARKER_FILES.filter((marker) => fs.existsSync(path.join(dir, marker)));
-}
-
-/** A directory "looks like a project" for sibling-detection purposes if it has a build-system marker of its own, or is simply a separate git checkout (a repo that has not been built with coverdict's supported build tools yet is still a real, distinct project - listing it by name costs nothing and is more honest than silently skipping it). */
-function looksLikeASeparateProject(dir: string): boolean {
-	return isProjectRoot(projectMarkersPresentAt(dir)) || fs.existsSync(path.join(dir, '.git'));
-}
-
-async function resolveReportBinding(folder: vscode.WorkspaceFolder, configuredReportPath: string, output: vscode.OutputChannel): Promise<ReportBinding | undefined> {
-	if (fs.existsSync(path.join(folder.uri.fsPath, configuredReportPath))) {
-		return { reportPath: configuredReportPath };
-	}
-
-	// Faz 29 follow-up (§7.8, same-day user feedback): only search *inside*
-	// a real project. A workspace root with no pom.xml/build.gradle of its
-	// own is not one project - it is, at best, a folder someone happens to
-	// keep several independent repos in (coverdict-corpus is exactly this).
-	// Globbing across those and presenting them as "pick a module" would be
-	// choosing among unrelated repos with no principled basis - the thing
-	// the user correctly called out.
-	if (!isProjectRoot(projectMarkersPresentAt(folder.uri.fsPath))) {
-		let siblingEntries: fs.Dirent[];
-		try {
-			siblingEntries = fs.readdirSync(folder.uri.fsPath, { withFileTypes: true });
-		} catch {
-			siblingEntries = [];
-		}
-		const siblingProjects = siblingEntries
-			.filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
-			.map((entry) => entry.name)
-			.filter((name) => looksLikeASeparateProject(path.join(folder.uri.fsPath, name)))
-			.sort((a, b) => a.localeCompare(b));
-		if (siblingProjects.length > 0) {
-			vscode.window.showErrorMessage(describeSiblingProjects(siblingProjects));
-			return undefined;
-		}
-		// No pom/gradle here and no recognizable project one level down either - nothing more to say than the original message.
-		void offerToOpenSetting(`coverdict: rapor dosyası bulunamadı: ${configuredReportPath}. Önce testleri JaCoCo ile çalıştırın, ya da coverdict.reportPath ayarını düzeltin.`, 'coverdict.reportPath');
+async function resolveEvidenceArg(
+	kind: ClasspathKind,
+	folder: vscode.WorkspaceFolder,
+	jarPath: string,
+	javaExecutable: string,
+	output: vscode.OutputChannel,
+	allModules: readonly { id: string; root: string }[],
+	evidenceInput: { targets?: readonly { filePath: string; fqcn: string }[] },
+): Promise<{ classpaths: readonly { moduleId: string; path: string }[]; targets: readonly TargetBinding[] | undefined } | undefined> {
+	const classpaths = await resolveEvidenceClasspaths(folder, jarPath, javaExecutable, output, allModules, kind);
+	if (!classpaths) {
 		return undefined;
 	}
-
-	// Past this point the workspace root is itself a real (single- or
-	// multi-module) project, so every jacoco.xml found below genuinely
-	// belongs to it - a gson-shaped case, not a coverdict-corpus-shaped one.
-	const found = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, '**/target/site/jacoco/jacoco.xml'), '**/node_modules/**', 50);
-
-	if (found.length === 0) {
-		void offerToOpenSetting(`coverdict: rapor dosyası bulunamadı: ${configuredReportPath}. Önce testleri JaCoCo ile çalıştırın, ya da coverdict.reportPath ayarını düzeltin.`, 'coverdict.reportPath');
+	const targets = resolveTargets(folder, allModules, evidenceInput.targets);
+	if (evidenceInput.targets && evidenceInput.targets.length > 0 && targets.length === 0) {
+		vscode.window.showErrorMessage('coverdict: hedef sınıfın hangi modüle ait olduğu belirlenemedi - dosya bağlı modüllerden hiçbirinin kökü altında değil.');
 		return undefined;
 	}
-
-	let chosenUri: vscode.Uri;
-	if (found.length === 1) {
-		chosenUri = found[0];
-	} else {
-		const picks = found.map((uri) => {
-			const relReportPath = toRepoRelativePosix(uri.fsPath, folder.uri.fsPath);
-			return { label: describeModuleForReport(relReportPath).root, description: relReportPath, uri };
-		});
-		const pick = await vscode.window.showQuickPick(picks, {
-			title: 'coverdict: bu proje çok modüllü - hangi modül taransın?',
-			placeHolder: 'Bunu kalıcı yapmak için coverdict.reportPath ayarını bu modülün raporuna göre düzeltin',
-		});
-		if (!pick) {
-			return undefined; // user backed out of the picker - they already know why, say nothing more
-		}
-		chosenUri = pick.uri;
-	}
-
-	const relReportPath = toRepoRelativePosix(chosenUri.fsPath, folder.uri.fsPath);
-	const discovered = describeModuleForReport(relReportPath);
-	const module = discovered.root === '.' ? undefined : { id: discovered.id, root: discovered.root };
-
-	output.appendLine(`coverdict: coverdict.reportPath (${configuredReportPath}) bulunamadı - '${discovered.root}' modülündeki rapora otomatik bağlanıldı: ${discovered.reportPath}`);
-	void vscode.window.showInformationMessage(`coverdict: '${discovered.root}' modülüne otomatik bağlanıldı (rapor: ${discovered.reportPath}). Kalıcı yapmak için coverdict.reportPath ayarını düzeltin.`);
-
-	return { reportPath: discovered.reportPath, module };
+	return { classpaths, targets: targets.length > 0 ? targets : undefined };
 }
 
 async function runAnalyzeCore(
@@ -770,7 +702,30 @@ async function runAnalyzeCore(
 	if (!binding) {
 		return undefined;
 	}
-	const { reportPath, module } = binding;
+
+	const javaExecutable = config.get<string>('javaExecutable') || 'java';
+
+	// Faz 30: classpath resolution (and, if missing, doctor --fix generation)
+	// now happens here - after the report binding is known, so it can
+	// resolve one classpath per real bound module instead of the single
+	// hardcoded 'root' the old caller-side ensurePerTestClasspath assumed.
+	let perTestArg: Parameters<typeof buildAnalyzeArgs>[0]['perTest'];
+	if (evidence.perTest) {
+		const resolved = await resolveEvidenceArg('perTest', folder, jarPath, javaExecutable, output, binding.allModules, evidence.perTest);
+		if (!resolved) {
+			return undefined;
+		}
+		perTestArg = resolved;
+	}
+
+	let mutationArg: Parameters<typeof buildAnalyzeArgs>[0]['mutation'];
+	if (evidence.mutation) {
+		const resolved = await resolveEvidenceArg('mutation', folder, jarPath, javaExecutable, output, binding.allModules, evidence.mutation);
+		if (!resolved) {
+			return undefined;
+		}
+		mutationArg = { ...resolved, timeoutSeconds: evidence.mutation.timeoutSeconds };
+	}
 
 	const storageRoot = context.storageUri;
 	if (!storageRoot) {
@@ -780,18 +735,17 @@ async function runAnalyzeCore(
 	await vscode.workspace.fs.createDirectory(storageRoot);
 	const outUri = vscode.Uri.joinPath(storageRoot, 'verdict-current.json');
 
-	const javaExecutable = config.get<string>('javaExecutable') || 'java';
 	const coverageExclusions = config.get<string[]>('coverageExclusions') ?? [];
 	const args = buildAnalyzeArgs({
 		repo: folder.uri.fsPath,
 		diffMode,
-		reportPath,
-		module,
+		reportPath: binding.reportPath,
+		modules: binding.modules,
 		outPath: outUri.fsPath,
 		fileCoverage: true,
 		coverageExclusions,
-		perTest: evidence.perTest,
-		mutation: evidence.mutation,
+		perTest: perTestArg,
+		mutation: mutationArg,
 	});
 
 	output.appendLine(`coverdict: java -jar ${jarPath} ${args.join(' ')}`);
@@ -874,52 +828,9 @@ async function runAnalyzeCore(
 	);
 }
 
-/**
- * Faz 19: derin taramanın classpath listesi eksikse (ilk kez çalıştırılıyor
- * ya da `mvn clean` sildi) kullanıcıyı elle üretmeye göndermek yerine
- * eklenti kendisi üretir. Kullanıcı yalnızca bir kez "Üret" der; iptal
- * ederse tarama hiç başlamaz - yarım bir listeyle koşup
- * `PER_TEST_CLASSPATH_MISSING` uyarısına düşmekten iyidir.
- * Dosya varsa hiçbir şey sorulmaz.
- */
-async function ensurePerTestClasspath(folder: vscode.WorkspaceFolder, output: vscode.OutputChannel): Promise<string | undefined> {
-	const classpathPath = vscode.workspace.getConfiguration('coverdict', folder).get<string>('perTestClasspathPath') || 'target/coverdict-classpath.txt';
-	if (fs.existsSync(path.join(folder.uri.fsPath, classpathPath))) {
-		return classpathPath;
-	}
-
-	const choice = await vscode.window.showInformationMessage(
-		`coverdict: derin tarama için classpath listesi gerekli ama ${classpathPath} yok. Maven ile şimdi üretilsin mi?`,
-		'Üret',
-		'Vazgeç',
-	);
-	if (choice !== 'Üret') {
-		return undefined;
-	}
-
-	const built = await vscode.window.withProgress(
-		{ location: vscode.ProgressLocation.Notification, title: 'coverdict: classpath listesi üretiliyor (mvn)', cancellable: false },
-		() => buildPerTestClasspath(folder.uri.fsPath, classpathPath, output),
-	);
-	if (!built.ok) {
-		vscode.window.showErrorMessage(`coverdict: ${built.message}`);
-		return undefined;
-	}
-	output.appendLine(`coverdict: ${built.message}`);
-	return classpathPath;
-}
-
 /** `coverdict.badgeMetric`'i tekli okuma noktası - durum çubuğu başlığı, rozetler ve gutter aynı ayarı, aynı şekilde okur (madde 2). */
 function readBadgeMetric(workspaceRoot: string): BadgeMetric {
 	return vscode.workspace.getConfiguration('coverdict', vscode.Uri.file(workspaceRoot)).get<BadgeMetric>('badgeMetric') ?? 'sonar-compatible';
-}
-
-/** A blocking configuration problem: shows the reason and a button that opens Settings scrolled to the offending key, instead of a bare error + a manual search. */
-async function offerToOpenSetting(message: string, settingId: string): Promise<void> {
-	const choice = await vscode.window.showErrorMessage(message, 'Ayarı Aç');
-	if (choice === 'Ayarı Aç') {
-		await vscode.commands.executeCommand('workbench.action.openSettings', settingId);
-	}
 }
 
 /**

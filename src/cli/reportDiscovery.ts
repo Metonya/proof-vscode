@@ -54,6 +54,60 @@ export function describeModuleForReport(repoRelativeReportPath: string): Discove
 	return { id: 'root', root, reportPath: repoRelativeReportPath };
 }
 
+/**
+ * Faz 30: binds every discovered report to a real, distinct module id -
+ * the multi-module counterpart to `describeModuleForReport`'s single-report
+ * `id: 'root'` shorthand. IDs only need to be *stable within one run* (they
+ * are CLI tokens, matched back up against `--per-test-classpath`/
+ * `--mutation-classpath`/`--*-target` by `ui/preflight.ts`, never shown to
+ * the user as a label) - derived from the module's own directory name so a
+ * log line or an Output entry naming an id is still recognizable, with a
+ * numeric suffix on a real collision (two modules whose root ends in the
+ * same segment) rather than silently merging them.
+ */
+export function bindModules(repoRelativeReportPaths: readonly string[]): readonly { id: string; root: string; reportPath: string }[] {
+	const usedIds = new Set<string>();
+	return repoRelativeReportPaths.map((reportPath) => {
+		const { root } = describeModuleForReport(reportPath);
+		const base = root === '.' ? 'root' : sanitizeModuleId(root.split('/').pop() ?? 'module');
+		let id = base;
+		let suffix = 2;
+		while (usedIds.has(id)) {
+			id = `${base}-${suffix++}`;
+		}
+		usedIds.add(id);
+		return { id, root, reportPath };
+	});
+}
+
+/** picocli's `<id>=<value>` parsing splits on the first `=`; also kept free of characters that would make an Output log line or a shell-quoted arg confusing. */
+function sanitizeModuleId(raw: string): string {
+	const cleaned = raw.replaceAll(/[^A-Za-z0-9_.-]/g, '-');
+	return cleaned.length > 0 ? cleaned : 'module';
+}
+
+/**
+ * Which bound module a repo-relative path falls under - longest-root-prefix
+ * wins (a nested module's own root must outrank its parent's), `root: '.'`
+ * is the lowest-priority fallback since it matches everything. `undefined`
+ * means the path is not under any bound module's root at all - callers
+ * must not guess a target's module in that case (hard rule 3a).
+ */
+export function moduleForPath(repoRelativePath: string, modules: readonly { id: string; root: string }[]): string | undefined {
+	let best: { id: string; prefixLength: number } | undefined;
+	for (const m of modules) {
+		if (m.root === '.') {
+			best ??= { id: m.id, prefixLength: 0 };
+			continue;
+		}
+		const prefix = `${m.root}/`;
+		if (repoRelativePath.startsWith(prefix) && (!best || prefix.length > best.prefixLength)) {
+			best = { id: m.id, prefixLength: prefix.length };
+		}
+	}
+	return best?.id;
+}
+
 /** Converts an absolute filesystem path to a repo-relative, forward-slash path. Platform-agnostic (D-22): never assumes `/` is already there. */
 export function toRepoRelativePosix(absolutePath: string, repoRoot: string): string {
 	const normalizedAbs = absolutePath.replaceAll('\\', '/');

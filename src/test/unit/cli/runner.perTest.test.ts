@@ -38,7 +38,7 @@ test('a real --per-test-report run: perTest parses, testsForClass finds real lin
 		diffMode: { kind: 'base', ref: firstCommit },
 		reportPath: REPORT_PATH,
 		outPath,
-		perTest: { classpathModuleId: 'root', classpathPath: CLASSPATH_PATH },
+		perTest: { classpaths: [{ moduleId: 'root', path: CLASSPATH_PATH }] },
 	});
 
 	const result = await run({ javaExecutable: 'java', jarPath: JAR_PATH, args }).result;
