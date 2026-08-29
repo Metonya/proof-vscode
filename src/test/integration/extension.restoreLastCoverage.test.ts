@@ -58,7 +58,6 @@ function realVerdictJson(): unknown {
 /** Real shape `writeMutationSnapshot` (`ui/commands.ts`) produces - same mutation method as `realVerdictJson`'s per-test entry, so both views describe the same class consistently. */
 function realMutationSnapshot(ranAtMs: number): MutationSnapshot {
 	return {
-		moduleId: 'root',
 		mutation: {
 			engine: 'pitest', engineVersion: '1.15.8',
 			modules: [{
@@ -103,7 +102,6 @@ function verdictJsonWithoutPerTest(): unknown {
 /** Real shape `writeJsonSnapshot` (`ui/commands.ts`) produces for a Derin Tarama's perTest result. */
 function realPerTestSnapshot(): PerTestSnapshot {
 	return {
-		moduleId: 'root',
 		perTest: {
 			engine: 'pitest', engineVersion: '1.15.8',
 			modules: [{

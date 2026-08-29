@@ -91,7 +91,7 @@ suite('Line tests view (Faz 15c)', () => {
 	});
 
 	test('production file: line node -> test leaf -> getParent round-trip', async () => {
-		setPerTestState({ moduleId: 'root', perTest: PER_TEST, warnings: [] });
+		setPerTestState({ perTest: PER_TEST, warnings: [] });
 		const { document, workspaceRoot } = await openProductionFile('Calculator');
 		setCoverageState({ ...STATE, workspaceRoot });
 
@@ -136,7 +136,7 @@ suite('Line tests view (Faz 15c)', () => {
 				ambient: [],
 			}],
 		};
-		setPerTestState({ moduleId: 'root', perTest: constructorPerTest, warnings: [] });
+		setPerTestState({ perTest: constructorPerTest, warnings: [] });
 		const { document, workspaceRoot } = await openProductionFile('Calculator');
 		setCoverageState({ ...STATE, workspaceRoot, findings: [] });
 
@@ -178,7 +178,7 @@ suite('Line tests view (Faz 15c)', () => {
 				ambient: [],
 			}],
 		};
-		setPerTestState({ moduleId: 'root', perTest: notifyingCalculatorPerTest, warnings: [] });
+		setPerTestState({ perTest: notifyingCalculatorPerTest, warnings: [] });
 		const { document, workspaceRoot } = await openProductionFile('NotifyingCalculator');
 		setCoverageState({ ...STATE, workspaceRoot, findings: [] });
 
@@ -225,7 +225,7 @@ suite('Line tests view (Faz 15c)', () => {
 				ambient: [],
 			}],
 		};
-		setPerTestState({ moduleId: 'root', perTest: mixedPerTest, warnings: [] });
+		setPerTestState({ perTest: mixedPerTest, warnings: [] });
 		const { document, workspaceRoot } = await openProductionFile('Calculator');
 		setCoverageState({ ...STATE, workspaceRoot });
 
@@ -248,7 +248,7 @@ suite('Line tests view (Faz 15c)', () => {
 	});
 
 	test('test file (reverse direction): test-method node -> production-line leaf', async () => {
-		setPerTestState({ moduleId: 'root', perTest: PER_TEST, warnings: [] });
+		setPerTestState({ perTest: PER_TEST, warnings: [] });
 		const { document, workspaceRoot } = await openTestFile('CalculatorPseudoTestedTest');
 		setCoverageState({ ...STATE, workspaceRoot });
 
@@ -307,7 +307,7 @@ suite('Line tests view (Faz 15c)', () => {
 				ambient: [],
 			}],
 		};
-		setPerTestState({ moduleId: 'root', perTest: realPerTest, warnings: [] });
+		setPerTestState({ perTest: realPerTest, warnings: [] });
 		const { document, workspaceRoot } = await openTestFile('CalculatorPseudoTestedTest');
 		// A real run always carries fileCoverage (the extension passes
 		// --file-coverage on every scan) - it is the authoritative listing of
@@ -335,7 +335,7 @@ suite('Line tests view (Faz 15c)', () => {
 
 	/** The same fixture from the other side: opening the production class must still give the forward direction. */
 	test('production file under sourceRoots renders the production direction even when test classes are in entries', async () => {
-		setPerTestState({ moduleId: 'root', perTest: PER_TEST, warnings: [] });
+		setPerTestState({ perTest: PER_TEST, warnings: [] });
 		const { document, workspaceRoot } = await openProductionFile('Calculator');
 		setCoverageState({ ...STATE, workspaceRoot });
 
@@ -348,7 +348,7 @@ suite('Line tests view (Faz 15c)', () => {
 	});
 
 	test('a Java file with no per-test evidence at all shows the collect hint, not a bare empty message', async () => {
-		setPerTestState({ moduleId: 'root', perTest: PER_TEST, warnings: [] });
+		setPerTestState({ perTest: PER_TEST, warnings: [] });
 		const { document, workspaceRoot } = await openProductionFile('Untouched');
 		setCoverageState({ ...STATE, workspaceRoot });
 
@@ -398,8 +398,8 @@ suite('Line tests view (Faz 15c)', () => {
 			}],
 		};
 
-		setPerTestState({ moduleId: 'root', perTest: addPerTest, warnings: [] });
-		setMutationState({ moduleId: 'root', mutation: addMutation, warnings: [], targets: [], ranAt: Date.now() });
+		setPerTestState({ perTest: addPerTest, warnings: [] });
+		setMutationState({ mutation: addMutation, warnings: [], targets: [], ranAt: Date.now() });
 		const { document, workspaceRoot } = await openProductionFile('Calculator');
 		setCoverageState({ ...STATE, workspaceRoot, findings: [inconclusiveFinding] });
 
@@ -422,7 +422,7 @@ suite('Line tests view (Faz 15c)', () => {
 	});
 
 	test('an INCONCLUSIVE test that never killed anything gets the plain contextValue, no fabricated contradiction', async () => {
-		setPerTestState({ moduleId: 'root', perTest: PER_TEST, warnings: [] });
+		setPerTestState({ perTest: PER_TEST, warnings: [] });
 		const inconclusiveFinding: Finding = { ...FINDINGS[0], confidence: 'INCONCLUSIVE' };
 		const { document, workspaceRoot } = await openProductionFile('Calculator');
 		setCoverageState({ ...STATE, workspaceRoot, findings: [inconclusiveFinding] });

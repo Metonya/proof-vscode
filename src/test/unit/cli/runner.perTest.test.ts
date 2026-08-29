@@ -51,7 +51,7 @@ test('a real --per-test-report run: perTest parses, testsForClass finds real lin
 	}
 	assert.ok(parsed.value.perTest, 'expected a real perTest block');
 
-	const lookup = testsForClass(parsed.value.perTest, 'root', 'dev.coverdict.playground.Calculator');
+	const lookup = testsForClass(parsed.value.perTest, 'dev.coverdict.playground.Calculator');
 	assert.equal(lookup.kind, 'found');
 	if (lookup.kind !== 'found') {
 		return;

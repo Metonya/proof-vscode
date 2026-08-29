@@ -3,8 +3,8 @@ import * as vscode from 'vscode';
 import { detectClassName } from '../model/classNameDetector';
 import { testsForClass, testsToLines, type TestLineRef } from '../model/lineIndex';
 import { classifySourcePath, toAbsolutePath, toRepoRelativePath } from '../model/pathIndex';
-import { buildProductionClassIndex, productionSourceRoots } from '../model/productionClassIndex';
-import { getCoverageState, getPerTestState } from '../model/store';
+import { buildProductionClassIndex, productionSourceRoots, testSourceRoots } from '../model/productionClassIndex';
+import { getCoverageState, getPerTestState, type CoverageState } from '../model/store';
 import { indexFindingsByTestMethod, lineQuality, type LineQuality } from '../model/testQuality';
 import { parseTestIdentity } from '../verdict/testIdentity';
 import type { Finding, PerTestBlock } from '../verdict/types';
@@ -20,12 +20,10 @@ import { locateTestFile } from './testFileLocator';
  *   - a test method (cursor on its name in a test file) -> which
  *     production lines it runs, within this run's per-test-target scope.
  *
- * Single-module-shorthand scope, same as the rest of the extension until
- * F8's config UI: source/test roots are the CLI's own conventional
- * defaults, not read from a config the extension does not yet model.
+ * Faz 30: source/test roots come from the run's own `inputs.modules[]`
+ * declaration (`productionSourceRoots`/`testSourceRoots`), not a hardcoded
+ * `src/main/java`/`src/test/java` - correct for multi-module layouts too.
  */
-const MODULE_ID = 'root';
-const DEFAULT_TEST_ROOTS = ['src/test/java'];
 
 export function registerHoverProvider(): vscode.Disposable {
 	return vscode.languages.registerHoverProvider({ language: 'java' }, { provideHover });
@@ -57,12 +55,12 @@ async function provideHover(document: vscode.TextDocument, position: vscode.Posi
 	}
 
 	const lineNumber = position.line + 1;
-	const productionLookup = testsForClass(perTestState.perTest, perTestState.moduleId, className);
+	const productionLookup = testsForClass(perTestState.perTest, className);
 	if (productionLookup.kind === 'found') {
 		const tests = productionLookup.linesToTests.get(lineNumber);
 		if (tests && tests.length > 0) {
 			const quality = lineQuality(tests, findingsByTestMethod);
-			return productionHover(coverageState.workspaceRoot, lineNumber, quality);
+			return productionHover(coverageState.workspaceRoot, coverageState.modules, lineNumber, quality);
 		}
 		return undefined; // a known class, but this specific line has no per-test evidence - no hover, not a guess
 	}
@@ -70,7 +68,7 @@ async function provideHover(document: vscode.TextDocument, position: vscode.Posi
 	return testMethodHover(document, position, perTestState.perTest, coverageState.workspaceRoot, className);
 }
 
-async function productionHover(workspaceRoot: string, lineNumber: number, quality: LineQuality): Promise<vscode.Hover> {
+async function productionHover(workspaceRoot: string, modules: CoverageState['modules'], lineNumber: number, quality: LineQuality): Promise<vscode.Hover> {
 	const md = new vscode.MarkdownString(undefined, true);
 	md.isTrusted = true;
 
@@ -88,7 +86,7 @@ async function productionHover(workspaceRoot: string, lineNumber: number, qualit
 	const uniqueClassNames = [...new Set(quality.tests.map((t) => parseTestIdentity(t.rawTestId).className).filter((c): c is string => c !== null))];
 	const pathByClassName = new Map(await Promise.all(uniqueClassNames.map(async (className): Promise<[string, string | undefined]> => {
 		const findingWithPath = quality.tests.find((t) => t.finding && parseTestIdentity(t.rawTestId).className === className)?.finding?.path;
-		return [className, await locateTestFile(workspaceRoot, DEFAULT_TEST_ROOTS, className, findingWithPath)];
+		return [className, await locateTestFile(workspaceRoot, testSourceRoots(modules), className, findingWithPath)];
 	})));
 
 	for (const test of quality.tests) {
@@ -119,7 +117,7 @@ async function testMethodHover(document: vscode.TextDocument, position: vscode.P
 	// Faz 21: test sınıflarının kendi satırları elenir - `entries` onları da
 	// içeriyor, süzülmezse test kendi gövdesini "çalıştırdığı production
 	// satırı" diye gösterirdi (`ui/treeViews/lineTestsView.ts` ile aynı süzgeç).
-	const reverse = testsToLines(perTest, MODULE_ID, productionClassFilter()).get(key);
+	const reverse = testsToLines(perTest, productionClassFilter()).get(key);
 	if (!reverse || reverse.length === 0) {
 		return undefined; // not a known test method - no hover, not a guess
 	}
@@ -148,7 +146,7 @@ function buildProductionClassIndexFor(): ReadonlyMap<string, string> | undefined
 	if (!state?.fileCoverage) {
 		return undefined;
 	}
-	return buildProductionClassIndex(state.fileCoverage, productionSourceRoots(state.modules));
+	return buildProductionClassIndex(state.fileCoverage, productionSourceRoots(state.modules)).byClassName;
 }
 
 /** Faz 21: hangi sınıflar production - `fileCoverage.files[]` bu koşunun yetkili listesi; blok yoksa süzgeç de yok (eksik bilgiyle elemek kanıt yok eder). */

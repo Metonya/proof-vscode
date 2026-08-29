@@ -117,7 +117,7 @@ export class MutationTreeProvider implements vscode.TreeDataProvider<MutationNod
 		}
 
 		const header: MutationNode = { kind: 'header', text: headerText(state) };
-		const classes = classesOf(state.mutation, state.moduleId, productionClassFilter())
+		const classes = classesOf(state.mutation, productionClassFilter())
 			.map((c) => ({ ...c, methods: this.visibleMethods(c.methods) }))
 			.filter((c) => c.methods.length > 0);
 
@@ -146,7 +146,12 @@ export class MutationTreeProvider implements vscode.TreeDataProvider<MutationNod
  */
 function noMutationEvidenceMessage(): string {
 	const state = getMutationState();
-	const warningFor = (code: string) => state?.warnings.find((w) => w.code === code && (w.module === undefined || w.module === state.moduleId));
+	// Faz 30: `state.warnings` is already the complete, exact warning list this
+	// run produced - there is no "wrong module" a warning in it could belong
+	// to, so filtering by module (the old `w.module === state.moduleId` check)
+	// never excluded anything real. Matching by code alone is the same
+	// behavior without a moduleId to compare against.
+	const warningFor = (code: string) => state?.warnings.find((w) => w.code === code);
 
 	if (warningFor('MUTATION_BUDGET_EXCEEDED')) {
 		return 'Mutasyon koşusu zaman bütçesini aştı ve sonuç üretemeden durduruldu. coverdict.mutationTimeout ayarını artırın ya da tek bir sınıf hedefleyin (dosyada sağ tık).';
@@ -276,7 +281,7 @@ export function findMutationBridgeTarget(className: string, methodName: string, 
 	if (!state?.mutation) {
 		return undefined;
 	}
-	const classes = classesOf(state.mutation, state.moduleId, productionClassFilter());
+	const classes = classesOf(state.mutation, productionClassFilter());
 	const found = findMutatedMethod(classes, className, methodName, methodDescription);
 	return found ? { kind: 'method', className: found.cls.className, method: found.method, siblings: found.cls.methods } : undefined;
 }
@@ -305,7 +310,7 @@ function lineHasPerTestEvidence(className: string, line: number): boolean {
 	if (!perTestState?.perTest) {
 		return false;
 	}
-	const lookup = testsForClass(perTestState.perTest, perTestState.moduleId, className);
+	const lookup = testsForClass(perTestState.perTest, className);
 	return lookup.kind === 'found' && lookup.linesToTests.has(line);
 }
 
@@ -396,8 +401,8 @@ function productionClassFilter(): ((className: string) => boolean) | undefined {
 	if (!state?.fileCoverage) {
 		return undefined;
 	}
-	const index = buildProductionClassIndex(state.fileCoverage, productionSourceRoots(state.modules));
-	return (className) => index.has(className);
+	const { byClassName } = buildProductionClassIndex(state.fileCoverage, productionSourceRoots(state.modules));
+	return (className) => byClassName.has(className);
 }
 
 /** Sınıfın dosyası `fileCoverage.files[]`'ten çözülür; bilinmiyorsa komut yok - yanlış dosyaya atlamaktansa atlamamak yeğdir. */
@@ -406,7 +411,7 @@ function openCommandFor(className: string, line: number, title: string): vscode.
 	if (!state?.fileCoverage) {
 		return undefined;
 	}
-	const path = buildProductionClassIndex(state.fileCoverage, productionSourceRoots(state.modules)).get(className);
+	const path = buildProductionClassIndex(state.fileCoverage, productionSourceRoots(state.modules)).byClassName.get(className);
 	if (!path) {
 		return undefined;
 	}

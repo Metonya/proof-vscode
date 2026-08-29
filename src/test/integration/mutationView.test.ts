@@ -91,7 +91,7 @@ suite('Mutation view (Faz 20)', () => {
 	test('an empty result explains the specific warning that caused it', () => {
 		setCoverageState(STATE);
 		setMutationState({
-			moduleId: 'root', mutation: undefined, targets: [], ranAt: undefined,
+			mutation: undefined, targets: [], ranAt: undefined,
 			warnings: [{ code: 'MUTATION_BUDGET_EXCEEDED', message: 'budget exhausted', module: 'root' }],
 		});
 		const provider = new MutationTreeProvider();
@@ -111,7 +111,7 @@ suite('Mutation view (Faz 20)', () => {
 	 */
 	test('a fresh run shows a header naming the target and "az önce"', () => {
 		setCoverageState(STATE);
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: ['dev.coverdict.playground.Calculator'], ranAt: Date.now() });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: ['dev.coverdict.playground.Calculator'], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
 		const roots = provider.getChildren();
@@ -124,7 +124,7 @@ suite('Mutation view (Faz 20)', () => {
 	/** A result restored from disk (extension.ts on window reload) has no `ranAt` - the header must say so, not guess a time. */
 	test('a restored result (no ranAt) says so instead of guessing a time', () => {
 		setCoverageState(STATE);
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: undefined });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: [], ranAt: undefined });
 		const provider = new MutationTreeProvider();
 
 		const header = provider.getChildren()[0];
@@ -135,7 +135,7 @@ suite('Mutation view (Faz 20)', () => {
 
 	test('class -> method -> mutant -> killing test, with test classes filtered out', () => {
 		setCoverageState(STATE);
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: ['dev.coverdict.playground.Calculator'], ranAt: Date.now() });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: ['dev.coverdict.playground.Calculator'], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
 		const classes = classNodes(provider);
@@ -166,7 +166,7 @@ suite('Mutation view (Faz 20)', () => {
 	/** A NO_COVERAGE mutant is not evidence of a bad test - it is evidence of no test at all. */
 	test('an indeterminate mutant is labelled with its own status, never as killed or survived', () => {
 		setCoverageState(STATE);
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
 		const methods = provider.getChildren(classNodes(provider)[0]);
@@ -200,7 +200,7 @@ suite('Mutation view (Faz 20)', () => {
 			}],
 		};
 		setCoverageState(STATE);
-		setMutationState({ moduleId: 'root', mutation: mixedMethod, warnings: [], targets: [], ranAt: Date.now() });
+		setMutationState({ mutation: mixedMethod, warnings: [], targets: [], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
 		const describe = provider.getChildren(classNodes(provider)[0]).find((m) => m.kind === 'method' && m.method.methodName === 'describe')!;
@@ -209,7 +209,7 @@ suite('Mutation view (Faz 20)', () => {
 
 	test('survivors-only filter keeps the methods worth looking at and can be turned back off', () => {
 		setCoverageState(STATE);
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
 		assert.equal(provider.isSurvivorsOnly(), false, 'default: hide nothing');
@@ -244,7 +244,7 @@ suite('Mutation view (Faz 20)', () => {
 
 	test('a method with a matching real PSEUDO_TESTED_METHOD finding gets the bridge contextValue, an unrelated method does not', () => {
 		setCoverageState({ ...STATE, findings: [SQUARE_PSEUDO_TESTED_FINDING] });
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
 		const methods = provider.getChildren(classNodes(provider)[0]);
@@ -257,7 +257,7 @@ suite('Mutation view (Faz 20)', () => {
 
 	test('getParent: a method node resolves back to its class node, siblings intact for reveal()', () => {
 		setCoverageState(STATE);
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
 		const classNode = classNodes(provider)[0];
@@ -268,7 +268,7 @@ suite('Mutation view (Faz 20)', () => {
 
 	test('findMutationBridgeTarget: finds the real square() method by its productionMethod-derived identity', () => {
 		setCoverageState(STATE);
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
 
 		const target = findMutationBridgeTarget('dev.coverdict.playground.Calculator', 'square', '(I)I');
 		assert.ok(target);
@@ -280,13 +280,13 @@ suite('Mutation view (Faz 20)', () => {
 
 	test('findMutationBridgeTarget: no mutation data at all -> undefined, not a guess', () => {
 		setCoverageState(STATE);
-		setMutationState({ moduleId: 'root', mutation: undefined, warnings: [], targets: [], ranAt: undefined });
+		setMutationState({ mutation: undefined, warnings: [], targets: [], ranAt: undefined });
 		assert.equal(findMutationBridgeTarget('dev.coverdict.playground.Calculator', 'square', '(I)I'), undefined);
 	});
 
 	test('findMutationBridgeTarget: mutation data present but this method is not in it (stale result) -> undefined', () => {
 		setCoverageState(STATE);
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
 		assert.equal(findMutationBridgeTarget('dev.coverdict.playground.Calculator', 'notAMethod', '()V'), undefined);
 	});
 
@@ -305,7 +305,7 @@ suite('Mutation view (Faz 20)', () => {
 			testMethod: 'dev.coverdict.playground.CalculatorSubsumedTest#divideNarrow()',
 		};
 		setCoverageState({ ...STATE, findings: [inconclusiveFinding] });
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: ['dev.coverdict.playground.Calculator'], ranAt: Date.now() });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: ['dev.coverdict.playground.Calculator'], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
 		const divide = provider.getChildren(classNodes(provider)[0]).find((m) => m.kind === 'method' && m.method.methodName === 'divide')!;
@@ -317,7 +317,7 @@ suite('Mutation view (Faz 20)', () => {
 
 	test('a killing test with no matching finding at all gets the plain leaf, no fabricated note', () => {
 		setCoverageState({ ...STATE, findings: [] });
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
 		const divide = provider.getChildren(classNodes(provider)[0]).find((m) => m.kind === 'method' && m.method.methodName === 'divide')!;
@@ -349,8 +349,8 @@ suite('Mutation view (Faz 20)', () => {
 
 	test('a SURVIVED mutant whose line has real perTest coverage gets the bridge contextValue and tooltip note', () => {
 		setCoverageState(STATE);
-		setPerTestState({ moduleId: 'root', perTest: SQUARE_PER_TEST, warnings: [] });
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+		setPerTestState({ perTest: SQUARE_PER_TEST, warnings: [] });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
 		const square = provider.getChildren(classNodes(provider)[0]).find((m) => m.kind === 'method' && m.method.methodName === 'square')!;
@@ -362,8 +362,8 @@ suite('Mutation view (Faz 20)', () => {
 
 	test('a mutant whose line has no perTest record at all gets the plain contextValue, no fabricated bridge', () => {
 		setCoverageState(STATE);
-		setPerTestState({ moduleId: 'root', perTest: SQUARE_PER_TEST, warnings: [] });
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+		setPerTestState({ perTest: SQUARE_PER_TEST, warnings: [] });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
 		const divide = provider.getChildren(classNodes(provider)[0]).find((m) => m.kind === 'method' && m.method.methodName === 'divide')!;
@@ -374,8 +374,8 @@ suite('Mutation view (Faz 20)', () => {
 
 	test('no perTest data collected at all - every mutant gets the plain contextValue', () => {
 		setCoverageState(STATE);
-		setPerTestState({ moduleId: 'root', perTest: undefined, warnings: [] });
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+		setPerTestState({ perTest: undefined, warnings: [] });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
 		const square = provider.getChildren(classNodes(provider)[0]).find((m) => m.kind === 'method' && m.method.methodName === 'square')!;

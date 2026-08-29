@@ -63,7 +63,7 @@ async function openPaddedJavaFile(rootRelativeDir: string, packageName: string, 
 
 suite('Hover provider (Faz 15b)', () => {
 	test('a false-green production line hover names the missing oracle', async () => {
-		setPerTestState({ moduleId: 'root', perTest: PER_TEST, warnings: [] });
+		setPerTestState({ perTest: PER_TEST, warnings: [] });
 		const { document, workspaceRoot } = await openPaddedJavaFile('src/main/java', 'dev.coverdict.playground', 'Calculator');
 		setCoverageState({ ...STATE, workspaceRoot });
 
@@ -82,7 +82,7 @@ suite('Hover provider (Faz 15b)', () => {
 	});
 
 	test('a line with no per-test evidence at all produces no hover (no data, no claim)', async () => {
-		setPerTestState({ moduleId: 'root', perTest: PER_TEST, warnings: [] });
+		setPerTestState({ perTest: PER_TEST, warnings: [] });
 		const { document, workspaceRoot } = await openPaddedJavaFile('src/main/java', 'dev.coverdict.playground', 'Calculator');
 		setCoverageState({ ...STATE, workspaceRoot });
 
@@ -126,7 +126,7 @@ suite('Hover provider (Faz 15b)', () => {
 				ambient: [],
 			}],
 		};
-		setPerTestState({ moduleId: 'root', perTest: realPerTest, warnings: [] });
+		setPerTestState({ perTest: realPerTest, warnings: [] });
 		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-hoverProvider-'));
 		const dir = path.join(workspaceRoot, 'src', 'test', 'java', 'dev', 'coverdict', 'playground');
 		fs.mkdirSync(dir, { recursive: true });

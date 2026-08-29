@@ -47,21 +47,43 @@ const FINDINGS: readonly Finding[] = [
 
 /** Real data shape from a live --per-test-target run (Faz 15 session) - line 37's single test has no oracle, line 15's has a real one alongside a weak one. */
 test('buildFalseGreenIndex: a line whose only covering test has no oracle is in the index, keyed by the production file path', () => {
-	const index = buildFalseGreenIndex(PER_TEST, 'root', FINDINGS, FILE_COVERAGE, ['src/main/java']);
+	const index = buildFalseGreenIndex(PER_TEST, FINDINGS, FILE_COVERAGE, ['src/main/java']);
 	const lines = index.get('src/main/java/dev/coverdict/playground/Calculator.java');
 	assert.ok(lines?.has(37));
 });
 
 test('buildFalseGreenIndex: a line with at least one test that has no finding is not in the index', () => {
-	const index = buildFalseGreenIndex(PER_TEST, 'root', FINDINGS, FILE_COVERAGE, ['src/main/java']);
+	const index = buildFalseGreenIndex(PER_TEST, FINDINGS, FILE_COVERAGE, ['src/main/java']);
 	const lines = index.get('src/main/java/dev/coverdict/playground/Calculator.java');
 	assert.ok(!lines?.has(15));
 });
 
-test('buildFalseGreenIndex: no perTest module for the id returns an empty index, not an error', () => {
-	assert.equal(buildFalseGreenIndex(PER_TEST, 'nope', FINDINGS, FILE_COVERAGE, ['src/main/java']).size, 0);
+test('buildFalseGreenIndex: an empty modules array returns an empty index, not an error', () => {
+	const empty: PerTestBlock = { engine: 'pitest', engineVersion: '1.15.8', modules: [] };
+	assert.equal(buildFalseGreenIndex(empty, FINDINGS, FILE_COVERAGE, ['src/main/java']).size, 0);
 });
 
 test('buildFalseGreenIndex: no fileCoverage (flag not requested) returns an empty index rather than guessing a path', () => {
-	assert.equal(buildFalseGreenIndex(PER_TEST, 'root', FINDINGS, undefined, ['src/main/java']).size, 0);
+	assert.equal(buildFalseGreenIndex(PER_TEST, FINDINGS, undefined, ['src/main/java']).size, 0);
+});
+
+/** Faz 30: evidence from several bound modules merges. */
+test('buildFalseGreenIndex: merges evidence across two modules', () => {
+	const secondFileCoverage: FileCoverageBlock = {
+		files: [...FILE_COVERAGE.files, { module: 'gson', path: 'gson/src/main/java/com/example/Other.java', metrics: METRIC_SET, lines: [] }],
+		excluded: [],
+	};
+	const secondModule: PerTestBlock = {
+		engine: 'pitest', engineVersion: '1.15.8',
+		modules: [
+			...PER_TEST.modules,
+			{ id: 'gson', entries: [{ className: 'com.example.Other', methodName: 'run', lines: [{ line: 9, tests: ['[class:com.example.OtherTest]/[method:runs()]'] }] }], ambient: [] },
+		],
+	};
+	const otherFindings: readonly Finding[] = [
+		{ rule: 'NO_RECOGNIZED_ORACLE', confidence: 'HIGH', severity: 'WARNING', module: 'gson', path: 'x', startLine: 1, endLine: 1, message: 'm', suggestedAction: 'a', fingerprint: '3', testMethod: 'com.example.OtherTest#runs()' },
+	];
+	const index = buildFalseGreenIndex(secondModule, [...FINDINGS, ...otherFindings], secondFileCoverage, ['src/main/java', 'gson/src/main/java']);
+	assert.ok(index.get('src/main/java/dev/coverdict/playground/Calculator.java')?.has(37));
+	assert.ok(index.get('gson/src/main/java/com/example/Other.java')?.has(9));
 });

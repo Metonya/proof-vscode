@@ -32,9 +32,6 @@ import { QualityTreeProvider } from './ui/treeViews/qualityView';
 import { RunTreeProvider } from './ui/treeViews/runView';
 import { isMutationBlock, isPerTestBlock, parseVerdict } from './verdict/parse';
 
-/** F3's module id, same single-module-shorthand scope as everywhere else until F8's config UI adds real multi-module support. */
-const MODULE_ID = 'root';
-
 /**
  * Registration only - no logic lives here. Features register themselves
  * from src/ui/commands.ts and friends as they land; this function stays a
@@ -214,7 +211,7 @@ export async function restoreLastCoverageFrom(storageDir: string, workspaceRoot:
 	// tekrar `setPerTestState` çağırıp onu `verdict-current.json`'ın
 	// (muhtemelen perTest'siz) haliyle ezmiyoruz - hangisi varsa o kalır.
 	if (!perTestRestored) {
-		setPerTestState({ moduleId: MODULE_ID, perTest: parsed.value.perTest, warnings: parsed.value.warnings });
+		setPerTestState({ perTest: parsed.value.perTest, warnings: parsed.value.warnings });
 	}
 	// Faz 23: publishAnalysis kendi refresh()'ini setPerTestState çağrılmadan
 	// ÖNCE tetikliyor (bu fonksiyonun içinde), yani TreeView eski/boş
@@ -242,10 +239,18 @@ async function restoreMutationSnapshot(storageDir: string, sinks: CoverageSinks)
 	if (!snapshot) {
 		return;
 	}
-	setMutationState({ moduleId: snapshot.moduleId, mutation: snapshot.mutation, warnings: snapshot.warnings, targets: snapshot.targets, ranAt: snapshot.ranAtMs });
+	setMutationState({ mutation: snapshot.mutation, warnings: snapshot.warnings, targets: snapshot.targets, ranAt: snapshot.ranAtMs });
 	sinks.mutationView.refresh();
 }
 
+/**
+ * Faz 30: `moduleId` is no longer part of the shape (state dropped it - a
+ * merged-across-modules run has no single id to carry), but an old
+ * snapshot file written before this change still has it as an extra key.
+ * That is fine: this check only validates field *presence*, not exact
+ * shape, so an old file with a harmless extra `moduleId` key still passes
+ * and still restores correctly. No migration, no data loss.
+ */
 function parseMutationSnapshot(raw: string): MutationSnapshot | undefined {
 	let json: unknown;
 	try {
@@ -255,7 +260,6 @@ function parseMutationSnapshot(raw: string): MutationSnapshot | undefined {
 	}
 	if (
 		typeof json !== 'object' || json === null
-		|| !('moduleId' in json) || typeof json.moduleId !== 'string'
 		|| !('mutation' in json) || !isMutationBlock(json.mutation)
 		|| !('warnings' in json) || !Array.isArray(json.warnings)
 		|| !('targets' in json) || !Array.isArray(json.targets) || !json.targets.every((t) => typeof t === 'string')
@@ -283,13 +287,14 @@ async function restorePerTestSnapshot(storageDir: string, sinks: CoverageSinks):
 	if (!snapshot) {
 		return false;
 	}
-	setPerTestState({ moduleId: snapshot.moduleId, perTest: snapshot.perTest, warnings: snapshot.warnings });
+	setPerTestState({ perTest: snapshot.perTest, warnings: snapshot.warnings });
 	// verdict-current.json bağımsız olarak eksik/bozuk olabilir (§7.5/§7.5b
 	// aynı gerekçe) - bu yenileme onun varlığına bağlı olmamalı.
 	sinks.lineTestsView.refresh();
 	return true;
 }
 
+/** Faz 30: same "extra key is harmless" note as `parseMutationSnapshot` above. */
 function parsePerTestSnapshot(raw: string): PerTestSnapshot | undefined {
 	let json: unknown;
 	try {
@@ -299,7 +304,6 @@ function parsePerTestSnapshot(raw: string): PerTestSnapshot | undefined {
 	}
 	if (
 		typeof json !== 'object' || json === null
-		|| !('moduleId' in json) || typeof json.moduleId !== 'string'
 		|| !('perTest' in json) || !isPerTestBlock(json.perTest)
 		|| !('warnings' in json) || !Array.isArray(json.warnings)
 	) {

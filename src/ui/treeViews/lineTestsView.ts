@@ -199,13 +199,13 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 		const kind = this.classifyActiveDocument(document);
 
 		const reverseView = () => {
-			const reverse = testsToLines(perTestState.perTest!, perTestState.moduleId, productionClassFilter());
+			const reverse = testsToLines(perTestState.perTest!, productionClassFilter());
 			return [...reverse.keys()].some((key) => key.startsWith(`${className}#`))
 				? { kind: 'test' as const, className, reverse }
 				: undefined;
 		};
 		const productionView = () => {
-			const production = testsForClass(perTestState.perTest!, perTestState.moduleId, className);
+			const production = testsForClass(perTestState.perTest!, className);
 			return production.kind === 'found'
 				? { kind: 'production' as const, linesToTests: production.linesToTests, linesToMethod: production.linesToMethod }
 				: undefined;
@@ -245,8 +245,8 @@ function productionClassFilter(): ((outerClassName: string) => boolean) | undefi
 	if (!state?.fileCoverage) {
 		return undefined;
 	}
-	const index = buildProductionClassIndex(state.fileCoverage, productionSourceRoots(state.modules));
-	return (outerClassName) => index.has(outerClassName);
+	const { byClassName } = buildProductionClassIndex(state.fileCoverage, productionSourceRoots(state.modules));
+	return (outerClassName) => byClassName.has(outerClassName);
 }
 
 /** Bir satır "sorunlu" sayılır: cover eden testlerden en az biri `ok` değil (doğrulaması yok/zayıf/gereksiz ya da çözülemedi). */
@@ -330,14 +330,14 @@ function prodTestItem(node: Extract<LineTestsNode, { kind: 'prodTest' }>): vscod
 /** `getMutationState()`'te bu test için gerçekten bir `killingTests` kaydı var mı - `ui/commands.ts`'in köprü komutu bunu `findMutationBridgeTarget`'a besler. */
 function findContradictionEvidence(testClassName: string, testMethodName: string): KillContribution | undefined {
 	const state = getMutationState();
-	return state?.mutation ? findKillContribution(state.mutation, state.moduleId, testClassName, testMethodName) : undefined;
+	return state?.mutation ? findKillContribution(state.mutation, testClassName, testMethodName) : undefined;
 }
 
 function testLineItem(node: Extract<LineTestsNode, { kind: 'testLine' }>): vscode.TreeItem {
 	const state = getCoverageState();
 	const item = leaf(`${shortName(node.ref.outerClassName)}.java : ${node.ref.line}`, 'circle-filled');
 	const productionIndex = state?.fileCoverage ? buildProductionClassIndex(state.fileCoverage, productionSourceRoots(state.modules)) : undefined;
-	const path = productionIndex?.get(node.ref.outerClassName);
+	const path = productionIndex?.byClassName.get(node.ref.outerClassName);
 	if (state && path) {
 		const uri = vscode.Uri.file(toAbsolutePath(state.workspaceRoot, path));
 		const selection = new vscode.Range(node.ref.line - 1, 0, node.ref.line - 1, 0);
@@ -376,7 +376,12 @@ function verdictColor(verdict: TestVerdict): vscode.ThemeColor | undefined {
  */
 function noPerTestDataMessage(): string {
 	const perTestState = getPerTestState();
-	const warningFor = (code: string) => perTestState?.warnings.find((w) => w.code === code && (w.module === undefined || w.module === perTestState.moduleId));
+	// Faz 30: `perTestState.warnings` is already the complete, exact warning
+	// list this run produced - there is no "wrong module" a warning in it
+	// could belong to, so filtering by module (the old
+	// `w.module === perTestState.moduleId` check) never excluded anything
+	// real. Matching by code alone is the same behavior without a moduleId.
+	const warningFor = (code: string) => perTestState?.warnings.find((w) => w.code === code);
 
 	const truncated = warningFor('PER_TEST_TRUNCATED');
 	if (truncated) {

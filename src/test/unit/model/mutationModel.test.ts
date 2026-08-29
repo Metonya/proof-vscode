@@ -69,22 +69,31 @@ const BLOCK: MutationBlock = {
 };
 
 test('classesOf: production süzgeciyle test sınıfları elenir', () => {
-	const classes = classesOf(BLOCK, 'root', (c) => c === 'dev.coverdict.playground.Calculator');
+	const classes = classesOf(BLOCK, (c) => c === 'dev.coverdict.playground.Calculator');
 	assert.deepEqual(classes.map((c) => c.className), ['dev.coverdict.playground.Calculator']);
 	assert.equal(classes[0].methods.length, 2);
 });
 
 test('classesOf: süzgeç verilmezse hiçbir şey elenmez - eksik bilgiyle elemek kanıt yok eder', () => {
-	assert.equal(classesOf(BLOCK, 'root').length, 2);
+	assert.equal(classesOf(BLOCK).length, 2);
 });
 
 test('classesOf: metotlar satır sırasına göre, sınıflar ada göre sıralanır', () => {
-	const methods = classesOf(BLOCK, 'root', () => true).find((c) => c.className.endsWith('Calculator'))!.methods;
+	const methods = classesOf(BLOCK, () => true).find((c) => c.className.endsWith('Calculator'))!.methods;
 	assert.deepEqual(methods.map((m) => m.firstLine), [22, 37]);
 });
 
-test('classesOf: bilinmeyen modül id boş liste döner, hata değil', () => {
-	assert.deepEqual(classesOf(BLOCK, 'nope'), []);
+/** Faz 30: birden fazla bağlı modülün metotları birleşir. */
+test('classesOf: birden fazla modülün metotları birleşir', () => {
+	const twoModules: MutationBlock = {
+		engine: 'pitest', engineVersion: '1.15.8',
+		modules: [
+			BLOCK.modules[0],
+			{ id: 'gson', methods: [method('com.example.Other', 'run', 5, [mutant('KILLED', 5)])] },
+		],
+	};
+	const classes = classesOf(twoModules);
+	assert.deepEqual(classes.map((c) => c.className).sort(), ['com.example.Other', 'dev.coverdict.playground.Calculator', 'dev.coverdict.playground.CalculatorSubsumedTest']);
 });
 
 /**
@@ -181,7 +190,7 @@ test('findMutatedMethod: gerçek playground şekliyle, method + description eşl
 				{ className: 'dev.coverdict.playground.Calculator', methodName: 'add', methodDescription: '(II)I', firstLine: 6, lastLine: 8, mutants: [] },
 			],
 		}],
-	}, 'root');
+	});
 	const found = findMutatedMethod(classes, 'dev.coverdict.playground.Calculator', 'square', '(I)I');
 	assert.ok(found);
 	assert.equal(found?.method.methodName, 'square');
@@ -189,7 +198,7 @@ test('findMutatedMethod: gerçek playground şekliyle, method + description eşl
 });
 
 test('findMutatedMethod: bir eşleşme yoksa (güncel olmayan mutasyon sonucu) undefined döner, uydurmaz', () => {
-	const classes = classesOf({ engine: 'pitest', engineVersion: '1.15.8', modules: [{ id: 'root', methods: [] }] }, 'root');
+	const classes = classesOf({ engine: 'pitest', engineVersion: '1.15.8', modules: [{ id: 'root', methods: [] }] });
 	assert.equal(findMutatedMethod(classes, 'dev.coverdict.playground.Calculator', 'square', '(I)I'), undefined);
 });
 
@@ -239,14 +248,15 @@ const ADD_MUTATION_WITH_CONTRADICTION: MutationBlock = {
 };
 
 test('findKillContribution: a test statically INCONCLUSIVE is found in a real mutant\'s killingTests - the contradiction is real', () => {
-	const found = findKillContribution(ADD_MUTATION_WITH_CONTRADICTION, 'root', 'dev.coverdict.playground.CalculatorUnresolvedOracleTest', 'addCheckedViaLocalSoftAssertions');
+	const found = findKillContribution(ADD_MUTATION_WITH_CONTRADICTION, 'dev.coverdict.playground.CalculatorUnresolvedOracleTest', 'addCheckedViaLocalSoftAssertions');
 	assert.deepEqual(found, { className: 'dev.coverdict.playground.Calculator', methodName: 'add', methodDescription: '(II)I', mutantLine: 7 });
 });
 
 test('findKillContribution: a test that never killed anything -> undefined, no contradiction to report', () => {
-	assert.equal(findKillContribution(ADD_MUTATION_WITH_CONTRADICTION, 'root', 'dev.coverdict.playground.CalculatorNoOracleTest', 'subtractHasNoAssertion'), undefined);
+	assert.equal(findKillContribution(ADD_MUTATION_WITH_CONTRADICTION, 'dev.coverdict.playground.CalculatorNoOracleTest', 'subtractHasNoAssertion'), undefined);
 });
 
-test('findKillContribution: module id not present -> undefined', () => {
-	assert.equal(findKillContribution(ADD_MUTATION_WITH_CONTRADICTION, 'nope', 'dev.coverdict.playground.CalculatorUnresolvedOracleTest', 'addCheckedViaLocalSoftAssertions'), undefined);
+test('findKillContribution: an empty modules array -> undefined, not an error', () => {
+	const empty: MutationBlock = { engine: 'pitest', engineVersion: '1.15.8', modules: [] };
+	assert.equal(findKillContribution(empty, 'dev.coverdict.playground.CalculatorUnresolvedOracleTest', 'addCheckedViaLocalSoftAssertions'), undefined);
 });

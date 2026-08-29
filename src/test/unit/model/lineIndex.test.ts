@@ -33,7 +33,7 @@ const BLOCK: PerTestBlock = {
  * `<clinit>`".
  */
 test('a known class returns real entries in linesToTests, static-initializer evidence separately in ambientLinesToTests', () => {
-	const result = testsForClass(BLOCK, 'root', 'dev.coverdict.playground.Calculator');
+	const result = testsForClass(BLOCK, 'dev.coverdict.playground.Calculator');
 	assert.equal(result.kind, 'found');
 	if (result.kind === 'found') {
 		assert.deepEqual(result.linesToTests.get(7), ['CalcTest#addsTwoNumbers()']);
@@ -44,7 +44,7 @@ test('a known class returns real entries in linesToTests, static-initializer evi
 
 /** Faz 24 (§7.6 madde 4): `linesToMethod` gerçek `methodName` alanından geliyor - satır 3 yalnızca ambient'te olduğu için `linesToMethod`'da değil `ambientLinesToMethod`'da görünür. */
 test('linesToMethod carries the real production method name per line, ambient stays in its own map', () => {
-	const result = testsForClass(BLOCK, 'root', 'dev.coverdict.playground.Calculator');
+	const result = testsForClass(BLOCK, 'dev.coverdict.playground.Calculator');
 	assert.equal(result.kind, 'found');
 	if (result.kind === 'found') {
 		assert.equal(result.linesToMethod.get(7), 'add');
@@ -54,21 +54,45 @@ test('linesToMethod carries the real production method name per line, ambient st
 });
 
 test('a nested class entry is matched under its outer class name', () => {
-	const result = testsForClass(BLOCK, 'root', 'dev.coverdict.playground.Calculator');
+	const result = testsForClass(BLOCK, 'dev.coverdict.playground.Calculator');
 	assert.equal(result.kind, 'found');
 	if (result.kind === 'found') {
 		assert.deepEqual(result.linesToTests.get(40), ['CalcTest#innerHelperTest()']);
 	}
 });
 
-test('a module id not present in the block is reported distinctly from a missing class', () => {
-	const result = testsForClass(BLOCK, 'nope', 'dev.coverdict.playground.Calculator');
-	assert.equal(result.kind, 'moduleNotFound');
+/** Faz 30: no L2 evidence collected at all this run (`perTest.modules` empty) is distinct from "collected, but not for this class" (hard rule 3a). */
+test('an empty modules array is noEvidence, distinct from a missing class', () => {
+	const empty: PerTestBlock = { engine: 'pitest', engineVersion: '1.15.8', modules: [] };
+	const result = testsForClass(empty, 'dev.coverdict.playground.Calculator');
+	assert.equal(result.kind, 'noEvidence');
 });
 
 test('a class with no matching entries is classNotFound - "L2 sadece değişen sınıflar için"', () => {
-	const result = testsForClass(BLOCK, 'root', 'dev.coverdict.playground.NotAChangedClass');
+	const result = testsForClass(BLOCK, 'dev.coverdict.playground.NotAChangedClass');
 	assert.equal(result.kind, 'classNotFound');
+});
+
+/** Faz 30: a multi-module run's evidence merges - a class in either module's entries is found, without needing to know which module it came from. */
+test('testsForClass merges evidence across several bound modules', () => {
+	const twoModules: PerTestBlock = {
+		engine: 'pitest', engineVersion: '1.15.8',
+		modules: [
+			BLOCK.modules[0],
+			{
+				id: 'gson',
+				entries: [{ className: 'com.example.Other', methodName: 'run', lines: [{ line: 12, tests: ['OtherTest#runs()'] }] }],
+				ambient: [],
+			},
+		],
+	};
+	const fromFirstModule = testsForClass(twoModules, 'dev.coverdict.playground.Calculator');
+	assert.equal(fromFirstModule.kind, 'found');
+	const fromSecondModule = testsForClass(twoModules, 'com.example.Other');
+	assert.equal(fromSecondModule.kind, 'found');
+	if (fromSecondModule.kind === 'found') {
+		assert.deepEqual(fromSecondModule.linesToTests.get(12), ['OtherTest#runs()']);
+	}
 });
 
 /**
@@ -77,21 +101,21 @@ test('a class with no matching entries is classNotFound - "L2 sadece değişen s
  * testQuality.ts`'in `finding.testMethod` eşleştirmesiyle aynı sözleşme.
  */
 test('testsToLines: a test appears once per production line it covers, keyed by Class#method()', () => {
-	const reverse = testsToLines(BLOCK, 'root');
+	const reverse = testsToLines(BLOCK);
 	const refs = reverse.get('CalcTest#addsTwoNumbers()');
 	assert.ok(refs);
 	assert.deepEqual([...refs!].sort((a, b) => a.line - b.line), [{ outerClassName: 'dev.coverdict.playground.Calculator', line: 7 }]);
 });
 
 test('testsToLines: ambient (<clinit>-only) evidence is excluded - a test does not "run" a line it only reached indirectly', () => {
-	const reverse = testsToLines(BLOCK, 'root');
+	const reverse = testsToLines(BLOCK);
 	const refs = reverse.get('CalcTest#addsTwoNumbers()');
 	assert.ok(refs);
 	assert.ok(!refs!.some((r) => r.line === 3), 'line 3 is ambient-only, must not appear in the reverse index');
 });
 
 test('testsToLines: a nested-class entry is reported under its outer class name', () => {
-	const reverse = testsToLines(BLOCK, 'root');
+	const reverse = testsToLines(BLOCK);
 	const refs = reverse.get('CalcTest#innerHelperTest()');
 	assert.deepEqual(refs, [{ outerClassName: 'dev.coverdict.playground.Calculator', line: 40 }]);
 });
@@ -116,17 +140,18 @@ const BLOCK_WITH_SELF_COVERING_TEST: PerTestBlock = {
 };
 
 test('testsToLines: with a production-class filter, a test does not report its own lines as production lines', () => {
-	const reverse = testsToLines(BLOCK_WITH_SELF_COVERING_TEST, 'root', (c) => c === 'dev.coverdict.playground.Calculator');
+	const reverse = testsToLines(BLOCK_WITH_SELF_COVERING_TEST, (c) => c === 'dev.coverdict.playground.Calculator');
 	assert.deepEqual(reverse.get('CalcTest#addsTwoNumbers()')?.map((r) => r.line), [7]);
 });
 
 test('testsToLines: without a filter nothing is dropped - missing information must not silently delete evidence', () => {
-	const reverse = testsToLines(BLOCK_WITH_SELF_COVERING_TEST, 'root');
+	const reverse = testsToLines(BLOCK_WITH_SELF_COVERING_TEST);
 	assert.deepEqual(reverse.get('CalcTest#addsTwoNumbers()')?.map((r) => r.line), [7, 18]);
 });
 
-test('testsToLines: a module id not present in the block returns an empty map, not an error', () => {
-	assert.equal(testsToLines(BLOCK, 'nope').size, 0);
+test('testsToLines: an empty modules array returns an empty map, not an error', () => {
+	const empty: PerTestBlock = { engine: 'pitest', engineVersion: '1.15.8', modules: [] };
+	assert.equal(testsToLines(empty).size, 0);
 });
 
 /**

@@ -38,10 +38,14 @@ import { findMutationBridgeTarget, type MutationNode, type MutationTreeProvider 
 import { findQualityBridgeTarget, type QualityNode, type QualityTreeProvider } from './treeViews/qualityView';
 import type { RunTreeProvider } from './treeViews/runView';
 
-/** Faz 15d'nin `model/falseGreenIndex.ts`'i şu an tek bir kaynak modülü varsayıyor - F8'in çoklu modül config UI'ı gelene kadar aynı sınır. */
-const DEFAULT_SOURCE_ROOTS = ['src/main/java'];
-
-/** F3's own module id - single-module shorthand only, same scope limit as F1's argsBuilder (multi-module lands with F8). */
+/**
+ * F3's own module id for `--per-test-classpath`/`--mutation-classpath`
+ * binding (L2/L3 evidence collection only - coverage/state no longer carry
+ * a module id at all, Faz 30). Still `'root'` because L2/L3 module binding
+ * itself is still single-module; Faz 30's multi-module work is scoped to
+ * merging *evidence already returned*, not to binding several classpaths
+ * in one run yet.
+ */
 const MODULE_ID = 'root';
 
 /**
@@ -58,7 +62,6 @@ const MODULE_ID = 'root';
 export const MUTATION_STORAGE_FILE = 'mutation-current.json';
 
 export interface MutationSnapshot {
-	moduleId: string;
 	mutation: MutationBlock;
 	warnings: readonly Reason[];
 	targets: readonly string[];
@@ -80,7 +83,6 @@ export interface MutationSnapshot {
 export const PERTEST_STORAGE_FILE = 'pertest-current.json';
 
 export interface PerTestSnapshot {
-	moduleId: string;
 	perTest: PerTestBlock;
 	warnings: readonly Reason[];
 }
@@ -209,7 +211,7 @@ export function registerQualityMutationBridgeCommands(sinks: CoverageSinks): vsc
 			}
 			const mutationState = getMutationState();
 			const contribution = mutationState?.mutation
-				? findKillContribution(mutationState.mutation, mutationState.moduleId, identity.className, identity.methodName)
+				? findKillContribution(mutationState.mutation, identity.className, identity.methodName)
 				: undefined;
 			if (!contribution) {
 				vscode.window.showInformationMessage('coverdict: bu test için mutasyon kanıtı yok - önce Mutasyon Testi çalıştırın.');
@@ -234,7 +236,7 @@ export function registerQualityMutationBridgeCommands(sinks: CoverageSinks): vsc
 				return;
 			}
 			const state = getCoverageState();
-			const filePath = state?.fileCoverage ? buildProductionClassIndex(state.fileCoverage, productionSourceRoots(state.modules)).get(n.className) : undefined;
+			const filePath = state?.fileCoverage ? buildProductionClassIndex(state.fileCoverage, productionSourceRoots(state.modules)).byClassName.get(n.className) : undefined;
 			if (!state || !filePath) {
 				vscode.window.showInformationMessage('coverdict: bu sınıfın dosyası bilinmiyor - önce fileCoverage üreten bir tarama çalıştırın.');
 				return;
@@ -450,12 +452,12 @@ async function runAnalyzePerTest(context: vscode.ExtensionContext, output: vscod
 	}
 
 	publishAnalysis(sinks, folder.uri.fsPath, analysisResultFrom(parsed));
-	setPerTestState({ moduleId: MODULE_ID, perTest: parsed.perTest, warnings: parsed.warnings });
+	setPerTestState({ perTest: parsed.perTest, warnings: parsed.warnings });
 	if (parsed.perTest) {
 		// Faz 28 (§7.5b): yalnızca blok gerçekten varsa yazılır - sonraki bir
 		// Hızlı Tarama ya da Mutasyon Testi bu bloğu taşımayan bir
 		// verdict-current.json yazınca bu dosya etkilenmeden kalır.
-		const snapshot: PerTestSnapshot = { moduleId: MODULE_ID, perTest: parsed.perTest, warnings: parsed.warnings };
+		const snapshot: PerTestSnapshot = { perTest: parsed.perTest, warnings: parsed.warnings };
 		await writeJsonSnapshot(context, output, PERTEST_STORAGE_FILE, snapshot, 'test bazlı kanıt');
 	} else {
 		vscode.window.showWarningMessage('coverdict: bu koşuda test bazlı (per-test) kanıt yok - PER_TEST_* uyarıları için çıktı kanalını kontrol edin.');
@@ -503,9 +505,9 @@ async function runPerTestForFile(context: vscode.ExtensionContext, output: vscod
 	}
 
 	publishAnalysis(sinks, folder.uri.fsPath, analysisResultFrom(parsed));
-	setPerTestState({ moduleId: MODULE_ID, perTest: parsed.perTest, warnings: parsed.warnings });
+	setPerTestState({ perTest: parsed.perTest, warnings: parsed.warnings });
 	if (parsed.perTest) {
-		const snapshot: PerTestSnapshot = { moduleId: MODULE_ID, perTest: parsed.perTest, warnings: parsed.warnings };
+		const snapshot: PerTestSnapshot = { perTest: parsed.perTest, warnings: parsed.warnings };
 		await writeJsonSnapshot(context, output, PERTEST_STORAGE_FILE, snapshot, 'test bazlı kanıt');
 	} else {
 		vscode.window.showWarningMessage(`coverdict: ${className} için test bazlı kanıt yok - PER_TEST_* uyarıları için çıktı kanalını kontrol edin.`);
@@ -597,13 +599,13 @@ async function runMutation(
 
 	publishAnalysis(sinks, folder.uri.fsPath, analysisResultFrom(parsed));
 	const ranAtMs = Date.now();
-	setMutationState({ moduleId: MODULE_ID, mutation: parsed.mutation, warnings: parsed.warnings, targets, ranAt: ranAtMs });
+	setMutationState({ mutation: parsed.mutation, warnings: parsed.warnings, targets, ranAt: ranAtMs });
 	sinks.mutationView.refresh();
 	void vscode.commands.executeCommand('coverdict.mutationView.focus');
 	// Faz 25: yalnızca blok gerçekten varsa yazılır - yoksa (bütçe aşıldı vb.)
 	// eski bir sonucu yeni ama boş bir "koşu" ile ezmemek için hiç dokunulmaz.
 	if (parsed.mutation) {
-		const snapshot: MutationSnapshot = { moduleId: MODULE_ID, mutation: parsed.mutation, warnings: parsed.warnings, targets, ranAtMs };
+		const snapshot: MutationSnapshot = { mutation: parsed.mutation, warnings: parsed.warnings, targets, ranAtMs };
 		await writeJsonSnapshot(context, output, MUTATION_STORAGE_FILE, snapshot, 'mutasyon sonucu');
 	}
 }
@@ -951,8 +953,12 @@ function paintCoverage(sinks: CoverageSinks, workspaceRoot: string, fileCoverage
 		// blending into "covered" - only computed when the setting is on and
 		// there is per-test evidence to compute it from (no perTest -> no claim).
 		const perTest = getPerTestState();
+		// Faz 30: the hardcoded DEFAULT_SOURCE_ROOTS this used to pass silently
+		// disabled the false-green gutter in any multi-module layout (its source
+		// roots are never 'src/main/java' at the repo root) - productionSourceRoots
+		// is the same real declaration every other call site already uses.
 		const falseGreenLinesByPath = showOraclelessLines && perTest?.perTest
-			? buildFalseGreenIndex(perTest.perTest, perTest.moduleId, findings, fileCoverage, DEFAULT_SOURCE_ROOTS)
+			? buildFalseGreenIndex(perTest.perTest, findings, fileCoverage, productionSourceRoots(getCoverageState()?.modules ?? []))
 			: new Map();
 		applyGutterCoverage(sinks.gutterTypes, workspaceRoot, fileCoverage, getStaleFiles(), falseGreenLinesByPath);
 	} else {

@@ -11,23 +11,22 @@ import type { FileCoverageBlock, Finding, PerTestBlock } from '../verdict/types'
  * separation `verdict/coverageMapping.ts`'s doc comment already draws
  * between classification and rendering.
  */
+/** Faz 30: merges every bound module's entries - `perTest.modules` may hold several in a multi-module run. */
 export function buildFalseGreenIndex(
 	perTest: PerTestBlock | undefined,
-	moduleId: string,
 	findings: readonly Finding[],
 	fileCoverage: FileCoverageBlock | undefined,
 	sourceRoots: readonly string[],
 ): ReadonlyMap<string, ReadonlySet<number>> {
 	const index = new Map<string, Set<number>>();
-	const module = perTest?.modules.find((m) => m.id === moduleId);
-	if (!module || !fileCoverage) {
+	if (!perTest || perTest.modules.length === 0 || !fileCoverage) {
 		return index;
 	}
 
-	const classNameToPath = buildProductionClassIndex(fileCoverage, sourceRoots);
+	const { byClassName: classNameToPath } = buildProductionClassIndex(fileCoverage, sourceRoots);
 	const findingsByTestMethod = indexFindingsByTestMethod(findings);
 
-	for (const entry of module.entries) {
+	for (const entry of perTest.modules.flatMap((m) => m.entries)) {
 		const path = classNameToPath.get(stripNestedSuffix(entry.className));
 		if (!path) {
 			continue;
