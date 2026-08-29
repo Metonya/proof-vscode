@@ -1,20 +1,23 @@
 # coverdict-vscode — devir belgesi ve ileri plan
 
-**Son güncelleme:** 2026-08-29, Faz 29 (§7.8, iki geçiş): gson dogfood'unun
-ortaya çıkardığı çok-modül workspace-kökü boşluğu düzeltildi, sonra
-kullanıcının aynı gün verdiği gerçek geri bildirimle (ekran görüntüsüyle)
-ikinci kez düzeltildi - ilk versiyon ilgisiz repoları (`coverdict-corpus`)
-tek bir çok-modüllü projeyle (`gson`) ayırt etmiyordu, ikisini de aynı düz
-"hangi jacoco.xml" listesine koyuyordu. `isProjectRoot()`/
-`describeSiblingProjects()` bu ayrımı yapıyor artık: ilgisiz repolar asla
-bir seçenekmiş gibi sunulmuyor, sadece isimle listelenip kullanıcı doğru
-olanı ayrı açmaya yönlendiriliyor. Gerçek gson checkout'unda (33 bulgu,
-mevcut kalibrasyonla birebir) ve gerçek `coverdict-corpus`'ta (artık hiç
-seçim sunmuyor) uçtan uca doğrulandı. 169 unit + 57 integration, hepsi
-geçti, SonarQube kalite kapısı OK. Önceki: 2026-08-28, Faz 24 sonrası
-(pencere yenileme düzeltmesi, örtük constructor etiketi, Test Kalitesi ↔
-Mutasyon köprüsü, L0/L3 çelişki köprüsü ve NO_COVERAGE açıklaması dahil -
-§7.6'nın tüm maddeleri kapandı).
+**Son güncelleme:** 2026-08-29, Faz 30 (§7.9): gson'a karşı yapılan ikinci
+tur gerçek dogfood'un çıkardığı dört sorunun (ön koşullar sessiz, rapor
+yoksa öneri yok, kolay tekrar-koş yok, çok-modülde tek bir "listeden seç"e
+zorlanma) hepsi tek bir bütçede çözüldü: her modül tek koşuda birden bağlanır
+(`showQuickPick` tamamen kalktı), classpath eksikse `doctor --fix`
+çağrılır, JaCoCo raporu yoksa Maven **görünür bir VS Code Task** olarak
+kendisi çalıştırılabilir (argLine tuzağı önceden tespit edilir), Maven
+gerçekten başarısız olunca CLI'ın kendi stderr'i yorumlanıp Türkçe, eyleme
+dönüştürülebilir bir sebep gösterilir (D-67'nin kardeş-modül tuzağı için
+`mvn install -DskipTests` düğmesi dahil), ve çok-modüllü bir mutasyon/derin
+tarama koşusunda ilerleme çubuğu artık modül geçişlerinde donmuyor. 5 commit,
+212 unit + 57 integration, SonarQube kalite kapısı OK. Önceki: 2026-08-29,
+Faz 29 (§7.8, iki geçiş): gson dogfood'unun ortaya çıkardığı çok-modül
+workspace-kökü boşluğu düzeltildi, sonra kullanıcının aynı gün verdiği
+gerçek geri bildirimle (ekran görüntüsüyle) ikinci kez düzeltildi - ilk
+versiyon ilgisiz repoları (`coverdict-corpus`) tek bir çok-modüllü projeyle
+(`gson`) ayırt etmiyordu, ikisini de aynı düz "hangi jacoco.xml" listesine
+koyuyordu.
 
 ---
 
