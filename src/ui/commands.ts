@@ -777,7 +777,14 @@ async function runAnalyzeCore(
 			// hiç yazılmamıştı). Tanınan satır bildirime yazılır, tanınmayan
 			// satır Output'a **aynen** gider: biçim değişirse yanlış yüzde
 			// göstermektense hiç göstermemek yeğdir (hard rule 3a).
-			let done = 0;
+			//
+			// Faz 30: `done` modül başına tutulur (bir Map) - paylaşılan tek
+			// bir sayaç, bir modül `3/3`'e ulaşıp bir sonraki modül kendi
+			// `1/5`'iyle başladığında negatif bir farkı düşürüp bar'ı donuk
+			// bırakıyordu (gerçek bir çok-modül regresyonu). Modül sayısına
+			// göre ölçeklenir ki N modüllü bir koşuda toplam 100'ü aşmasın.
+			const doneByModule = new Map<string, number>();
+			const moduleCountFor = { mutation: mutationArg?.classpaths.length ?? 1, perTest: perTestArg?.classpaths.length ?? 1 };
 			const handle = run({
 				javaExecutable, jarPath, args,
 				onStderrLine: (line) => {
@@ -786,11 +793,12 @@ async function runAnalyzeCore(
 					if (!event) {
 						return;
 					}
-					const step = incrementFor(event, done);
+					const moduleCount = moduleCountFor[event.kind];
+					const step = incrementFor(event, doneByModule.get(event.moduleId) ?? 0, moduleCount);
 					if (step) {
-						done = step.done;
+						doneByModule.set(event.moduleId, step.done);
 					}
-					progress.report({ increment: step?.increment, message: progressMessage(event) });
+					progress.report({ increment: step?.increment, message: progressMessage(event, moduleCount > 1) });
 				},
 			});
 			let cancelled = false;

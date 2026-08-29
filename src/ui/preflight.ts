@@ -3,8 +3,9 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 
 import type { ModuleReportBinding } from '../cli/argsBuilder';
-import { runDoctor } from '../cli/doctorRunner';
+import { type DoctorResult, runDoctor } from '../cli/doctorRunner';
 import { interpretMavenFailure } from '../cli/mavenErrorInterpreter';
+import { parseDoctorProgressLine } from '../cli/progressParser';
 import { bindModules, describeSiblingProjects, isProjectRoot, PROJECT_ROOT_MARKER_FILES, toRepoRelativePosix } from '../cli/reportDiscovery';
 import { runMavenInstallTask, runTestsTask } from './mavenTestTask';
 
@@ -120,6 +121,33 @@ export async function resolveReportBinding(folder: vscode.WorkspaceFolder, confi
 	return { modules: bound, allModules: bound };
 }
 
+/**
+ * Runs `doctor --fix` under a cancellable progress notification, reporting
+ * one increment per module it actually attempts to fix (`parseDoctorProgressLine`).
+ * `doctor` never prints how many modules there are in total, so the bar's
+ * denominator is `moduleCount` (the caller's own bound-module count) rather
+ * than anything the CLI claims - a module already usable is skipped without
+ * a line, so the bar can legitimately finish under 100%, never over.
+ */
+async function runDoctorFixWithProgress(javaExecutable: string, jarPath: string, workspaceRoot: string, output: vscode.OutputChannel, moduleCount: number): Promise<DoctorResult> {
+	return vscode.window.withProgress(
+		{ location: vscode.ProgressLocation.Notification, title: 'coverdict: classpath listeleri üretiliyor (doctor --fix)', cancellable: true },
+		(progress, token) => new Promise<DoctorResult>((resolve, reject) => {
+			runDoctor(javaExecutable, jarPath, workspaceRoot, {
+				onStderrLine: (line) => {
+					output.appendLine(line);
+					const fixing = parseDoctorProgressLine(line);
+					if (fixing) {
+						progress.report({ increment: 100 / moduleCount, message: `${fixing.moduleId} · classpath üretiliyor` });
+					}
+				},
+				fix: true,
+				onStart: (cancel) => token.onCancellationRequested(cancel),
+			}).then(resolve, reject);
+		}),
+	);
+}
+
 export type ClasspathKind = 'perTest' | 'mutation';
 
 function classpathRelPath(root: string, kind: ClasspathKind): string {
@@ -201,10 +229,7 @@ export async function resolveEvidenceClasspaths(
 		return undefined;
 	}
 
-	const doctorResult = await vscode.window.withProgress(
-		{ location: vscode.ProgressLocation.Notification, title: 'coverdict: classpath listeleri üretiliyor (doctor --fix)', cancellable: false },
-		() => runDoctor(javaExecutable, jarPath, workspaceRoot, { fix: true, onStderrLine: (line) => output.appendLine(line) }),
-	);
+	const doctorResult = await runDoctorFixWithProgress(javaExecutable, jarPath, workspaceRoot, output, modules.length);
 	output.appendLine(doctorResult.stdout);
 
 	check = checkClasspaths(workspaceRoot, modules, kind, escapeHatchPath);
@@ -253,10 +278,7 @@ async function handleClasspathGenerationFailure(ctx: ClasspathGenerationContext,
 	}
 
 	const workspaceRoot = folder.uri.fsPath;
-	const retried = await vscode.window.withProgress(
-		{ location: vscode.ProgressLocation.Notification, title: 'coverdict: classpath listeleri üretiliyor (doctor --fix)', cancellable: false },
-		() => runDoctor(javaExecutable, jarPath, workspaceRoot, { fix: true, onStderrLine: (line) => output.appendLine(line) }),
-	);
+	const retried = await runDoctorFixWithProgress(javaExecutable, jarPath, workspaceRoot, output, modules.length);
 	output.appendLine(retried.stdout);
 
 	const check = checkClasspaths(workspaceRoot, modules, kind, escapeHatchPath);

@@ -26,6 +26,8 @@ export interface DoctorOptions {
 	fix?: boolean;
 	writeConfig?: boolean;
 	onStderrLine?: (line: string) => void;
+	/** Handed the process's own `cancel()` as soon as it is spawned, so a `vscode`-aware caller can wire it to a `CancellationToken` without this file importing `vscode` itself. */
+	onStart?: (cancel: () => void) => void;
 }
 
 export async function runDoctor(javaExecutable: string, jarPath: string, repo: string, options: DoctorOptions = {}): Promise<DoctorResult> {
@@ -37,6 +39,7 @@ export async function runDoctor(javaExecutable: string, jarPath: string, repo: s
 		args.push('--write-config');
 	}
 	const handle = run({ javaExecutable, jarPath, args, onStderrLine: options.onStderrLine });
+	options.onStart?.(handle.cancel);
 	const result = await handle.result;
 	return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr };
 }

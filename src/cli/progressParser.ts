@@ -81,22 +81,24 @@ export function parseProgressLine(line: string): ProgressEvent | undefined {
  * Bir ilerleme olayının kullanıcıya gösterilecek tek satırı. Yüzde 30
  * saniyede bir ilerlediği için geçen süre **her zaman** yazılır - yoksa
  * arayüz donmuş görünür (mutasyon koşusu bir modülde 70-90 dakika
- * sürebiliyor).
+ * sürebiliyor). `showModule` (çok-modüllü bir koşuda `true`) modül id'sini
+ * öne ekler - tek modüllü koşularda gürültü olurdu, o yüzden isteğe bağlı.
  */
-export function progressMessage(event: ProgressEvent): string {
+export function progressMessage(event: ProgressEvent, showModule = false): string {
+	const prefix = showModule ? `${event.moduleId} · ` : '';
 	switch (event.phase) {
 		case 'start':
-			return event.budgetSeconds === undefined
+			return prefix + (event.budgetSeconds === undefined
 				? `${event.total} sınıf taranacak`
-				: `${event.total} sınıf taranacak · bütçe ${event.budgetSeconds}s`;
+				: `${event.total} sınıf taranacak · bütçe ${event.budgetSeconds}s`);
 		case 'heartbeat':
-			return event.done !== undefined && event.total !== undefined
+			return prefix + (event.done !== undefined && event.total !== undefined
 				? `${event.done}/${event.total} sınıf · ${event.elapsed}`
-				: `kanıt toplanıyor · ${event.elapsed}`;
+				: `kanıt toplanıyor · ${event.elapsed}`);
 		case 'done':
-			return 'bitti';
+			return `${prefix}bitti`;
 		case 'failed':
-			return event.message;
+			return prefix + event.message;
 	}
 }
 
@@ -104,11 +106,35 @@ export function progressMessage(event: ProgressEvent): string {
  * `withProgress`'in `increment`'i **fark** ister, mutlak yüzde değil.
  * Toplam bilinmiyorsa (L2'nin sayaçsız heartbeat'i) artış yayınlanmaz:
  * uydurma bir ilerleme çubuğu, ilerleme çubuğu olmamasından kötüdür.
+ *
+ * `previousDone` çağıran tarafından **modül başına** tutulmalı - CLI
+ * modülleri sırayla tarar, bir modül `3/3`'e ulaştıktan sonra bir sonraki
+ * modül kendi `1/5`'i ile başlar; tek bir paylaşılan sayaç bunu negatif bir
+ * fark olarak görüp düşürür ve bar donmuş görünür (gerçek bir regresyondu,
+ * bu fonksiyon çağıranın `moduleId`'ye göre ayrı sayaç tutmasını zorunlu
+ * kılacak şekilde tasarlanmıştır). `moduleCount` bilinen modül sayısına göre
+ * bu modülün payını ölçekler, böylece N modüllü bir koşuda toplam yüzde
+ * 100'ü aşmaz.
  */
-export function incrementFor(event: ProgressEvent, previousDone: number): { increment: number; done: number } | undefined {
+export function incrementFor(event: ProgressEvent, previousDone: number, moduleCount = 1): { increment: number; done: number } | undefined {
 	if (event.phase !== 'heartbeat' || event.done === undefined || event.total === undefined || event.total === 0) {
 		return undefined;
 	}
-	const increment = ((event.done - previousDone) / event.total) * 100;
+	const increment = ((event.done - previousDone) / event.total) * (100 / moduleCount);
 	return increment > 0 ? { increment, done: event.done } : undefined;
+}
+
+const DOCTOR_FIX_LINE = /^coverdict: doctor: fixing classpath for '([^']*)'\.\.\.$/;
+
+/**
+ * `doctor --fix`'in kendi ilerleme satırı (`DoctorCommand.applyFixes`,
+ * doğrulandı): CLI toplam modül sayısını basmaz (sadece zaten kullanılabilir
+ * olmayan her modül için bir satır), o yüzden "kaçıncı modül" burada değil,
+ * çağıranın zaten bildiği `modules.length`'e göre hesaplanır - CLI'ın
+ * vermediği bir sayıyı burada uydurmamak için.
+ */
+export function parseDoctorProgressLine(line: string): { moduleId: string } | undefined {
+	const trimmed = line.trim();
+	const match = DOCTOR_FIX_LINE.exec(trimmed);
+	return match ? { moduleId: match[1] } : undefined;
 }

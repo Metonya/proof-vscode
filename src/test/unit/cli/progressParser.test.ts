@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { incrementFor, parseProgressLine, progressMessage } from '../../../cli/progressParser';
+import { incrementFor, parseDoctorProgressLine, parseProgressLine, progressMessage } from '../../../cli/progressParser';
 
 /**
  * Faz 20: satır biçimleri gerçek CLI kaynağından alındı
@@ -86,4 +86,61 @@ test('incrementFor sayaçsız heartbeat ve geriye gidiş için artış yayınlam
 
 	const start = parseProgressLine("coverdict: mutation: module 'root' - 3 target class(es), budget 300s")!;
 	assert.equal(incrementFor(start, 0), undefined);
+});
+
+/**
+ * The real multi-module regression: `gson` reaches 3/3 and then `extras`
+ * starts its own 1/5 - a single shared `previousDone` sees `1 < 3` as
+ * negative and drops the increment, freezing the bar. The caller must track
+ * `previousDone` per moduleId (this function trusts whatever it is given),
+ * so the fix is exercised here as two independent module counters.
+ */
+test('incrementFor: a second module starting its own count is not a regression against the first module\'s count', () => {
+	const gsonDone3of3 = parseProgressLine("coverdict: mutation: module 'gson' - 3/3 class(es), 2m elapsed")!;
+	assert.deepEqual(incrementFor(gsonDone3of3, 0, 2), { increment: 50, done: 3 });
+
+	// extras tracks its own previousDone (0), not gson's (3) - the bug this fixes.
+	const extrasDone1of5 = parseProgressLine("coverdict: mutation: module 'extras' - 1/5 class(es), 10s elapsed")!;
+	assert.deepEqual(incrementFor(extrasDone1of5, 0, 2), { increment: 10, done: 1 });
+});
+
+test('incrementFor: moduleCount scales a module\'s share so an N-module run cannot exceed 100 total', () => {
+	const fullModule = parseProgressLine("coverdict: mutation: module 'gson' - 3/3 class(es), 2m elapsed")!;
+	assert.deepEqual(incrementFor(fullModule, 0, 3), { increment: 100 / 3, done: 3 });
+});
+
+test('incrementFor: moduleCount defaults to 1 (single-module run, unchanged from before Faz 30)', () => {
+	const at2of4 = parseProgressLine("coverdict: mutation: module 'root' - 2/4 class(es), 1m elapsed")!;
+	assert.deepEqual(incrementFor(at2of4, 0), { increment: 50, done: 2 });
+});
+
+test('progressMessage: showModule prefixes the module id, off by default', () => {
+	const heartbeat = parseProgressLine("coverdict: mutation: module 'gson' - 2/3 class(es), 6m12s elapsed")!;
+	assert.equal(progressMessage(heartbeat), '2/3 sınıf · 6m12s');
+	assert.equal(progressMessage(heartbeat, true), "gson · 2/3 sınıf · 6m12s");
+	assert.equal(progressMessage(heartbeat, false), '2/3 sınıf · 6m12s');
+});
+
+test('progressMessage: showModule prefixes start/done/failed too', () => {
+	const start = parseProgressLine("coverdict: mutation: module 'gson' - 3 target class(es), budget 300s")!;
+	assert.equal(progressMessage(start, true), "gson · 3 sınıf taranacak · bütçe 300s");
+
+	const done = parseProgressLine("coverdict: mutation: module 'gson' - done, 5 method(s) with mutants")!;
+	assert.equal(progressMessage(done, true), 'gson · bitti');
+
+	const failed = parseProgressLine("coverdict: mutation: module 'gson' - FAILED, budget of 300s exhausted after 2/3 class(es) completed")!;
+	assert.equal(progressMessage(failed, true), "gson · FAILED, budget of 300s exhausted after 2/3 class(es) completed");
+});
+
+/** `DoctorCommand.applyFixes`'in gerçek satırı: `printErr("coverdict: doctor: fixing classpath for '" + module.id() + "'...")`. */
+test("parseDoctorProgressLine: doctor --fix'in kendi satırından modül id'sini çıkarır", () => {
+	assert.deepEqual(parseDoctorProgressLine("coverdict: doctor: fixing classpath for 'gson'..."), { moduleId: 'gson' });
+	assert.deepEqual(parseDoctorProgressLine("coverdict: doctor: fixing classpath for 'root'..."), { moduleId: 'root' });
+});
+
+test('parseDoctorProgressLine: tanınmayan satır undefined döner - doctor\'ın diğer satırları (rapor, hata) uydurulmaz', () => {
+	assert.equal(parseDoctorProgressLine("coverdict: doctor: 'gson' - Maven dependency resolution failed: ..."), undefined);
+	assert.equal(parseDoctorProgressLine('coverdict: doctor: wrote coverdict.config.json'), undefined);
+	assert.equal(parseDoctorProgressLine('  [ok] gson'), undefined);
+	assert.equal(parseDoctorProgressLine(''), undefined);
 });
