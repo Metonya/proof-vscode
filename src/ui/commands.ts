@@ -6,6 +6,7 @@ import { buildAnalyzeArgs, type DiffMode } from '../cli/argsBuilder';
 import { buildPerTestClasspath } from '../cli/classpathBuilder';
 import { locateJar } from '../cli/jarLocator';
 import { incrementFor, parseProgressLine, progressMessage } from '../cli/progressParser';
+import { describeModuleForReport, toRepoRelativePosix } from '../cli/reportDiscovery';
 import { run } from '../cli/runner';
 import { buildFalseGreenIndex } from '../model/falseGreenIndex';
 import type { BadgeMetric } from '../model/metrics';
@@ -649,6 +650,61 @@ interface EvidenceOptions {
 	progressTitle?: string;
 }
 
+interface ReportBinding {
+	reportPath: string;
+	module?: { id: string; root: string };
+}
+
+/**
+ * Faz 29 (§7.8, gson dogfood): `coverdict.reportPath` is workspace-root-relative,
+ * which breaks the moment a multi-module Maven checkout is opened at its
+ * aggregator root instead of the module directory that actually has a
+ * report - the aggregator pom has none of its own. Rather than making the
+ * user find and reopen the right subfolder by hand (the workaround this
+ * replaces), search the workspace for one before giving up.
+ *
+ * Never guesses among several candidates (hard rule 3a): one match binds
+ * automatically but visibly (Output line + an info toast naming exactly
+ * what was bound); more than one asks via `showQuickPick`; zero keeps the
+ * original error untouched, `offerToOpenSetting` included.
+ */
+async function resolveReportBinding(folder: vscode.WorkspaceFolder, configuredReportPath: string, output: vscode.OutputChannel): Promise<ReportBinding | undefined> {
+	if (fs.existsSync(path.join(folder.uri.fsPath, configuredReportPath))) {
+		return { reportPath: configuredReportPath };
+	}
+
+	const found = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, '**/target/site/jacoco/jacoco.xml'), '**/node_modules/**', 50);
+
+	if (found.length === 0) {
+		void offerToOpenSetting(`coverdict: rapor dosyası bulunamadı: ${configuredReportPath}. Önce testleri JaCoCo ile çalıştırın, ya da coverdict.reportPath ayarını düzeltin.`, 'coverdict.reportPath');
+		return undefined;
+	}
+
+	let chosenUri: vscode.Uri;
+	if (found.length === 1) {
+		chosenUri = found[0];
+	} else {
+		const picks = found.map((uri) => ({ label: toRepoRelativePosix(uri.fsPath, folder.uri.fsPath), uri }));
+		const pick = await vscode.window.showQuickPick(picks, {
+			title: 'coverdict: birden fazla JaCoCo raporu bulundu - hangi modül taransın?',
+			placeHolder: 'Bunu kalıcı yapmak için coverdict.reportPath ayarını bu rapora göre düzeltin',
+		});
+		if (!pick) {
+			return undefined; // user backed out of the picker - they already know why, say nothing more
+		}
+		chosenUri = pick.uri;
+	}
+
+	const relReportPath = toRepoRelativePosix(chosenUri.fsPath, folder.uri.fsPath);
+	const discovered = describeModuleForReport(relReportPath);
+	const module = discovered.root === '.' ? undefined : { id: discovered.id, root: discovered.root };
+
+	output.appendLine(`coverdict: coverdict.reportPath (${configuredReportPath}) bulunamadı - '${discovered.root}' modülündeki rapora otomatik bağlanıldı: ${discovered.reportPath}`);
+	void vscode.window.showInformationMessage(`coverdict: '${discovered.root}' modülüne otomatik bağlanıldı (rapor: ${discovered.reportPath}). Kalıcı yapmak için coverdict.reportPath ayarını düzeltin.`);
+
+	return { reportPath: discovered.reportPath, module };
+}
+
 async function runAnalyzeCore(
 	context: vscode.ExtensionContext,
 	output: vscode.OutputChannel,
@@ -658,16 +714,17 @@ async function runAnalyzeCore(
 ): Promise<VerdictDocument | undefined> {
 	const jarPath = locateJar(folder);
 	if (!jarPath) {
-		vscode.window.showErrorMessage('coverdict: coverdict.jar bulunamadı. coverdict.jarPath ayarını yapın veya coverdict-cli/target/coverdict.jar konumunda bir tane derleyin.');
+		void offerToOpenSetting('coverdict: coverdict.jar bulunamadı. coverdict.jarPath ayarını yapın veya coverdict-cli/target/coverdict.jar konumunda bir tane derleyin.', 'coverdict.jarPath');
 		return undefined;
 	}
 
 	const config = vscode.workspace.getConfiguration('coverdict', folder);
-	const reportPath = config.get<string>('reportPath') || 'target/site/jacoco/jacoco.xml';
-	if (!fs.existsSync(path.join(folder.uri.fsPath, reportPath))) {
-		void offerToOpenSetting(`coverdict: rapor dosyası bulunamadı: ${reportPath}. Önce testleri JaCoCo ile çalıştırın, ya da coverdict.reportPath ayarını düzeltin.`, 'coverdict.reportPath');
+	const configuredReportPath = config.get<string>('reportPath') || 'target/site/jacoco/jacoco.xml';
+	const binding = await resolveReportBinding(folder, configuredReportPath, output);
+	if (!binding) {
 		return undefined;
 	}
+	const { reportPath, module } = binding;
 
 	const storageRoot = context.storageUri;
 	if (!storageRoot) {
@@ -683,6 +740,7 @@ async function runAnalyzeCore(
 		repo: folder.uri.fsPath,
 		diffMode,
 		reportPath,
+		module,
 		outPath: outUri.fsPath,
 		fileCoverage: true,
 		coverageExclusions,

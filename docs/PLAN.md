@@ -1,9 +1,15 @@
 # coverdict-vscode — devir belgesi ve ileri plan
 
-**Son güncelleme:** 2026-08-28, Faz 24 sonrası (pencere yenileme
-düzeltmesi, örtük constructor etiketi, Test Kalitesi ↔ Mutasyon köprüsü,
-L0/L3 çelişki köprüsü ve NO_COVERAGE açıklaması dahil - §7.6'nın tüm
-maddeleri kapandı).
+**Son güncelleme:** 2026-08-29, Faz 29 (§7.8): gson dogfood'unun ortaya
+çıkardığı çok-modül workspace-kökü boşluğu gerçekten düzeltildi -
+`resolveReportBinding()` artık rapor bulunamayınca workspace'i tarayıp
+(0/1/çoklu eşleşmeye göre sessiz hata / görünür otomatik bağlama /
+`showQuickPick`) doğru moduüle bağlanıyor, gerçek gson checkout'unda uçtan
+uca doğrulandı (33 bulgu, mevcut korpus kalibrasyonuyla birebir). 165 unit +
+57 integration, hepsi geçti. Önceki: 2026-08-28, Faz 24 sonrası (pencere
+yenileme düzeltmesi, örtük constructor etiketi, Test Kalitesi ↔ Mutasyon
+köprüsü, L0/L3 çelişki köprüsü ve NO_COVERAGE açıklaması dahil - §7.6'nın
+tüm maddeleri kapandı).
 
 ---
 
@@ -425,8 +431,10 @@ o satırın gerçek bir perTest kaydı varsa - §7.7).
 
 ### Sağlık
 
-157 unit + 57 integration test geçiyor. SonarQube (`coverdict-vscode`,
-`http://localhost:9001`) sıfır açık bulgu, kalite kapısı **OK** (Faz 27,
+165 unit + 57 integration test geçiyor (Faz 29 - önceki 157+57'ye
+`reportDiscovery`/`argsBuilder`'ın 8 yeni testi eklendi). SonarQube
+(`coverdict-vscode`, `http://localhost:9001`) sıfır açık bulgu, kalite
+kapısı **OK** (Faz 27,
 §7.4).
 
 ---
@@ -1026,6 +1034,116 @@ yokken (ne `divide` için ne de perTest hiç toplanmamışken) çıkmıyor.
 integration), SonarQube sıfır açık bulgu.
 
 ---
+
+### 7.8 gson dogfood (2026-08-29) — çok-modül workspace kökü **düzeltildi**, iki UX sürtünmesi
+
+`coverdict-corpus/gson`'da (google/gson'ın çok-modül checkout'u) ilk gerçek
+dış-repo VS Code dogfood'u denendi. Kullanıcı `coverdict.jar` bulunamadı ve
+JaCoCo raporu bulunamadı uyarılarıyla karşılaştı; ikinci uyarının kökü
+araştırıldı ve **gerçek, mimari bir boşluk** bulundu, ilki iki UX isteğine
+dönüştü.
+
+**Bulunan gerçek boşluk — eklentinin çok-modül/standart-olmayan yerleşim
+desteği yok.** Kullanıcı VS Code'u checkout'un **kökünde**
+(`coverdict-corpus/gson`) açtı; gerçek JaCoCo raporu alt modülde
+(`gson/gson/target/site/jacoco/jacoco.xml`), kök pom sadece agregatör.
+`coverdict.reportPath`'i elle düzeltmek bile yetmezdi: `argsBuilder.ts`
+kendi yorumunda zaten itiraf ediyor - *"Single-module shorthand only for
+now [...] multi-module bindings [...] land with F8's config UI, when there
+is a real multi-module case to build it against"* - yani `--module`/
+`--source-roots`/`--test-roots` hiç yok, CLI'ın `M0-CLI-INPUT.md`'de
+belgelenen çok-modül bağlamasının eklenti tarafı hiç inşa edilmemiş.
+`--repo` her zaman workspace kökü, kaynak/test kökleri her zaman
+`<repo>/src/main/java`/`src/test/java` varsayılıyor - `--repo` gerçek
+modülün kendisi değilse bu sessizce yanlış.
+
+**Bu oturumda uygulanan geçici çözüm (eklenti değişmedi):** VS Code'da
+checkout kökü yerine **alt modülün kendisi** (`coverdict-corpus/gson/gson`)
+ayrı bir klasör olarak açıldı - `coverdict.reportPath`'in varsayılanı
+(`target/site/jacoco/jacoco.xml`) orada doğrudan doğru dosyaya denk geliyor,
+kaynak/test kökü varsayımları da doğru. `gson/gson/.vscode/settings.json`
+dış klasörün ayarlarının (jarPath, JDK 17 env) bir kopyası olarak eklendi.
+Bu, "her repoda farklıysa sorun yaşarız" endişesinin ilk gerçek örneği -
+gerçek çok-modül düzen için `doctor`'ın CLI tarafında zaten çözdüğü sorunun
+aynısı eklenti tarafında hiç çözülmemiş.
+
+**Düzeltildi, aynı oturumda (Faz 29).** Tam F8'i beklemeden, dar ve gerçek
+bir fix: `cli/reportDiscovery.ts` (saf, `vscode` import etmiyor) +
+`ui/commands.ts`'teki yeni `resolveReportBinding()`. `runAnalyzeCore`
+(Hızlı/Derin/Mutasyon Testi'nin **hepsinin** paylaştığı tek çekirdek)
+`coverdict.reportPath` workspace kökünde yoksa artık pes etmiyor:
+`vscode.workspace.findFiles('**/target/site/jacoco/jacoco.xml', ...)` ile
+arama yapıyor.
+
+- **0 eşleşme** → eski davranış, aynı hata mesajı (`offerToOpenSetting`).
+- **1 eşleşme** → otomatik bağlanır, ama **sessizce değil**: Output'a satır
+  + bir bilgi bildirimi ("`'gson' modülüne otomatik bağlanıldı`").
+- **2+ eşleşme** → asla tahmin etmez (hard rule 3a) - `showQuickPick` ile
+  kullanıcıya sorar.
+
+Modül kökü keşfedilen rapor yoluna göre çıkarılır
+(`<kök>/target/site/jacoco/jacoco.xml` deseninden), ama **modül id'si her
+zaman `'root'` kalır** - `MODULE_ID` sabiti L2/L3 classpath bağlama, tree-view
+arama ve state anahtarları boyunca zaten sabit `'root'` varsayıyor; farklı
+bir id analyze'i doğru modüle bağlarken per-test/mutation akışlarını
+`--module` ile eşleşmeyen bir id'yle çağırıp CLI'da reddedilmeye yol açardı.
+`argsBuilder.ts`'e eklenen opsiyonel `module: {id, root}` alanı verilince
+`--report` çıplak biçimden `<id>=<path>`'e döner ve `--module <id>=<root>`
+eklenir; verilmezse eski tek-modül davranışı **birebir korunur** (mevcut
+tüm testler değişmeden geçti).
+
+**Gerçek gson checkout'una karşı uçtan uca doğrulandı** (checkout kökünde
+6 alt modülün her birinde kendi `jacoco.xml`'i var - QuickPick senaryosunun
+kendisi): eklentinin üreteceği birebir komut
+(`--repo <kök> --no-vcs --module root=gson --report root=gson/target/site/jacoco/jacoco.xml`)
+elle çalıştırıldı, exit 0, **33 bulgu** - `validation/runs/gson/`'daki D-31/
+D-33 sonrası kalibrasyon sonucuyla birebir aynı sayı. 165 unit + 57
+integration test (önceki 157 + 8, hepsi geçti) hiçbir regresyon göstermedi.
+
+Artık gereksiz ama zararsız: `gson/gson/.vscode/settings.json` (bu
+oturumun ilk, elle klasör-değiştirme geçici çözümü) - checkout'un kökünü
+açmak artık QuickPick'ten "gson" seçmekle aynı sonucu veriyor, alt modülü
+ayrıca açmaya gerek yok.
+
+**Hâlâ backlog, gerçek bir sonraki adım (F8'in asıl kapsamı):**
+- Birden fazla modülü **aynı koşuda** birlikte bağlamak (coverdict CLI'ın
+  `--module`u tekrarlı destekliyor, eklenti hâlâ tek modül seçiyor).
+- `doctor`'ın ürettiği `coverdict.config.json`'u (D-40/D-66) okuyup
+  kullanma - bugün eklenti onu hiç okumuyor, her koşuda kendi keşfini
+  tekrarlıyor.
+
+**UX isteği 1 (kullanıcı, 2026-08-29) — bu oturumda ayrıca düzeltildi.**
+`coverdict.jar` bulunamadı hatası **zaten** `offerToOpenSetting` kullanıyordu
+(rapor-bulunamadı hatasıyla aynı "Ayarı Aç" düğmesi) - meğer yalnızca jar
+mesajı bunu kullanmıyormuş, düz `showErrorMessage` idi. Tek satırlık fark,
+düzeltildi: `coverdict.jarPath` sorgusuyla ayarları açan bir düğme artık
+o hata mesajında da var.
+
+**UX isteği 2 (kullanıcı, 2026-08-29):** JaCoCo raporu bulunamadığında
+kullanıcının Maven'i elle çalıştırmasına gerek kalmadan eklentiden hızlıca
+"testleri JaCoCo ile çalıştır" diyebileceği bir aksiyon eklensek mi -
+**düşünülecek, tasarım kararı verilmedi.** Riskler: hangi build komutunun
+doğru olduğu repodan repoya değişir (bu gson koşusunda dört farklı manuel
+düzeltme gerekti - JDK 17-21 enforcer kısıtı, kök pom'da JaCoCo hiç
+tanımlı değildi, `test` değil `verify` gerekiyordu çünkü `test-jpms` modülü
+paketlenmiş jar'a bağımlı, ve Surefire'ın kendi `argLine`'ı JaCoCo agent'ını
+eziyordu - `@{argLine}` fix'i gson'ın pom'una elle uygulandı). Bu, bir
+"tek tık testleri koştur" düğmesinin genel-amaçlı Maven reposu için
+**güvenilir bir varsayılan komut bulmasının zor olduğunu** gösteriyor -
+coverdict-cli'ın kendi `doctor` komutu bile bunu yapmıyor, sadece teşhis
+ediyor ve öneriyor. Olası yön: eklenti de aynı şekilde sadece önerilen
+komutu (kopyalanabilir, çalıştırılmaz) gösterse, `doctor`'ı arka planda
+çağırıp.
+
+**Fikir - insan-okur "test kanıtı" raporu (kullanıcı, 2026-08-29):**
+SonarQube/Cucumber tarzı, hangi testlerin çalıştığını ve sonuçlarını
+gösteren dışa aktarılabilir bir rapor - hem CLI'dan (`coverdict analyze
+--report-format html` gibi) hem VS Code'dan ("dışa aktar" komutu). D-15
+zaten "Standalone HTML is deferred until dogfood proves a need" diyor -
+bu ihtiyacın ilk somut talebi. **Tasarlanmadı, kapsamlandırılmadı** - ayrı
+bir oturumda ele alınmalı: CLI'ın kendi JSON'u zaten tek kaynak (hard rule
+7), bir HTML/rapor render'ı JSON'u tüketen yeni bir render katmanı olur,
+schema değişikliği gerektirmez.
 
 ## 8. Faz 20 — mutasyon testi arayüzü (**yapıldı**)
 

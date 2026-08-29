@@ -148,3 +148,24 @@ test('no mutation input means no mutation flags at all', () => {
 	});
 	assert.ok(!args.some((a) => a.startsWith('--mutation')));
 });
+
+test('without a module, --report stays the bare single-module shorthand', () => {
+	const args = buildAnalyzeArgs({
+		repo: '/repo', diffMode: { kind: 'no-vcs' }, reportPath: 'jacoco.xml', outPath: '/tmp/out.json',
+	});
+	assert.ok(args.includes('--report'));
+	assert.equal(args[args.indexOf('--report') + 1], 'jacoco.xml');
+	assert.ok(!args.includes('--module'));
+});
+
+test('a module binding adds --module and switches --report to the id=path form (Faz 29)', () => {
+	const args = buildAnalyzeArgs({
+		repo: '/repo', diffMode: { kind: 'no-vcs' }, reportPath: 'gson/target/site/jacoco/jacoco.xml', outPath: '/tmp/out.json',
+		module: { id: 'root', root: 'gson' },
+	});
+	const moduleIndex = args.indexOf('--module');
+	assert.ok(moduleIndex >= 0);
+	assert.equal(args[moduleIndex + 1], 'root=gson');
+	const reportIndex = args.indexOf('--report');
+	assert.equal(args[reportIndex + 1], 'root=gson/target/site/jacoco/jacoco.xml');
+});
