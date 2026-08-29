@@ -4,8 +4,9 @@ import * as vscode from 'vscode';
 
 import type { ModuleReportBinding } from '../cli/argsBuilder';
 import { runDoctor } from '../cli/doctorRunner';
+import { interpretMavenFailure } from '../cli/mavenErrorInterpreter';
 import { bindModules, describeSiblingProjects, isProjectRoot, PROJECT_ROOT_MARKER_FILES, toRepoRelativePosix } from '../cli/reportDiscovery';
-import { runTestsTask } from './mavenTestTask';
+import { runMavenInstallTask, runTestsTask } from './mavenTestTask';
 
 /**
  * Faz 30 (§7.8 follow-ups, gson dogfood): everything the extension needs
@@ -208,7 +209,61 @@ export async function resolveEvidenceClasspaths(
 
 	check = checkClasspaths(workspaceRoot, modules, kind, escapeHatchPath);
 	if (check.classpaths.length === 0) {
-		vscode.window.showErrorMessage('coverdict: derin tarama classpath listesi üretilemedi - bu yüzden tarama hiç başlatılmadı. Ayrıntı için Output → coverdict kanalına bakın.');
+		return handleClasspathGenerationFailure({ folder, jarPath, javaExecutable, output, modules, kind, escapeHatchPath }, doctorResult.stdout + doctorResult.stderr);
+	}
+	if (check.missingModuleRoots.length > 0) {
+		vscode.window.showWarningMessage(`coverdict: şu modüller için derin kanıt toplanamayacak (classpath üretilemedi): ${check.missingModuleRoots.join(', ')}. Coverage yine de hesaplanacak.`);
+	}
+	return check.classpaths;
+}
+
+const CLASSPATH_UNAVAILABLE_PREFIX = 'coverdict: derin tarama classpath listesi olmadan çalışamaz - bu yüzden tarama hiç başlatılmadı.';
+
+interface ClasspathGenerationContext {
+	folder: vscode.WorkspaceFolder;
+	jarPath: string;
+	javaExecutable: string;
+	output: vscode.OutputChannel;
+	modules: readonly { id: string; root: string }[];
+	kind: ClasspathKind;
+	escapeHatchPath: string;
+}
+
+/**
+ * `doctor --fix` produced nothing usable. Interprets the real Maven failure
+ * text (`cli/mavenErrorInterpreter.ts`) rather than showing a bare "failed" -
+ * an unrecognized shape still says so honestly (hard rule 3a) instead of
+ * inventing a cause. `unresolvedReactorSibling` (D-67) gets one extra step:
+ * offer to `mvn install -DskipTests` and retry `doctor --fix` once.
+ */
+async function handleClasspathGenerationFailure(ctx: ClasspathGenerationContext, rawOutput: string): Promise<readonly { moduleId: string; path: string }[] | undefined> {
+	const { folder, jarPath, javaExecutable, output, modules, kind, escapeHatchPath } = ctx;
+	const interpretation = interpretMavenFailure(rawOutput);
+	const reasonSuffix = interpretation ? ` Sebep: ${interpretation.detail}` : ' Ayrıntı için Output → coverdict kanalına bakın.';
+
+	if (interpretation?.kind !== 'unresolvedReactorSibling') {
+		vscode.window.showErrorMessage(`${CLASSPATH_UNAVAILABLE_PREFIX}${reasonSuffix}`);
+		return undefined;
+	}
+
+	const choice = await vscode.window.showErrorMessage(`${CLASSPATH_UNAVAILABLE_PREFIX}${reasonSuffix}`, 'mvn install -DskipTests Çalıştır');
+	if (choice !== 'mvn install -DskipTests Çalıştır' || !(await runMavenInstallTask(folder, output))) {
+		vscode.window.showErrorMessage(CLASSPATH_UNAVAILABLE_PREFIX);
+		return undefined;
+	}
+
+	const workspaceRoot = folder.uri.fsPath;
+	const retried = await vscode.window.withProgress(
+		{ location: vscode.ProgressLocation.Notification, title: 'coverdict: classpath listeleri üretiliyor (doctor --fix)', cancellable: false },
+		() => runDoctor(javaExecutable, jarPath, workspaceRoot, { fix: true, onStderrLine: (line) => output.appendLine(line) }),
+	);
+	output.appendLine(retried.stdout);
+
+	const check = checkClasspaths(workspaceRoot, modules, kind, escapeHatchPath);
+	if (check.classpaths.length === 0) {
+		const retryInterpretation = interpretMavenFailure(retried.stdout + retried.stderr);
+		const retryReasonSuffix = retryInterpretation ? ` Sebep: ${retryInterpretation.detail}` : ' Ayrıntı için Output → coverdict kanalına bakın.';
+		vscode.window.showErrorMessage(`${CLASSPATH_UNAVAILABLE_PREFIX}${retryReasonSuffix}`);
 		return undefined;
 	}
 	if (check.missingModuleRoots.length > 0) {

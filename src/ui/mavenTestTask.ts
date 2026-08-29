@@ -47,6 +47,41 @@ function resolveMavenExecutable(folder: vscode.WorkspaceFolder): string {
 	return configured || (process.platform === 'win32' ? 'mvn.cmd' : 'mvn');
 }
 
+/** Shared by every visible-Task runner in this file - one dedicated terminal, no `-q`, no `clean` (Faz 19's classpath-list deletion trap). */
+async function runVisibleMavenTask(folder: vscode.WorkspaceFolder, output: vscode.OutputChannel, taskKind: string, label: string, args: readonly string[]): Promise<boolean> {
+	const mavenExecutable = resolveMavenExecutable(folder);
+	output.appendLine(`coverdict: ${mavenExecutable} ${args.join(' ')} (${folder.uri.fsPath})`);
+
+	const task = new vscode.Task(
+		{ type: 'coverdict', kind: taskKind },
+		folder,
+		label,
+		'coverdict',
+		new vscode.ShellExecution(mavenExecutable, [...args], { cwd: folder.uri.fsPath }),
+	);
+	task.presentationOptions = { reveal: vscode.TaskRevealKind.Always, panel: vscode.TaskPanelKind.Dedicated, clear: true };
+
+	const executed = await vscode.tasks.executeTask(task);
+	return new Promise<boolean>((resolve) => {
+		const disposable = vscode.tasks.onDidEndTaskProcess((e) => {
+			if (e.execution === executed) {
+				disposable.dispose();
+				resolve(e.exitCode === 0);
+			}
+		});
+	});
+}
+
+/**
+ * The fix for `unresolvedReactorSibling` (D-67, `cli/mavenErrorInterpreter.ts`):
+ * a reactor sibling module has never been installed to `~/.m2`, so
+ * `dependency:build-classpath` cannot resolve it. `-DskipTests` because this
+ * run's only purpose is populating the local repo, not verifying anything.
+ */
+export async function runMavenInstallTask(folder: vscode.WorkspaceFolder, output: vscode.OutputChannel): Promise<boolean> {
+	return runVisibleMavenTask(folder, output, 'installSkipTests', 'mvn install -DskipTests', ['-B', 'install', '-DskipTests']);
+}
+
 /**
  * `undefined` return means the task never ran at all (argLine modal
  * declined, or the user opened the pom instead) - distinct from `false`
@@ -82,26 +117,5 @@ export async function runTestsTask(folder: vscode.WorkspaceFolder, output: vscod
 	const phase = (config.get<MavenTestPhase>('testCommandPhase')) || 'test';
 	const jacocoPluginVersion = config.get<string>('jacocoPluginVersion') || '0.8.13';
 	const args = buildMavenTestArgs({ phase, injectJacocoGoals: !facts.hasJacocoPlugin, jacocoPluginVersion });
-	const mavenExecutable = resolveMavenExecutable(folder);
-
-	output.appendLine(`coverdict: ${mavenExecutable} ${args.join(' ')} (${folder.uri.fsPath})`);
-
-	const task = new vscode.Task(
-		{ type: 'coverdict', kind: 'runTests' },
-		folder,
-		'Testleri Çalıştır (JaCoCo)',
-		'coverdict',
-		new vscode.ShellExecution(mavenExecutable, args, { cwd: folder.uri.fsPath }),
-	);
-	task.presentationOptions = { reveal: vscode.TaskRevealKind.Always, panel: vscode.TaskPanelKind.Dedicated, clear: true };
-
-	const executed = await vscode.tasks.executeTask(task);
-	return new Promise<boolean>((resolve) => {
-		const disposable = vscode.tasks.onDidEndTaskProcess((e) => {
-			if (e.execution === executed) {
-				disposable.dispose();
-				resolve(e.exitCode === 0);
-			}
-		});
-	});
+	return runVisibleMavenTask(folder, output, 'runTests', 'Testleri Çalıştır (JaCoCo)', args);
 }
