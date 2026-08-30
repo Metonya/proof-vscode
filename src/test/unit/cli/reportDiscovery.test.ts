@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { bindModules, describeModuleForReport, describeSiblingProjects, isProjectRoot, moduleForPath, toRepoRelativePosix } from '../../../cli/reportDiscovery';
+import { bindModules, describeModuleForPom, describeModuleForReport, describeSiblingProjects, discoverModuleRootsFromPoms, isProjectRoot, moduleForPath, toRepoRelativePosix } from '../../../cli/reportDiscovery';
 
 test('a report at the workspace root needs no module binding', () => {
 	const module = describeModuleForReport('target/site/jacoco/jacoco.xml');
@@ -85,6 +85,27 @@ test('bindModules: a real id collision (two module roots ending in the same segm
 test('bindModules: unsafe characters in a module root are sanitized to a valid CLI token', () => {
 	const bound = bindModules(['my module!/target/site/jacoco/jacoco.xml']);
 	assert.equal(bound[0].id, 'my-module-');
+});
+
+/** Faz 31: describeModuleForPom is bindModules's discovery input before any report exists - a pom.xml's own path names its module root directly. */
+test('describeModuleForPom: a root pom.xml is module root "."', () => {
+	assert.deepEqual(describeModuleForPom('pom.xml'), { root: '.' });
+});
+
+test('describeModuleForPom: a submodule pom.xml names its own directory as root', () => {
+	assert.deepEqual(describeModuleForPom('test-jpms/pom.xml'), { root: 'test-jpms' });
+	assert.deepEqual(describeModuleForPom('modules/service-a/pom.xml'), { root: 'modules/service-a' });
+});
+
+/** Faz 31: discoverModuleRootsFromPoms - real gson shape, module discovery that works before a single jacoco.xml exists anywhere. */
+test('discoverModuleRootsFromPoms: gives each discovered pom a real id derived from its module root', () => {
+	const modules = discoverModuleRootsFromPoms(['pom.xml', 'gson/pom.xml', 'test-jpms/pom.xml']);
+	assert.deepEqual(modules, [{ id: 'root', root: '.' }, { id: 'gson', root: 'gson' }, { id: 'test-jpms', root: 'test-jpms' }]);
+});
+
+test('discoverModuleRootsFromPoms: a real id collision gets a numeric suffix, same rule as bindModules', () => {
+	const modules = discoverModuleRootsFromPoms(['backend/util/pom.xml', 'frontend/util/pom.xml']);
+	assert.deepEqual(modules.map((m) => m.id), ['util', 'util-2']);
 });
 
 /** Faz 30: which bound module a target file belongs to - longest-root-prefix wins, '.' is the lowest-priority fallback. */

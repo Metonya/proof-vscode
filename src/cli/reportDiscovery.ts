@@ -66,9 +66,31 @@ export function describeModuleForReport(repoRelativeReportPath: string): Discove
  * same segment) rather than silently merging them.
  */
 export function bindModules(repoRelativeReportPaths: readonly string[]): readonly { id: string; root: string; reportPath: string }[] {
+	const roots = repoRelativeReportPaths.map((reportPath) => describeModuleForReport(reportPath).root);
+	return assignIds(roots).map((assigned, i) => ({ ...assigned, reportPath: repoRelativeReportPaths[i] }));
+}
+
+/**
+ * Faz 31: a pom.xml's own repo-relative path directly names its module
+ * root - unlike a jacoco.xml, no report has to exist first (real gson
+ * shape: `test-jpms/pom.xml` -> root `test-jpms`, root `pom.xml` -> `.`).
+ * This is what lets `ui/preflight.ts` discover real module roots *before*
+ * ever offering to run tests, not just after a report is already bound.
+ */
+export function describeModuleForPom(repoRelativePomPath: string): { root: string } {
+	const suffix = '/pom.xml';
+	return { root: repoRelativePomPath === 'pom.xml' ? '.' : repoRelativePomPath.slice(0, -suffix.length) };
+}
+
+/** The pom.xml counterpart to `bindModules` - same id-assignment rule, different discovery input. */
+export function discoverModuleRootsFromPoms(repoRelativePomPaths: readonly string[]): readonly { id: string; root: string }[] {
+	return assignIds(repoRelativePomPaths.map((pomPath) => describeModuleForPom(pomPath).root));
+}
+
+/** Shared by `bindModules`/`discoverModuleRootsFromPoms`: base id from the root's own last path segment, a numeric suffix on a real collision rather than silently merging two modules. */
+function assignIds(roots: readonly string[]): readonly { id: string; root: string }[] {
 	const usedIds = new Set<string>();
-	return repoRelativeReportPaths.map((reportPath) => {
-		const { root } = describeModuleForReport(reportPath);
+	return roots.map((root) => {
 		const base = root === '.' ? 'root' : sanitizeModuleId(root.split('/').pop() ?? 'module');
 		let id = base;
 		let suffix = 2;
@@ -76,7 +98,7 @@ export function bindModules(repoRelativeReportPaths: readonly string[]): readonl
 			id = `${base}-${suffix++}`;
 		}
 		usedIds.add(id);
-		return { id, root, reportPath };
+		return { id, root };
 	});
 }
 
