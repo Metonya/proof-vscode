@@ -83,7 +83,12 @@
         "coverdict.show.lineGutter": {
           "type": "boolean",
           "default": true,
-          "description": "Açık bir dosyada, her satırın solunda o satırın kapsanıp kapsanmadığını gösteren renkli bir çizgi çiz (yeşil: kapsandı, sarı: kısmen, kırmızı: kapsanmadı). coverdict.show.explorerBadges'ten bağımsızdır: bunu kapatırsanız sadece bu çizgiler gider, Dosya Gezgini'ndeki yüzde rozetleri etkilenmez."
+          "description": "Açık bir dosyada, her satırın solunda o satırın kapsanıp kapsanmadığını gösteren renkli bir çizgi çiz (yeşil: kapsandı, sarı: kısmen, kırmızı: kapsanmadı - coverdict.colorblindMode açıkken farklı bir palet kullanılır). coverdict.show.explorerBadges'ten bağımsızdır: bunu kapatırsanız sadece bu çizgiler gider, Dosya Gezgini'ndeki yüzde rozetleri etkilenmez."
+        },
+        "coverdict.colorblindMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Satır kapsama çizgilerinde (coverdict.show.lineGutter) kırmızı/yeşili kullanmak yerine, üç tip renk körlüğü altında da (protanopi, döteranopi, tritanopi) birbirinden ayrılabilir kalan bir palet kullan (Okabe-Ito paleti: mavi=kapsandı, sarı=kısmen, vermilyon=kapsanmadı, mor=\"yalancı yeşil\"). Bu ayarı değiştirdikten sonra pencereyi yeniden yükleyin (Developer: Reload Window) - dekorasyonlar yalnızca eklenti başlarken oluşturulur."
         },
         "coverdict.show.oraclelessLines": {
           "type": "boolean",

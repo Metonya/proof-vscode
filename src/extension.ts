@@ -41,7 +41,11 @@ import { isMutationBlock, isPerTestBlock, parseVerdict } from './verdict/parse';
  */
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
 	const output = vscode.window.createOutputChannel('coverdict');
-	const gutterTypes = createGutterDecorationTypes();
+	// Faz 31 (user request): read once at activation - decoration types are
+	// created a single time, so toggling this setting needs a window reload
+	// to take effect (package.json's own description says so).
+	const colorblindMode = vscode.workspace.getConfiguration('coverdict').get<boolean>('colorblindMode') ?? false;
+	const gutterTypes = createGutterDecorationTypes(colorblindMode);
 	const explorerBadges = new ExplorerBadgeProvider();
 	const statusBarItem = createStatusBarItem();
 	const diagnostics = createDiagnosticCollection();
