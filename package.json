@@ -165,6 +165,16 @@
         "title": "coverdict: Derin Tarama"
       },
       {
+        "command": "coverdict.exportReport",
+        "title": "coverdict: Raporu Dışa Aktar (HTML)",
+        "icon": "$(export)"
+      },
+      {
+        "command": "coverdict.openSettings",
+        "title": "coverdict: Ayarları Aç",
+        "icon": "$(gear)"
+      },
+      {
         "command": "coverdict.perTestForFile",
         "title": "coverdict: Bu Sınıf İçin Hangi Test Hangi Satırı Kapsıyor"
       },
@@ -239,6 +249,16 @@
         }
       ],
       "view/title": [
+        {
+          "command": "coverdict.exportReport",
+          "when": "view == coverdict.runView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "coverdict.openSettings",
+          "when": "view == coverdict.runView",
+          "group": "navigation@2"
+        },
         {
           "command": "coverdict.qualityView.filter",
           "when": "view == coverdict.qualityView",

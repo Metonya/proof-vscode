@@ -241,3 +241,4 @@ test('an empty modules[] falls back to reportPath/module rather than emitting no
 	assert.equal(args[args.indexOf('--report') + 1], 'jacoco.xml');
 	assert.ok(!args.includes('--module'));
 });
+

@@ -226,6 +226,124 @@ export function registerMutationCommands(context: vscode.ExtensionContext, outpu
 }
 
 /**
+ * D-78: insan-okur, dışa aktarılabilir HTML rapor - hiç yeniden taramaz.
+ * İlk sürüm (D-75) her zaman taze bir diff-türetilmiş `analyze` koşusu
+ * başlatıyordu; gerçek kullanıcı raporu bunun kırdığı iki şeyi gösterdi:
+ * (1) o taze koşu diff'te hiç değişen sınıf bulamayınca boş dönüyordu,
+ * bunu da her koşulda `setPerTestState`/`setMutationState`'e verip
+ * kenar çubuğundaki gerçek, taze görünen sonucu sessizce eziyordu - tam
+ * D-73/D-74'ün bir kez düzelttiği sessiz-üzerine-yazma hatası; (2)
+ * kullanıcının kendi beklentisi zaten "en güncel taramayla gelmesi" idi,
+ * yeni bir (ve dar kapsamlı) analiz değil. Şimdi bu komut CLI'ı hiç
+ * `analyze` ile çağırmıyor - `verdict-current.json`'ı (her taramadan
+ * sonra zaten diskte) `pertest-current.json`/`mutation-current.json`
+ * varsa onlarla birleştirip yeni `coverdict render-html` komutuna
+ * veriyor (`RenderHtmlCommand`, D-78) - sıfır yeniden-analiz maliyeti,
+ * kenar çubuğu state'ine hiç dokunmuyor, sonuç kanıtlanabilir şekilde
+ * ekranda zaten görünenin ta kendisi.
+ */
+export function registerExportReportCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel): vscode.Disposable {
+	return vscode.commands.registerCommand('coverdict.exportReport', () => runExportReport(context, output));
+}
+
+/** Çalıştır panelinin başlık çubuğundaki dişli ikonu - `coverdict.*` ayarlarına, Ayarlar sekmesinde "coverdict" ile filtrelenmiş halde götürür. Kullanıcının kendi klasörüne özgü ayarları görmesi için workspace scope'unda açılır. */
+export function registerOpenSettingsCommand(): vscode.Disposable {
+	return vscode.commands.registerCommand('coverdict.openSettings', () => {
+		void vscode.commands.executeCommand('workbench.action.openSettings', '@ext:coverdict.coverdict-vscode');
+	});
+}
+
+/** `context.storageUri` altındaki bir anlık görüntüyü okur; dosya yoksa (o kanıt hiç toplanmamış) veya bozuksa `undefined` döner - hangisi olduğu çağıranı ilgilendirmiyor, ikisinde de o blok birleştirilmeden atlanır. */
+async function readJsonSnapshotIfPresent(storageRoot: vscode.Uri, fileName: string): Promise<Record<string, unknown> | undefined> {
+	try {
+		const raw = await fs.promises.readFile(vscode.Uri.joinPath(storageRoot, fileName).fsPath, 'utf8');
+		return JSON.parse(raw) as Record<string, unknown>;
+	} catch {
+		return undefined;
+	}
+}
+
+async function runExportReport(context: vscode.ExtensionContext, output: vscode.OutputChannel): Promise<void> {
+	const folder = vscode.workspace.workspaceFolders?.[0];
+	if (!folder) {
+		vscode.window.showErrorMessage('coverdict: önce bir klasör açın.');
+		return;
+	}
+	const storageRoot = context.storageUri;
+	if (!storageRoot) {
+		vscode.window.showErrorMessage('coverdict: bu pencerede workspace depolaması yok (bir klasör yerine tek dosya mı açık?) - rapor dışa aktarılamaz.');
+		return;
+	}
+
+	const verdict = await readJsonSnapshotIfPresent(storageRoot, 'verdict-current.json');
+	if (!verdict) {
+		vscode.window.showErrorMessage('coverdict: henüz bir tarama yok - önce "coverdict: Hızlı Tarama" (veya Derin Tarama/Mutasyon Testi) çalıştırın.');
+		return;
+	}
+
+	// pertest-current.json/mutation-current.json kasıtlı olarak ayrı dosyalar
+	// (bkz. bu dosyanın başındaki MUTATION_STORAGE_FILE/PERTEST_STORAGE_FILE
+	// yorumu) - varsa splice edilir, yoksa o blok basitçe eksik kalır (hard
+	// rule 3a: hiç toplanmamış kanıt sessizce uydurulmaz).
+	const perTestSnapshot = await readJsonSnapshotIfPresent(storageRoot, PERTEST_STORAGE_FILE);
+	if (perTestSnapshot?.perTest) {
+		verdict.perTest = perTestSnapshot.perTest;
+	}
+	const mutationSnapshot = await readJsonSnapshotIfPresent(storageRoot, MUTATION_STORAGE_FILE);
+	if (mutationSnapshot?.mutation) {
+		verdict.mutation = mutationSnapshot.mutation;
+	}
+
+	const jarPath = locateJar(folder);
+	if (!jarPath) {
+		void offerToOpenSetting('coverdict: coverdict.jar bulunamadı. coverdict.jarPath ayarını yapın veya coverdict-cli/target/coverdict.jar konumunda bir tane derleyin.', 'coverdict.jarPath');
+		return;
+	}
+
+	const target = await vscode.window.showSaveDialog({
+		defaultUri: vscode.Uri.joinPath(folder.uri, 'coverdict-report.html'),
+		filters: { HTML: ['html'] },
+		saveLabel: 'Dışa Aktar',
+		title: 'coverdict: Raporu Dışa Aktar',
+	});
+	if (!target) {
+		return;
+	}
+
+	const composedUri = vscode.Uri.joinPath(storageRoot, 'export-verdict.json');
+	await vscode.workspace.fs.writeFile(composedUri, Buffer.from(JSON.stringify(verdict), 'utf8'));
+
+	const javaExecutable = vscode.workspace.getConfiguration('coverdict', folder).get<string>('javaExecutable') || 'java';
+	const args = ['render-html', '--in', composedUri.fsPath, '--out', target.fsPath];
+	output.appendLine(`coverdict: java -jar ${jarPath} ${args.join(' ')}`);
+
+	const result = await vscode.window.withProgress(
+		{ location: vscode.ProgressLocation.Notification, title: 'coverdict: rapor dışa aktarılıyor' },
+		async () => {
+			try {
+				return await run({ javaExecutable, jarPath, args, env: resolveWorkspaceEnv(folder) }).result;
+			} catch (e) {
+				vscode.window.showErrorMessage(`coverdict: "${javaExecutable}" çalıştırılamadı: ${(e as Error).message}`);
+				return undefined;
+			}
+		},
+	);
+	if (!result) {
+		return;
+	}
+	output.appendLine(result.stdout);
+	if (result.exitCode !== 0) {
+		vscode.window.showErrorMessage(`coverdict: rapor oluşturulamadı (çıkış kodu ${result.exitCode}). ${result.stderr.trim()}`);
+		return;
+	}
+
+	const choice = await vscode.window.showInformationMessage(`coverdict: rapor dışa aktarıldı: ${target.fsPath}`, 'Aç');
+	if (choice === 'Aç') {
+		void vscode.env.openExternal(target);
+	}
+}
+
+/**
  * Faz 24 (§7.6 madde 5 ve 6): iki ayrı görünümün aynı olguyu bağlantısız
  * anlattığı iki gerçek durumu birbirine bağlar - `PSEUDO_TESTED_METHOD`
  * bulgusu (Test Kalitesi) ↔ mutasyon ağacındaki "HAYATTA KALDI" (madde
