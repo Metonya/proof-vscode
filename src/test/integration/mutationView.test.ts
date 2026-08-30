@@ -151,6 +151,24 @@ suite('Mutation view (Faz 20)', () => {
 		assert.match(String(headerItem.label), /az önce/);
 	});
 
+	/**
+	 * Kullanıcı isteği: bir sınıfın gerçek sonucuna bakarken başka bir
+	 * dosyaya geçmek "aktif dosya için çalıştır"/"tüm modülü tara"
+	 * seçeneklerini tamamen kaybettiriyordu - sadece boş sonuç
+	 * durumlarında vardı. Artık gerçek bir sonuç gösterilirken de listenin
+	 * sonunda duruyorlar.
+	 */
+	test('a real, non-empty result still offers both recovery actions at the end of the list', () => {
+		setCoverageState(STATE);
+		setMutationState({ mutation: MUTATION, warnings: [], targets: ['dev.coverdict.playground.Calculator'], ranAt: Date.now() });
+		const provider = new MutationTreeProvider();
+
+		const roots = provider.getChildren();
+		assert.ok(roots.some((n) => n.kind === 'class'), 'sanity: this is the real-result branch, not an empty one');
+		assert.equal(roots.at(-2)?.kind, 'runHint');
+		assert.equal(roots.at(-1)?.kind, 'scanAllHint');
+	});
+
 	/** A result restored from disk (extension.ts on window reload) has no `ranAt` - the header must say so, not guess a time. */
 	test('a restored result (no ranAt) says so instead of guessing a time', async () => {
 		setCoverageState(STATE);
