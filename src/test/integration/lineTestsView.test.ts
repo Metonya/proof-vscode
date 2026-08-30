@@ -114,6 +114,54 @@ suite('Line tests view (Faz 15c)', () => {
 	});
 
 	/**
+	 * Faz 31: a passing (`ok`) test never gets a `Finding` (findings only
+	 * exist for oracle-quality problems), so it used to have no navigation
+	 * at all - `prodTestItem` only wired `item.command` inside `if (node.finding)`.
+	 * `locateTestFile` now probes the real filesystem (same mechanism
+	 * `hoverProvider.ts` already used) and opens the test's own file at line
+	 * 1 - it does not know which line inside the test to jump to (no finding
+	 * to anchor on), but "the file itself" beats "nothing at all".
+	 */
+	test('prodTest: a passing test with no finding still navigates to its own file', async () => {
+		const perTest: PerTestBlock = {
+			engine: 'pitest', engineVersion: '1.15.8',
+			modules: [{
+				id: 'root',
+				entries: [{
+					className: 'dev.coverdict.playground.Calculator', methodName: 'add',
+					lines: [{ line: 7, tests: ['[class:dev.coverdict.playground.CalculatorGoodTest]/[method:addsTwoNumbers()]'] }],
+				}],
+				ambient: [],
+			}],
+		};
+		setPerTestState({ perTest, warnings: [] });
+		const { document, workspaceRoot } = await openProductionFile('Calculator');
+		setCoverageState({ ...STATE, workspaceRoot, findings: [] }); // no findings anywhere - this test is 'ok'
+
+		const testDir = path.join(workspaceRoot, 'src', 'test', 'java', 'dev', 'coverdict', 'playground');
+		fs.mkdirSync(testDir, { recursive: true });
+		const testFilePath = path.join(testDir, 'CalculatorGoodTest.java');
+		fs.writeFileSync(testFilePath, 'package dev.coverdict.playground;\n\nclass CalculatorGoodTest {\n}\n', 'utf8');
+
+		const provider = new LineTestsTreeProvider();
+		provider.setActiveDocument(document);
+
+		const line = provider.getChildren()[0];
+		const prodTest = provider.getChildren(line)[0];
+		assert.equal(prodTest.kind, 'prodTest');
+		if (prodTest.kind === 'prodTest') {
+			assert.equal(prodTest.verdict, 'ok');
+		}
+
+		const item = await provider.getTreeItem(prodTest);
+		assert.ok(item.command, 'a passing test must still navigate - it just has no finding to point at a specific line');
+		assert.equal(item.command?.command, 'vscode.open');
+		const [uri] = item.command!.arguments as [vscode.Uri];
+		// vscode.Uri.file() lower-cases the Windows drive letter - compare case-insensitively, same path otherwise.
+		assert.equal(uri.fsPath.toLowerCase(), testFilePath.toLowerCase());
+	});
+
+	/**
 	 * Faz 24 (§7.6 madde 4) - real data from a live
 	 * `--per-test-target root=dev.coverdict.playground.Calculator` run
 	 * (2026-08-28): `Calculator.java` has no explicit constructor, so the
@@ -149,7 +197,7 @@ suite('Line tests view (Faz 15c)', () => {
 		if (roots[0].kind === 'prodLine') {
 			assert.equal(roots[0].methodName, '<init>');
 		}
-		const item = provider.getTreeItem(roots[0]);
+		const item = await provider.getTreeItem(roots[0]);
 		assert.match(String(item.label), /<init>\(\)/, 'the label must name the method the line belongs to, not just "Satır 4"');
 		assert.ok(item.tooltip, 'a constructor-attributed line must explain why its test count looks high');
 		assert.match(String((item.tooltip as { value?: string })?.value ?? item.tooltip), /constructor/i);
@@ -414,7 +462,7 @@ suite('Line tests view (Faz 15c)', () => {
 			assert.equal(prodTest.verdict, 'inconclusive');
 		}
 
-		const item = provider.getTreeItem(prodTest);
+		const item = await provider.getTreeItem(prodTest);
 		assert.equal(item.contextValue, 'coverdict.prodTest.contradiction');
 		const tooltip = String((item.tooltip as vscode.MarkdownString).value);
 		assert.match(tooltip, /Mutasyon kanıtı bunu çürütüyor/);
@@ -433,6 +481,7 @@ suite('Line tests view (Faz 15c)', () => {
 
 		const line = provider.getChildren()[0];
 		const prodTest = provider.getChildren(line)[0];
-		assert.equal(provider.getTreeItem(prodTest).contextValue, 'coverdict.prodTest', 'no mutation evidence at all - must not claim a contradiction');
+		const item = await provider.getTreeItem(prodTest);
+		assert.equal(item.contextValue, 'coverdict.prodTest', 'no mutation evidence at all - must not claim a contradiction');
 	});
 });

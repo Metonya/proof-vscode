@@ -3,10 +3,11 @@ import * as vscode from 'vscode';
 import { testsForClass } from '../../model/lineIndex';
 import { allMutantsNoCoverage, bucketOf, classesOf, findMutatedMethod, formatRelativeTime, methodLabel, mutatorLabel, productionMethodKey, scoreOf, scoreOfMethods, targetSummary, type MutantBucket, type MutationScore } from '../../model/mutationModel';
 import { toAbsolutePath } from '../../model/pathIndex';
-import { buildProductionClassIndex, productionSourceRoots } from '../../model/productionClassIndex';
+import { buildProductionClassIndex, productionSourceRoots, testSourceRoots } from '../../model/productionClassIndex';
 import { getCoverageState, getMutationState, getPerTestState } from '../../model/store';
 import { parseTestIdentity } from '../../verdict/testIdentity';
 import type { Finding, MutatedMethod, Mutant } from '../../verdict/types';
+import { locateTestFile } from '../testFileLocator';
 
 /**
  * Faz 20: mutasyon raporu. Kullanıcının isteği: "mutasyon testinde ne kadar
@@ -67,7 +68,7 @@ export class MutationTreeProvider implements vscode.TreeDataProvider<MutationNod
 		return node.kind === 'method' ? { kind: 'class', className: node.className, methods: node.siblings } : undefined;
 	}
 
-	getTreeItem(node: MutationNode): vscode.TreeItem {
+	getTreeItem(node: MutationNode): vscode.TreeItem | Thenable<vscode.TreeItem> {
 		switch (node.kind) {
 			case 'empty':
 				return leaf(node.message, 'info');
@@ -253,9 +254,24 @@ function findPseudoTestedFinding(className: string, methodName: string, methodDe
  * mutationModel.ts`'in `findKillContribution`'ıyla aynı, kuralı yeniden
  * türetmiyor.
  */
-function killingTestItem(rawTestId: string): vscode.TreeItem {
+/**
+ * Faz 31: bir mutantı öldüren test her zaman "başarılı" olduğu için burada
+ * hiç `finding` yok - eskiden bu yüzden navigasyon hiç yoktu. `locateTestFile`
+ * (`ui/testFileLocator.ts`, `hoverProvider.ts` ile aynı mekanizma) testin
+ * kendi kaynak kökündeki dosyasını arar; bulunamazsa (hard rule 3a) komut
+ * hiç eklenmez, sadece yaprak düğüm kalır.
+ */
+async function killingTestItem(rawTestId: string): Promise<vscode.TreeItem> {
 	const identity = parseTestIdentity(rawTestId);
 	const item = leaf(identity.display, 'check');
+	const state = getCoverageState();
+	if (state && identity.className) {
+		const path = await locateTestFile(state.workspaceRoot, testSourceRoots(state.modules), identity.className, undefined);
+		if (path) {
+			const uri = vscode.Uri.file(toAbsolutePath(state.workspaceRoot, path));
+			item.command = { command: 'vscode.open', title: 'Test Dosyasını Aç', arguments: [uri, { selection: new vscode.Range(0, 0, 0, 0) }] };
+		}
+	}
 	if (identity.className && identity.methodName) {
 		const key = `${identity.className}#${identity.methodName}()`;
 		const finding = getCoverageState()?.findings.find((f) => f.confidence === 'INCONCLUSIVE' && f.testMethod === key);

@@ -4,11 +4,12 @@ import { detectClassName } from '../../model/classNameDetector';
 import { groupConsecutiveLines, testsForClass, testsToLines, type TestLineRef } from '../../model/lineIndex';
 import { findKillContribution, type KillContribution } from '../../model/mutationModel';
 import { classifySourcePath, toAbsolutePath, toRepoRelativePath, type SourceKind } from '../../model/pathIndex';
-import { buildProductionClassIndex, productionSourceRoots } from '../../model/productionClassIndex';
+import { buildProductionClassIndex, productionSourceRoots, testSourceRoots } from '../../model/productionClassIndex';
 import { getCoverageState, getMutationState, getPerTestState } from '../../model/store';
 import { indexFindingsByTestMethod, lineQuality, type TestVerdict } from '../../model/testQuality';
 import { parseTestIdentity } from '../../verdict/testIdentity';
 import type { Finding } from '../../verdict/types';
+import { locateTestFile } from '../testFileLocator';
 
 /**
  * Faz 15c: replaces the webview panel that used to show "which tests cover
@@ -80,7 +81,7 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 		return group ? { kind: 'prodLine', startLine: group.startLine, endLine: group.endLine, tests: group.tests, methodName: group.methodName } : undefined;
 	}
 
-	getTreeItem(node: LineTestsNode): vscode.TreeItem {
+	getTreeItem(node: LineTestsNode): vscode.TreeItem | Thenable<vscode.TreeItem> {
 		switch (node.kind) {
 			case 'empty':
 				return leaf(node.message, 'info');
@@ -291,7 +292,7 @@ function prodLineItem(node: Extract<LineTestsNode, { kind: 'prodLine' }>): vscod
 	return item;
 }
 
-function prodTestItem(node: Extract<LineTestsNode, { kind: 'prodTest' }>): vscode.TreeItem {
+async function prodTestItem(node: Extract<LineTestsNode, { kind: 'prodTest' }>): Promise<vscode.TreeItem> {
 	const identity = parseTestIdentity(node.rawTestId);
 	const item = new vscode.TreeItem(identity.display, vscode.TreeItemCollapsibleState.None);
 	item.iconPath = new vscode.ThemeIcon(verdictIcon(node.verdict), verdictColor(node.verdict));
@@ -317,11 +318,21 @@ function prodTestItem(node: Extract<LineTestsNode, { kind: 'prodTest' }>): vscod
 	if (tooltipParts.length > 0) {
 		item.tooltip = new vscode.MarkdownString(tooltipParts.join('\n\n'));
 	}
+	// Faz 31: `node.finding` yalnızca test `ok` değilse dolu - önceden bu
+	// yüzden yalnızca sorunlu testler navigasyon alıyordu, sağlıklı bir
+	// testte hiçbir şey olmuyordu. `finding.path` yoksa `locateTestFile`
+	// (`hoverProvider.ts`'in zaten kullandığı aynı mekanizma) testin kendi
+	// kaynak kökündeki gerçek dosyasını arar; hiçbiri bulunamazsa (hard rule
+	// 3a) link hiç üretilmez.
 	const state = getCoverageState();
-	if (state && node.finding) {
-		const uri = vscode.Uri.file(toAbsolutePath(state.workspaceRoot, node.finding.path));
-		const selection = new vscode.Range(node.finding.startLine - 1, 0, node.finding.startLine - 1, 0);
-		item.command = { command: 'vscode.open', title: 'Test Dosyasını Aç', arguments: [uri, { selection }] };
+	if (state && identity.className) {
+		const path = await locateTestFile(state.workspaceRoot, testSourceRoots(state.modules), identity.className, node.finding?.path);
+		if (path) {
+			const uri = vscode.Uri.file(toAbsolutePath(state.workspaceRoot, path));
+			const startLine = node.finding?.startLine ?? 1;
+			const selection = new vscode.Range(startLine - 1, 0, startLine - 1, 0);
+			item.command = { command: 'vscode.open', title: 'Test Dosyasını Aç', arguments: [uri, { selection }] };
+		}
 	}
 	item.contextValue = contradiction ? 'coverdict.prodTest.contradiction' : 'coverdict.prodTest';
 	return item;
