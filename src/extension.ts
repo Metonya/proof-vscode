@@ -41,11 +41,8 @@ import { isMutationBlock, isPerTestBlock, parseVerdict } from './verdict/parse';
  */
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
 	const output = vscode.window.createOutputChannel('coverdict');
-	// Faz 31 (user request): read once at activation - decoration types are
-	// created a single time, so toggling this setting needs a window reload
-	// to take effect (package.json's own description says so).
 	const colorblindMode = vscode.workspace.getConfiguration('coverdict').get<boolean>('colorblindMode') ?? false;
-	const gutterTypes = createGutterDecorationTypes(colorblindMode);
+	let gutterTypes = createGutterDecorationTypes(colorblindMode);
 	const explorerBadges = new ExplorerBadgeProvider();
 	const statusBarItem = createStatusBarItem();
 	const diagnostics = createDiagnosticCollection();
@@ -151,6 +148,32 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			const state = getCoverageState();
 			if (state) {
 				republishFromState(sinks, state.workspaceRoot);
+			}
+		}),
+		// coverdict.colorblindMode da canlı: eski davranış (yalnızca
+		// açılışta okunup pencere yenilemesi isteyen) coverdict.show.* ile
+		// tutarsızdı ve kafa karıştırıyordu - eskiler dispose edilip
+		// yenileri kaydedilir, sinks.gutterTypes güncellenir (commands.ts
+		// hep sinks üzerinden okur), açık editörler hemen yeni renklerle
+		// boyanır.
+		vscode.workspace.onDidChangeConfiguration((e) => {
+			if (!e.affectsConfiguration('coverdict.colorblindMode')) {
+				return;
+			}
+			const newMode = vscode.workspace.getConfiguration('coverdict').get<boolean>('colorblindMode') ?? false;
+			const oldTypes = gutterTypes;
+			gutterTypes = createGutterDecorationTypes(newMode);
+			sinks.gutterTypes = gutterTypes;
+			context.subscriptions.push(gutterTypes.covered, gutterTypes.partial, gutterTypes.uncovered, gutterTypes.oracleless, gutterTypes.excluded, gutterTypes.stale);
+			oldTypes.covered.dispose();
+			oldTypes.partial.dispose();
+			oldTypes.uncovered.dispose();
+			oldTypes.oracleless.dispose();
+			oldTypes.excluded.dispose();
+			oldTypes.stale.dispose();
+			const state = getCoverageState();
+			if (state?.fileCoverage && isGutterVisible()) {
+				applyGutterCoverage(gutterTypes, state.workspaceRoot, state.fileCoverage, getStaleFiles());
 			}
 		}),
 	);

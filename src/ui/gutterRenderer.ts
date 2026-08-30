@@ -46,9 +46,9 @@ const COLORBLIND_PALETTE = {
 } as const;
 
 /**
- * Read once at activation (`extension.ts`) - decoration types are created a
- * single time, so toggling `coverdict.colorblindMode` needs a window reload
- * to take effect, same as most VS Code color-related settings.
+ * Called at activation and again, live, whenever `coverdict.colorblindMode`
+ * changes (`extension.ts`'s own `onDidChangeConfiguration` handler disposes
+ * the old types and swaps in a fresh set) - no window reload needed.
  */
 export function createGutterDecorationTypes(colorblindMode = false): GutterDecorationTypes {
 	return {

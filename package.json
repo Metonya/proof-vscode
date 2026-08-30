@@ -88,7 +88,7 @@
         "coverdict.colorblindMode": {
           "type": "boolean",
           "default": false,
-          "description": "Satır kapsama çizgilerinde (coverdict.show.lineGutter) kırmızı/yeşili kullanmak yerine, üç tip renk körlüğü altında da (protanopi, döteranopi, tritanopi) birbirinden ayrılabilir kalan bir palet kullan (Okabe-Ito paleti: mavi=kapsandı, sarı=kısmen, vermilyon=kapsanmadı, mor=\"yalancı yeşil\"). Bu ayarı değiştirdikten sonra pencereyi yeniden yükleyin (Developer: Reload Window) - dekorasyonlar yalnızca eklenti başlarken oluşturulur."
+          "description": "Satır kapsama çizgilerinde (coverdict.show.lineGutter) kırmızı/yeşili kullanmak yerine, üç tip renk körlüğü altında da (protanopi, döteranopi, tritanopi) birbirinden ayrılabilir kalan bir palet kullan (Okabe-Ito paleti: mavi=kapsandı, sarı=kısmen, vermilyon=kapsanmadı, mor=\"yalancı yeşil\"). Değiştirir değiştirmez açık editörlere hemen yansır, pencere yenilemeye gerek yok."
         },
         "coverdict.show.oraclelessLines": {
           "type": "boolean",
