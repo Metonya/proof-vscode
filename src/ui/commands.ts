@@ -12,7 +12,7 @@ import { buildFalseGreenIndex } from '../model/falseGreenIndex';
 import type { BadgeMetric } from '../model/metrics';
 import { detectClassName } from '../model/classNameDetector';
 import { findKillContribution, parseProductionMethod, productionMethodKey } from '../model/mutationModel';
-import { toAbsolutePath } from '../model/pathIndex';
+import { classNameFromPath, toAbsolutePath } from '../model/pathIndex';
 import { buildProductionClassIndex, productionSourceRoots } from '../model/productionClassIndex';
 import {
 	getCoverageState,
@@ -168,11 +168,18 @@ export function registerPerTestForFileCommand(context: vscode.ExtensionContext, 
 	return vscode.commands.registerCommand('coverdict.perTestForFile', () => runPerTestForFile(context, output, sinks));
 }
 
+/** Faz 31: diff hiç hedef bulamadığında Satır → Testler'in sunduğu "yine de tüm modülü tara" kurtarma eylemi. */
+export function registerPerTestForModuleAllCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
+	return vscode.commands.registerCommand('coverdict.perTestForModuleAll', () => runAnalyzePerTestAll(context, output, sinks));
+}
+
 /** Faz 20: mutasyon testi - tek sınıf (önerilen) ve modül geneli (onay arkasında). */
 export function registerMutationCommands(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable[] {
 	return [
 		vscode.commands.registerCommand('coverdict.mutationForFile', () => runMutationForFile(context, output, sinks)),
 		vscode.commands.registerCommand('coverdict.mutationForModule', () => runMutationForModule(context, output, sinks)),
+		// Faz 31: diff hiç hedef bulamadığında Mutasyon görünümünün sunduğu "yine de tüm modülü tara" kurtarma eylemi.
+		vscode.commands.registerCommand('coverdict.mutationForModuleAll', () => runMutationForModuleAll(context, output, sinks)),
 		vscode.commands.registerCommand('coverdict.mutationView.toggleSurvivorsOnly', () => {
 			const on = sinks.mutationView.toggleSurvivorsOnly();
 			vscode.window.setStatusBarMessage(on ? 'coverdict: sadece hayatta kalan mutantlar' : 'coverdict: bütün mutantlar', 2000);
@@ -320,11 +327,35 @@ export function registerCopyCommands(sinks: CoverageSinks): vscode.Disposable[] 
 }
 
 /** Ağaç düğümlerinden panoya yazılacak düz metin - tanımadığımız bir şekle `undefined` döner, uydurmaz. */
-function describeNode(node: unknown): string | undefined {
+/**
+ * Faz 31: real user report - right-clicking "Kopyala" on an `'empty'`
+ * explanation node (the long "no changed class" message, real screenshot)
+ * silently did nothing, because this function never had a case for it -
+ * `vscode.env.clipboard.writeText` only runs when this returns a real
+ * string. Broadened to every node kind across all four tree views that
+ * carries real, copyable text; a still-unrecognized shape (a future node
+ * kind added without updating this) keeps returning `undefined` rather
+ * than guessing at a representation (hard rule 3a) - the button just does
+ * nothing for it, same as today, instead of copying something wrong.
+ */
+interface DescribableNode {
+	kind?: string; finding?: Finding; reason?: Reason; rule?: string; path?: string; rawTestId?: string;
+	startLine?: number; endLine?: number; message?: string; text?: string; className?: string; methodName?: string;
+	ref?: { outerClassName?: string; line?: number };
+	method?: { methodName?: string; methodDescription?: string };
+	mutant?: { line?: number; mutator?: string; status?: string };
+}
+
+export function describeNode(node: unknown): string | undefined {
 	if (!node || typeof node !== 'object') {
 		return undefined;
 	}
-	const n = node as { kind?: string; finding?: Finding; reason?: Reason; rule?: string; path?: string; rawTestId?: string; startLine?: number; endLine?: number };
+	const n = node as DescribableNode;
+	return describeQualityOrCoverageNode(n) ?? describeTestOrMutationTreeNode(n);
+}
+
+/** Quality/coverage views' node kinds - `qualityView.ts`/`coverageView.ts`. */
+function describeQualityOrCoverageNode(n: DescribableNode): string | undefined {
 	if (n.kind === 'finding' && n.finding) {
 		return `${n.finding.rule} ${n.finding.path}:${n.finding.startLine} ${n.finding.testMethod ?? ''} - ${n.finding.message}`.trim();
 	}
@@ -337,11 +368,47 @@ function describeNode(node: unknown): string | undefined {
 	if (n.kind === 'file' && n.path) {
 		return n.path;
 	}
-	if (n.kind === 'prodTest' && n.rawTestId) {
+	return undefined;
+}
+
+/** Satır → Testler / Mutasyon views' node kinds - `lineTestsView.ts`/`mutationView.ts`; the two shared/generic kinds (`'empty'`, `'prodTest'`/`'killingTest'`) live here, view-specific kinds are split out below to keep this under the complexity limit. */
+function describeTestOrMutationTreeNode(n: DescribableNode): string | undefined {
+	if ((n.kind === 'prodTest' || n.kind === 'killingTest') && n.rawTestId) {
 		return n.rawTestId;
 	}
+	if (n.kind === 'empty' && n.message) {
+		return n.message;
+	}
+	if (n.kind === 'class' && n.className) {
+		return n.className;
+	}
+	return describeLineTestsNode(n) ?? describeMutationNode(n);
+}
+
+/** `lineTestsView.ts`-only node kinds. */
+function describeLineTestsNode(n: DescribableNode): string | undefined {
 	if (n.kind === 'prodLine' && n.startLine !== undefined) {
 		return n.startLine === n.endLine ? `Satır ${n.startLine}` : `Satır ${n.startLine}-${n.endLine}`;
+	}
+	if (n.kind === 'testMethod' && n.methodName) {
+		return `${n.methodName}()`;
+	}
+	if (n.kind === 'testLine' && n.ref?.outerClassName && n.ref.line !== undefined) {
+		return `${n.ref.outerClassName}:${n.ref.line}`;
+	}
+	return undefined;
+}
+
+/** `mutationView.ts`-only node kinds. */
+function describeMutationNode(n: DescribableNode): string | undefined {
+	if (n.kind === 'header' && n.text) {
+		return n.text;
+	}
+	if (n.kind === 'method' && n.className && n.method?.methodName) {
+		return `${n.className}#${n.method.methodName}${n.method.methodDescription ?? ''}`;
+	}
+	if (n.kind === 'mutant' && n.className && n.mutant?.line !== undefined) {
+		return `${n.className}:${n.mutant.line} ${n.mutant.mutator ?? ''} ${n.mutant.status ?? ''}`.trim();
 	}
 	return undefined;
 }
@@ -574,6 +641,105 @@ async function runMutationForModule(context: vscode.ExtensionContext, output: vs
 	}
 	// Hedef verilmiyor: CLI diff'teki değişen production sınıflarını hedefler.
 	await runMutation(context, output, sinks, folder, [], 'coverdict: mutasyon testi (modül)');
+}
+
+/**
+ * Faz 31: kullanıcının açık isteği - "ben değişiklik yapmadan tüm repoda
+ * tarama yapabilmeliyim". `fileCoverage.files[]` bir Hızlı Tarama'nın diff'ten
+ * tamamen bağımsız, o koşunun bildiği **tam** production dosya listesi
+ * (`hoverProvider.ts`'in de dayandığı aynı yetkili kaynak) - bu yüzden
+ * diff hiç değişen sınıf bulamasa bile buradan gerçek, diff'siz bir hedef
+ * listesi çıkarılabilir. Yol çözülemeyen bir dosya (`classNameFromPath`
+ * `undefined` dönerse) sessizce atlanır - eksik bir hedef, uydurulmuş bir
+ * hedeften iyidir (hard rule 3a).
+ */
+export function allProductionTargets(state: NonNullable<ReturnType<typeof getCoverageState>>): readonly { filePath: string; fqcn: string }[] {
+	if (!state.fileCoverage) {
+		return [];
+	}
+	const sourceRoots = productionSourceRoots(state.modules);
+	const targets: { filePath: string; fqcn: string }[] = [];
+	for (const file of state.fileCoverage.files) {
+		const fqcn = classNameFromPath(file.path, sourceRoots);
+		if (fqcn) {
+			targets.push({ filePath: toAbsolutePath(state.workspaceRoot, file.path), fqcn });
+		}
+	}
+	return targets;
+}
+
+/** Faz 31: diff hiç hedef bulamadığında (`PER_TEST_NO_CHANGED_TARGETS`) Satır → Testler görünümünün sunduğu kurtarma eylemi - diff'ten bağımsız, modüldeki **her** production sınıfı hedeflenir. */
+async function runAnalyzePerTestAll(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
+	const folder = vscode.workspace.workspaceFolders?.[0];
+	if (!folder) {
+		vscode.window.showErrorMessage('coverdict: önce bir klasör açın.');
+		return;
+	}
+	const state = getCoverageState();
+	if (!state?.fileCoverage) {
+		vscode.window.showErrorMessage('coverdict: önce Hızlı Tara çalıştırın - tüm modülü diff\'siz taramak için production dosya listesi gerekiyor.');
+		return;
+	}
+	const targets = allProductionTargets(state);
+	if (targets.length === 0) {
+		vscode.window.showErrorMessage('coverdict: bu modülde hedeflenebilecek bir production sınıfı bulunamadı.');
+		return;
+	}
+	const diffMode = readDiffMode(folder);
+	if (!diffMode) {
+		return;
+	}
+
+	const parsed = await runAnalyzeCore(context, output, folder, diffMode, {
+		perTest: { targets },
+		progressTitle: `coverdict: tüm modül için derin tarama (${targets.length} sınıf)`,
+	});
+	if (!parsed) {
+		return;
+	}
+
+	publishAnalysis(sinks, folder.uri.fsPath, analysisResultFrom(parsed));
+	setPerTestState({ perTest: parsed.perTest, warnings: parsed.warnings });
+	if (parsed.perTest) {
+		const snapshot: PerTestSnapshot = { perTest: parsed.perTest, warnings: parsed.warnings };
+		await writeJsonSnapshot(context, output, PERTEST_STORAGE_FILE, snapshot, 'test bazlı kanıt');
+	} else {
+		vscode.window.showWarningMessage('coverdict: bu koşuda test bazlı (per-test) kanıt yok - PER_TEST_* uyarıları için çıktı kanalını kontrol edin.');
+	}
+	revealLineTestsView(sinks);
+}
+
+/** Faz 31: `runMutationForModule`'ün diff'siz karşılığı - diff hiç hedef bulamadığında (`MUTATION_NO_CHANGED_TARGETS`) Mutasyon görünümünün sunduğu kurtarma eylemi. Diff-tabanlı koşudan bile daha pahalı olabileceği için (değişmemiş sınıflar da dahil) aynı onay modalı, bütçe uyarısı zaten söylenerek. */
+async function runMutationForModuleAll(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
+	const folder = vscode.workspace.workspaceFolders?.[0];
+	if (!folder) {
+		vscode.window.showErrorMessage('coverdict: önce bir klasör açın.');
+		return;
+	}
+	const state = getCoverageState();
+	if (!state?.fileCoverage) {
+		vscode.window.showErrorMessage('coverdict: önce Hızlı Tara çalıştırın - tüm modülü diff\'siz taramak için production dosya listesi gerekiyor.');
+		return;
+	}
+	const targets = allProductionTargets(state);
+	if (targets.length === 0) {
+		vscode.window.showErrorMessage('coverdict: bu modülde hedeflenebilecek bir production sınıfı bulunamadı.');
+		return;
+	}
+
+	const timeout = readMutationTimeout(folder);
+	const choice = await vscode.window.showWarningMessage(
+		`Mutasyon testi TÜM modül için çalıştırılacak (${targets.length} sınıf, diff'ten bağımsız).`,
+		{
+			modal: true,
+			detail: `Bu koşu diff-tabanlı "modül geneli" koşudan bile daha uzun sürebilir - değişmemiş sınıflar da dahil. Sınıf başına zaman bütçesi ${timeout} saniye (coverdict.mutationTimeout); aşılırsa koşu durdurulur ve sonuç kısmi kalır.`,
+		},
+		'Devam Et',
+	);
+	if (choice !== 'Devam Et') {
+		return;
+	}
+	await runMutation(context, output, sinks, folder, targets, `coverdict: mutasyon testi (tüm modül, ${targets.length} sınıf)`);
 }
 
 /** İki mutasyon girişinin ortak gövdesi. `targets` boşsa CLI diff'ten hedef türetir (bu durumda bir diff modu şart). */

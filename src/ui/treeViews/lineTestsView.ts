@@ -31,6 +31,8 @@ import { locateTestFile } from '../testFileLocator';
 export type LineTestsNode =
 	| { kind: 'empty'; message: string }
 	| { kind: 'collectHint' }
+	/** Faz 31: diff hiç değişen sınıf bulamadığında ("ben değişiklik yapmadan tüm repoda tarama yapabilmeliyim") - diff'ten bağımsız, modüldeki her production sınıfını hedefleyen kurtarma eylemi. */
+	| { kind: 'scanAllHint' }
 	/** Faz 31: root shown when no Java file is active - mirrors the mutation view's "always show the whole run" landing. */
 	| { kind: 'class'; className: string; linesToTests: ReadonlyMap<number, readonly string[]>; linesToMethod: ReadonlyMap<number, string> }
 	| { kind: 'prodLine'; startLine: number; endLine: number; tests: readonly string[]; methodName: string | undefined; className?: string }
@@ -89,6 +91,8 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 				return leaf(node.message, 'info');
 			case 'collectHint':
 				return collectHintItem();
+			case 'scanAllHint':
+				return scanAllHintItem();
 			case 'class':
 				return classItem(node);
 			case 'prodLine':
@@ -172,7 +176,11 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 			if (this.activeDocument && this.classifyActiveDocument(this.activeDocument) === 'test') {
 				return [{ kind: 'empty', message: 'Bu test sınıfının bu koşuda çalıştırdığı production satırı kaydı yok. Ters yön ancak production sınıfları hedeflenmiş bir koşuda dolar: bir production dosyası açıp "Bu Sınıf İçin Topla" deyin ya da Derin Tarama çalıştırın.' }];
 			}
-			return [{ kind: 'empty', message: noPerTestDataMessage() }, { kind: 'collectHint' }];
+			const nodes: LineTestsNode[] = [{ kind: 'empty', message: noPerTestDataMessage() }, { kind: 'collectHint' }];
+			if (hasNoChangedTargetsWarning()) {
+				nodes.push({ kind: 'scanAllHint' });
+			}
+			return nodes;
 		}
 		if (view.kind === 'production') {
 			const findingsByTestMethod = indexFindingsByTestMethod(getCoverageState()?.findings ?? []);
@@ -203,7 +211,11 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 	private allClassesRoot(): LineTestsNode[] {
 		const perTest = getPerTestState()?.perTest;
 		if (!perTest) {
-			return [{ kind: 'empty', message: noPerTestDataMessage() }];
+			const nodes: LineTestsNode[] = [{ kind: 'empty', message: noPerTestDataMessage() }];
+			if (hasNoChangedTargetsWarning()) {
+				nodes.push({ kind: 'scanAllHint' });
+			}
+			return nodes;
 		}
 		const findingsByTestMethod = indexFindingsByTestMethod(getCoverageState()?.findings ?? []);
 		const classes = allClasses(perTest, productionClassFilter())
@@ -305,6 +317,14 @@ function productionClassFilter(): ((outerClassName: string) => boolean) | undefi
 /** Bir satır "sorunlu" sayılır: cover eden testlerden en az biri `ok` değil (doğrulaması yok/zayıf/gereksiz ya da çözülemedi). */
 function hasProblem(tests: readonly string[], findingsByTestMethod: ReturnType<typeof indexFindingsByTestMethod>): boolean {
 	return lineQuality(tests, findingsByTestMethod).tests.some((t) => t.verdict !== 'ok');
+}
+
+/** Faz 31: "ben değişiklik yapmadan tüm repoda tarama yapabilmeliyim" - diff hiç hedef bulamadığında sunulan kurtarma eylemi, `coverdict.perTestForModuleAll`. */
+function scanAllHintItem(): vscode.TreeItem {
+	const item = new vscode.TreeItem('Yine de Tüm Modülü Tara (diff\'siz)', vscode.TreeItemCollapsibleState.None);
+	item.iconPath = new vscode.ThemeIcon('play');
+	item.command = { command: 'coverdict.perTestForModuleAll', title: 'Tüm Modülü Tara' };
+	return item;
 }
 
 function collectHintItem(): vscode.TreeItem {
@@ -419,9 +439,16 @@ function testLineItem(node: Extract<LineTestsNode, { kind: 'testLine' }>): vscod
 	return item;
 }
 
+/**
+ * Faz 31: an explicit `.tooltip` (not VS Code's own implicit
+ * label-overflow fallback) - a long `'empty'` explanation message wasn't
+ * reliably copyable from the auto-truncation hover, real user report.
+ * Harmless for short labels that already fit (identical text either way).
+ */
 function leaf(label: string, icon: string): vscode.TreeItem {
 	const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
 	item.iconPath = new vscode.ThemeIcon(icon);
+	item.tooltip = label;
 	return item;
 }
 
@@ -462,9 +489,14 @@ function noPerTestDataMessage(): string {
 	}
 	if (warningFor('PER_TEST_NO_CHANGED_TARGETS')) {
 		return 'Bu koşuda hiçbir sınıf değişmemiş, bu yüzden test bazlı kanıt boş - bu bir hata değil: L2 sadece diff\'te değişen production sınıflarını hedefler. '
-			+ 'Bu dosyada gerçek bir değişiklik yapıp tekrar tarayın, ya da coverdict.diffMode\'u "base" yapıp coverdict.baseRef\'e bu sınıfın değiştiği bir commit/branch girin.';
+			+ 'Bu dosyada gerçek bir değişiklik yapıp tekrar tarayın, coverdict.diffMode\'u "base" yapıp coverdict.baseRef\'e bu sınıfın değiştiği bir commit/branch girin, ya da aşağıdaki düğmeyle diff\'ten bağımsız tüm modülü tarayın.';
 	}
 	return 'Bu sınıf için test bazlı kanıt yok.';
+}
+
+/** Faz 31: `PER_TEST_NO_CHANGED_TARGETS` tam olarak buysa `'scanAllHint'` düğümü ekleniyor - başka bir `noPerTestData` sebebinde (kanıt kesildi, hiç kanıt yok) diff'siz tüm modül taraması bir çözüm değil. */
+function hasNoChangedTargetsWarning(): boolean {
+	return getPerTestState()?.warnings.some((w) => w.code === 'PER_TEST_NO_CHANGED_TARGETS') ?? false;
 }
 
 function shortName(fqcn: string): string {

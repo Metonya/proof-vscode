@@ -329,7 +329,9 @@ suite('Mutation view (Faz 20)', () => {
 		const killingTest = provider.getChildren(provider.getChildren(divide)[0])[0];
 		const item = await provider.getTreeItem(killingTest);
 		assert.equal(item.contextValue, undefined);
-		assert.equal(item.tooltip, undefined);
+		// Faz 31: leaf() always sets a plain tooltip (copyable hover for long
+		// labels) - the thing that must NOT happen is a fabricated *contradiction* note.
+		assert.equal(item.tooltip, item.label);
 	});
 
 	/**

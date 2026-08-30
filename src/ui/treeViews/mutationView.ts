@@ -27,6 +27,8 @@ import { locateTestFile } from '../testFileLocator';
 export type MutationNode =
 	| { kind: 'empty'; message: string }
 	| { kind: 'runHint' }
+	/** Faz 31: diff hiç değişen sınıf bulamadığında ("ben değişiklik yapmadan tüm repoda tarama yapabilmeliyim") - diff'ten bağımsız, modüldeki her production sınıfını hedefleyen kurtarma eylemi. */
+	| { kind: 'scanAllHint' }
 	/** Faz 22: "bu sonuç neyin, ne zaman?" - dosyadan dosyaya geçince panel değişmediği için hangi koşuya baktığı belli değildi. */
 	| { kind: 'header'; text: string }
 	| { kind: 'class'; className: string; methods: readonly MutatedMethod[] }
@@ -74,6 +76,8 @@ export class MutationTreeProvider implements vscode.TreeDataProvider<MutationNod
 				return leaf(node.message, 'info');
 			case 'runHint':
 				return runHintItem();
+			case 'scanAllHint':
+				return scanAllHintItem();
 			case 'header':
 				return headerItem(node.text);
 			case 'class':
@@ -114,7 +118,11 @@ export class MutationTreeProvider implements vscode.TreeDataProvider<MutationNod
 			];
 		}
 		if (!state.mutation) {
-			return [{ kind: 'empty', message: noMutationEvidenceMessage() }, { kind: 'runHint' }];
+			const nodes: MutationNode[] = [{ kind: 'empty', message: noMutationEvidenceMessage() }, { kind: 'runHint' }];
+			if (state.warnings.some((w) => w.code === 'MUTATION_NO_CHANGED_TARGETS')) {
+				nodes.push({ kind: 'scanAllHint' });
+			}
+			return nodes;
 		}
 
 		const header: MutationNode = { kind: 'header', text: headerText(state) };
@@ -167,7 +175,7 @@ function noMutationEvidenceMessage(): string {
 		return 'Mutasyon için classpath listesi bağlanmamış. Komutu tekrar çalıştırın; eklenti listeyi Maven ile üretmeyi teklif edecek.';
 	}
 	if (warningFor('MUTATION_NO_CHANGED_TARGETS')) {
-		return 'Bu koşuda değişen production sınıfı yok, bu yüzden mutasyona sokulacak hedef de yok. Tek bir sınıf için çalıştırmak isterseniz o dosyada sağ tık → "Bu Sınıf İçin Mutasyon Testi".';
+		return 'Bu koşuda değişen production sınıfı yok, bu yüzden mutasyona sokulacak hedef de yok. Tek bir sınıf için çalıştırmak isterseniz o dosyada sağ tık → "Bu Sınıf İçin Mutasyon Testi", ya da aşağıdaki düğmeyle diff\'ten bağımsız tüm modülü tarayın.';
 	}
 	if (warningFor('MUTATION_TRUNCATED')) {
 		return 'Mutant kayıtları üst sınıra takıldı - gösterilenler eksik. Daha dar bir hedefle tekrar çalıştırın.';
@@ -201,6 +209,15 @@ function runHintItem(): vscode.TreeItem {
 	item.iconPath = new vscode.ThemeIcon('play');
 	item.command = { command: 'coverdict.mutationForFile', title: 'Mutasyon Testi Çalıştır' };
 	item.tooltip = 'Açık Java dosyasındaki sınıf için mutasyon testi çalıştırır (tek sınıf: genelde saniyeler). Modül geneli için "Çalıştır" görünümündeki Mutasyon Testi maddesini kullanın.';
+	return item;
+}
+
+/** Faz 31: "ben değişiklik yapmadan tüm repoda tarama yapabilmeliyim" - diff hiç hedef bulamadığında sunulan kurtarma eylemi, `coverdict.mutationForModuleAll`. Diff-tabanlı koşudan daha pahalı olabileceği için kendi onay modalının arkasında. */
+function scanAllHintItem(): vscode.TreeItem {
+	const item = new vscode.TreeItem('Yine de Tüm Modülü Tara (diff\'siz)', vscode.TreeItemCollapsibleState.None);
+	item.iconPath = new vscode.ThemeIcon('play');
+	item.command = { command: 'coverdict.mutationForModuleAll', title: 'Tüm Modülü Tara' };
+	item.tooltip = 'Diff\'ten bağımsız, bu modüldeki her production sınıfını hedefler - değişmemiş sınıflar da dahil olduğu için diff-tabanlı "modül geneli" koşudan daha uzun sürebilir.';
 	return item;
 }
 
@@ -436,9 +453,17 @@ function openCommandFor(className: string, line: number, title: string): vscode.
 	return { command: 'vscode.open', title, arguments: [uri, { selection }] };
 }
 
+/**
+ * Faz 31: an explicit `.tooltip` (not VS Code's own implicit
+ * label-overflow fallback) - a long `'empty'` explanation message wasn't
+ * reliably copyable from the auto-truncation hover, real user report.
+ * Harmless for short labels that already fit; callers that need a richer
+ * tooltip (e.g. `killingTestItem`'s contradiction note) overwrite it after.
+ */
 function leaf(label: string, icon: string): vscode.TreeItem {
 	const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
 	item.iconPath = new vscode.ThemeIcon(icon);
+	item.tooltip = label;
 	return item;
 }
 

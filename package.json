@@ -158,6 +158,10 @@
         "title": "coverdict: Bu Sınıf İçin Hangi Test Hangi Satırı Kapsıyor"
       },
       {
+        "command": "coverdict.perTestForModuleAll",
+        "title": "coverdict: Tüm Modül İçin Derin Tarama (diff'siz)"
+      },
+      {
         "command": "coverdict.copyItem",
         "title": "Kopyala"
       },
@@ -183,6 +187,10 @@
       {
         "command": "coverdict.mutationForModule",
         "title": "coverdict: Mutasyon Testi (Modül Geneli)"
+      },
+      {
+        "command": "coverdict.mutationForModuleAll",
+        "title": "coverdict: Mutasyon Testi - Tüm Modül (diff'siz)"
       },
       {
         "command": "coverdict.mutationView.toggleSurvivorsOnly",
