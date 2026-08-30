@@ -1,9 +1,23 @@
 # coverdict-vscode — devir belgesi ve ileri plan
 
-**Son güncelleme:** 2026-08-28, Faz 24 sonrası (pencere yenileme
-düzeltmesi, örtük constructor etiketi, Test Kalitesi ↔ Mutasyon köprüsü,
-L0/L3 çelişki köprüsü ve NO_COVERAGE açıklaması dahil - §7.6'nın tüm
-maddeleri kapandı).
+**Son güncelleme:** 2026-08-29, Faz 30 (§7.9): gson'a karşı yapılan ikinci
+tur gerçek dogfood'un çıkardığı dört sorunun (ön koşullar sessiz, rapor
+yoksa öneri yok, kolay tekrar-koş yok, çok-modülde tek bir "listeden seç"e
+zorlanma) hepsi tek bir bütçede çözüldü: her modül tek koşuda birden bağlanır
+(`showQuickPick` tamamen kalktı), classpath eksikse `doctor --fix`
+çağrılır, JaCoCo raporu yoksa Maven **görünür bir VS Code Task** olarak
+kendisi çalıştırılabilir (argLine tuzağı önceden tespit edilir), Maven
+gerçekten başarısız olunca CLI'ın kendi stderr'i yorumlanıp Türkçe, eyleme
+dönüştürülebilir bir sebep gösterilir (D-67'nin kardeş-modül tuzağı için
+`mvn install -DskipTests` düğmesi dahil), ve çok-modüllü bir mutasyon/derin
+tarama koşusunda ilerleme çubuğu artık modül geçişlerinde donmuyor. 5 commit,
+212 unit + 57 integration, SonarQube kalite kapısı OK. Önceki: 2026-08-29,
+Faz 29 (§7.8, iki geçiş): gson dogfood'unun ortaya çıkardığı çok-modül
+workspace-kökü boşluğu düzeltildi, sonra kullanıcının aynı gün verdiği
+gerçek geri bildirimle (ekran görüntüsüyle) ikinci kez düzeltildi - ilk
+versiyon ilgisiz repoları (`coverdict-corpus`) tek bir çok-modüllü projeyle
+(`gson`) ayırt etmiyordu, ikisini de aynı düz "hangi jacoco.xml" listesine
+koyuyordu.
 
 ---
 
@@ -425,8 +439,10 @@ o satırın gerçek bir perTest kaydı varsa - §7.7).
 
 ### Sağlık
 
-157 unit + 57 integration test geçiyor. SonarQube (`coverdict-vscode`,
-`http://localhost:9001`) sıfır açık bulgu, kalite kapısı **OK** (Faz 27,
+169 unit + 57 integration test geçiyor (Faz 29, iki geçiş - önceki
+157+57'ye `reportDiscovery`/`argsBuilder`'ın 12 yeni testi eklendi).
+SonarQube (`coverdict-vscode`, `http://localhost:9001`) sıfır açık bulgu,
+kalite kapısı **OK** (Faz 27,
 §7.4).
 
 ---
@@ -1026,6 +1042,226 @@ yokken (ne `divide` için ne de perTest hiç toplanmamışken) çıkmıyor.
 integration), SonarQube sıfır açık bulgu.
 
 ---
+
+### 7.8 gson dogfood (2026-08-29) — çok-modül workspace kökü **düzeltildi**, iki UX sürtünmesi
+
+`coverdict-corpus/gson`'da (google/gson'ın çok-modül checkout'u) ilk gerçek
+dış-repo VS Code dogfood'u denendi. Kullanıcı `coverdict.jar` bulunamadı ve
+JaCoCo raporu bulunamadı uyarılarıyla karşılaştı; ikinci uyarının kökü
+araştırıldı ve **gerçek, mimari bir boşluk** bulundu, ilki iki UX isteğine
+dönüştü.
+
+**Bulunan gerçek boşluk — eklentinin çok-modül/standart-olmayan yerleşim
+desteği yok.** Kullanıcı VS Code'u checkout'un **kökünde**
+(`coverdict-corpus/gson`) açtı; gerçek JaCoCo raporu alt modülde
+(`gson/gson/target/site/jacoco/jacoco.xml`), kök pom sadece agregatör.
+`coverdict.reportPath`'i elle düzeltmek bile yetmezdi: `argsBuilder.ts`
+kendi yorumunda zaten itiraf ediyor - *"Single-module shorthand only for
+now [...] multi-module bindings [...] land with F8's config UI, when there
+is a real multi-module case to build it against"* - yani `--module`/
+`--source-roots`/`--test-roots` hiç yok, CLI'ın `M0-CLI-INPUT.md`'de
+belgelenen çok-modül bağlamasının eklenti tarafı hiç inşa edilmemiş.
+`--repo` her zaman workspace kökü, kaynak/test kökleri her zaman
+`<repo>/src/main/java`/`src/test/java` varsayılıyor - `--repo` gerçek
+modülün kendisi değilse bu sessizce yanlış.
+
+**Bu oturumda uygulanan geçici çözüm (eklenti değişmedi):** VS Code'da
+checkout kökü yerine **alt modülün kendisi** (`coverdict-corpus/gson/gson`)
+ayrı bir klasör olarak açıldı - `coverdict.reportPath`'in varsayılanı
+(`target/site/jacoco/jacoco.xml`) orada doğrudan doğru dosyaya denk geliyor,
+kaynak/test kökü varsayımları da doğru. `gson/gson/.vscode/settings.json`
+dış klasörün ayarlarının (jarPath, JDK 17 env) bir kopyası olarak eklendi.
+Bu, "her repoda farklıysa sorun yaşarız" endişesinin ilk gerçek örneği -
+gerçek çok-modül düzen için `doctor`'ın CLI tarafında zaten çözdüğü sorunun
+aynısı eklenti tarafında hiç çözülmemiş.
+
+**Düzeltildi, aynı oturumda (Faz 29).** Tam F8'i beklemeden, dar ve gerçek
+bir fix: `cli/reportDiscovery.ts` (saf, `vscode` import etmiyor) +
+`ui/commands.ts`'teki yeni `resolveReportBinding()`. `runAnalyzeCore`
+(Hızlı/Derin/Mutasyon Testi'nin **hepsinin** paylaştığı tek çekirdek)
+`coverdict.reportPath` workspace kökünde yoksa artık pes etmiyor:
+`vscode.workspace.findFiles('**/target/site/jacoco/jacoco.xml', ...)` ile
+arama yapıyor.
+
+- **0 eşleşme** → eski davranış, aynı hata mesajı (`offerToOpenSetting`).
+- **1 eşleşme** → otomatik bağlanır, ama **sessizce değil**: Output'a satır
+  + bir bilgi bildirimi ("`'gson' modülüne otomatik bağlanıldı`").
+- **2+ eşleşme** → asla tahmin etmez (hard rule 3a) - `showQuickPick` ile
+  kullanıcıya sorar.
+
+Modül kökü keşfedilen rapor yoluna göre çıkarılır
+(`<kök>/target/site/jacoco/jacoco.xml` deseninden), ama **modül id'si her
+zaman `'root'` kalır** - `MODULE_ID` sabiti L2/L3 classpath bağlama, tree-view
+arama ve state anahtarları boyunca zaten sabit `'root'` varsayıyor; farklı
+bir id analyze'i doğru modüle bağlarken per-test/mutation akışlarını
+`--module` ile eşleşmeyen bir id'yle çağırıp CLI'da reddedilmeye yol açardı.
+`argsBuilder.ts`'e eklenen opsiyonel `module: {id, root}` alanı verilince
+`--report` çıplak biçimden `<id>=<path>`'e döner ve `--module <id>=<root>`
+eklenir; verilmezse eski tek-modül davranışı **birebir korunur** (mevcut
+tüm testler değişmeden geçti).
+
+**Gerçek gson checkout'una karşı uçtan uca doğrulandı** (checkout kökünde
+6 alt modülün her birinde kendi `jacoco.xml`'i var - QuickPick senaryosunun
+kendisi): eklentinin üreteceği birebir komut
+(`--repo <kök> --no-vcs --module root=gson --report root=gson/target/site/jacoco/jacoco.xml`)
+elle çalıştırıldı, exit 0, **33 bulgu** - `validation/runs/gson/`'daki D-31/
+D-33 sonrası kalibrasyon sonucuyla birebir aynı sayı. 165 unit + 57
+integration test (önceki 157 + 8, hepsi geçti) hiçbir regresyon göstermedi.
+
+Artık gereksiz ama zararsız: `gson/gson/.vscode/settings.json` (bu
+oturumun ilk, elle klasör-değiştirme geçici çözümü) - checkout'un kökünü
+açmak artık QuickPick'ten "gson" seçmekle aynı sonucu veriyor, alt modülü
+ayrıca açmaya gerek yok.
+
+**Aynı gün, kullanıcı geri bildirimiyle ikinci bir düzeltme gerekti - ilk
+versiyon yanlış soruyu soruyordu.** Kullanıcı gerçek ekran görüntüsüyle
+gösterdi: `coverdict-corpus`'u (assertj/dropwizard/gson/junit-framework -
+dört **birbirinden bağımsız** git checkout'u, ortak hiçbir pom/git'i yok)
+açsaydı, ilk versiyon bu dört reponun **hepsindeki** `jacoco.xml`'leri tek
+bir düz listede karışık gösterip "hangisini istersiniz" diye soracaktı -
+kullanıcının kendi sözleriyle *"saçma değil mi?"* Haklı: ilgisiz repolar
+arasında seçim yapmanın hiçbir ilkeli yolu yok, bunu bir seçenekmiş gibi
+sunmak hard rule 3a'ya aykırı.
+
+Kök neden: kör `**/jacoco.xml` taraması iki tamamen farklı şekli
+birbirine karıştırıyordu - "bu klasör tek bir çok-modüllü proje, hangi
+modül?" (gson: kendi kök `pom.xml`'i gerçek `<modules>gson, test-jpms,
+...</modules>` bildiriyor, her aday gerçekten aynı projeye ait) ile "bu
+klasör sadece birkaç ilgisiz reponun yan yana durduğu bir dizin"
+(`coverdict-corpus`: kendi pom.xml/build.gradle/git'i hiç yok).
+
+**Düzeltme:** `reportDiscovery.ts`'e `isProjectRoot()` (workspace kökünde
+`pom.xml`/`build.gradle[.kts]`/`settings.gradle[.kts]` var mı) ve
+`describeSiblingProjects()` eklendi - ikisi de saf. `resolveReportBinding()`
+artık önce bunu soruyor:
+- **Kök kendi başına bir proje değilse** → glob'a hiç girmiyor, bir seviye
+  altındaki klasörlere bakıyor (aynı işaretçiler + `.git`), bulduğu her
+  bağımsız projeyi **isimle** listeleyip "hangisini analiz etmek
+  istiyorsanız onu ayrı workspace kökü olarak açın" diyor - **hiçbirini
+  seçmiyor**.
+- **Kök kendi başına bir proje ise** (gson gibi) → eski glob+QuickPick akışı
+  çalışır, artık meşru çünkü bulunan her rapor gerçekten aynı projenin
+  parçası. QuickPick etiketi de iyileştirildi: ham dosya yolu yerine modül
+  kök adı (`gson`, `extras`, ...) gösteriliyor, başlık "birden fazla JaCoCo
+  raporu bulundu" yerine "bu proje çok modüllü - hangi modül taransın?"
+  diyor - rastgele dosya keşfi değil, kasıtlı proje yapısı izlenimi veriyor.
+
+Gerçek dosya sistemine karşı doğrulandı (derlenmiş `reportDiscovery.js`
+doğrudan çalıştırılarak, `vscode` API'sini taklit eden küçük bir script'le):
+`coverdict-corpus` kökünde açılınca artık **hiç seçim sunmuyor**, doğrudan
+"bu klasör kendisi tek bir proje değil - içinde 4 farklı proje bulundu:
+assertj, dropwizard, gson, junit-framework" diyor;
+`coverdict-corpus/gson`'da ise (gerçek 7-modüllü reactor) eski, doğru
+davranış aynen sürüyor. 169 unit + 57 integration (169 = önceki 165 + bu
+ikinci düzeltmenin 4 yeni testi), SonarQube kalite kapısı OK.
+
+**Hâlâ backlog, gerçek bir sonraki adım (F8'in asıl kapsamı):**
+- ~~Birden fazla modülü **aynı koşuda** birlikte bağlamak~~ — **KAPANDI
+  (Faz 30, §7.9):** `showQuickPick` tamamen kalktı, bulunan her modül tek
+  koşuda birden bağlanıyor.
+- `doctor`'ın ürettiği `coverdict.config.json`'u (D-40/D-66) okuyup
+  kullanma - **Faz 30'da da yapılmadı, bilinçli olarak ertelendi** (§7.9,
+  "ertelenenler"): eklenti hâlâ her koşuda kendi keşfini tekrarlıyor, dosya
+  yalnızca `doctor --write-config` ile üretiliyor ve elle düzenlenebiliyor.
+
+**UX isteği 1 (kullanıcı, 2026-08-29) — bu oturumda ayrıca düzeltildi.**
+`coverdict.jar` bulunamadı hatası **zaten** `offerToOpenSetting` kullanıyordu
+(rapor-bulunamadı hatasıyla aynı "Ayarı Aç" düğmesi) - meğer yalnızca jar
+mesajı bunu kullanmıyormuş, düz `showErrorMessage` idi. Tek satırlık fark,
+düzeltildi: `coverdict.jarPath` sorgusuyla ayarları açan bir düğme artık
+o hata mesajında da var.
+
+**UX isteği 2 (kullanıcı, 2026-08-29) — KAPANDI (Faz 30, §7.9).** JaCoCo
+raporu bulunamadığında eklenti artık kendisi "testleri JaCoCo ile şimdi
+çalıştıralım mı?" diye soruyor ve Maven'i **görünür bir VS Code Task**
+olarak çalıştırıyor. O zamanki risk analizi ("hangi build komutu doğru,
+repodan repoya değişir") doğru çıktı ama çözümü "genel-amaçlı bir tek-tık
+komutu tahmin etmek" değil, **gson'ın dört sorununu tek tek gerçek koda
+karşı teşhis etmek** oldu - ayrıntı §7.9'da.
+
+**Fikir - insan-okur "test kanıtı" raporu (kullanıcı, 2026-08-29):**
+SonarQube/Cucumber tarzı, hangi testlerin çalıştığını ve sonuçlarını
+gösteren dışa aktarılabilir bir rapor - hem CLI'dan (`coverdict analyze
+--report-format html` gibi) hem VS Code'dan ("dışa aktar" komutu). D-15
+zaten "Standalone HTML is deferred until dogfood proves a need" diyor -
+bu ihtiyacın ilk somut talebi. **Tasarlanmadı, kapsamlandırılmadı** - ayrı
+bir oturumda ele alınmalı: CLI'ın kendi JSON'u zaten tek kaynak (hard rule
+7), bir HTML/rapor render'ı JSON'u tüketen yeni bir render katmanı olur,
+schema değişikliği gerektirmez.
+
+### 7.9 Faz 30 (2026-08-29) — ön koşulları eklenti kendisi hallediyor (**yapıldı**)
+
+İkinci gson dogfood turunun (§7.8'in devamı) çıkardığı dört somut istek tek
+bütçede çözüldü: ön koşullar açıkça söylenmiyor, rapor yoksa öneri yok,
+kolay bir "tekrar koş" yok, ve en önemlisi - kullanıcının kendi ekran
+görüntüsüyle gösterdiği gibi - *"birden fazla jacoco bulunan target olabilir
+hepsinden içerik almak yerine gittin listeden seç diyorsun saçma değil
+mi"*. Bu son cümle mimariyi baştan belirledi: **hiçbir yerde artık gerçek
+modüller arasında seçim yaptırılmıyor**, hepsi birden bağlanıyor.
+
+**5 commit, sırayla:**
+
+| Commit | İçerik |
+|---|---|
+| `60b26bd` model | `moduleId` state'ten tamamen kalktı; L2/L3 kanıtı modüller arasında birleşiyor; FQCN çakışması `ambiguous: ReadonlySet<string>` ile düşürülüyor (son-yazan-kazanır değil). |
+| `24b39d4` feat | `reportDiscovery.bindModules()` bulunan **her** jacoco.xml'i gerçek id'leriyle bağlıyor (`showQuickPick` silindi); `classpathBuilder.ts`/`classpathParser.ts` (en-uzun-satır hatası dahil) silindi, yerine `doctor --fix` - CLI'ın kendi `mvn -pl <modül> dependency:build-classpath`'i. |
+| `5b38d1b` feat | "Testleri Çalıştır" - `pomInspector.ts` (saf, argLine/jacoco-plugin tespiti) + `mavenTestCommand.ts` (saf, argv üretimi) + `ui/mavenTestTask.ts` (görünür `vscode.Task`, gerçek terminal). argLine tuzağı koşudan **önce** modal ile tespit ediliyor - "bu komut satırından düzeltilemez" diyor, pom'u asla otomatik düzenlemiyor. |
+| `4dbc25a` feat | `cli/mavenErrorInterpreter.ts` (saf) - `doctor --fix`'in stderr'inde gerçekten akan Maven hata metnini üç şekle ayırıyor (`unresolvedReactorSibling`/D-67, `noPluginPrefix`, `enforcerJdk`); tanımadığı her şey için `undefined` döner, asla uydurmaz. `unresolvedReactorSibling`'de `mvn install -DskipTests` görünür Task olarak önerilip `doctor --fix` bir kez tekrar deneniyor. |
+| `7ccb65d` fix | Çok-modüllü bir koşuda ilerleme çubuğunun donmasına yol açan gerçek regresyon düzeltildi: `incrementFor` artık modül başına (`Map<moduleId, done>`) sayaç tutuyor ve `100/moduleCount` ile ölçekleniyor. `doctor --fix`'in kendi ilerlemesi de (`parseDoctorProgressLine`) iptal edilebilir bir bildirime bağlandı. |
+
+**Yeni/silinen dosyalar:**
+- Yeni (saf, `vscode` import etmiyor): `cli/pomInspector.ts`, `cli/mavenTestCommand.ts`, `cli/mavenErrorInterpreter.ts`.
+- Yeni (impure): `cli/doctorRunner.ts`, `ui/preflight.ts` (eski `resolveReportBinding`/`ensurePerTestClasspath` mantığının hepsi buraya taşındı), `ui/mavenTestTask.ts`.
+- Silindi: `cli/classpathBuilder.ts`, `cli/classpathParser.ts` (ve testleri) - `-pl`/`-am` olmadan reactor kökünden koşan, en uzun satırı alan kırık el yapımı mantık.
+
+**Yeni ayarlar/komutlar:**
+- `coverdict.testCommandPhase` (`test` | `verify`, varsayılan `test`) - "Testleri Çalıştır"ın hangi Maven aşamasını koşacağı.
+- `coverdict.jacocoPluginVersion` (varsayılan `0.8.13`) - pom'da JaCoCo hiç tanımlı değilse enjekte edilen CLI-goal sürümü (D-30'un yaklaşımı, pom asla düzenlenmiyor).
+- `coverdict.perTestClasspathPath`'in rolü değişti: artık "biz üretiyoruz"un yolu değil, tek-modüllü bir koşuda `doctor`'a bırakmak istemeyen kullanıcı için salt-okunur bir kaçış kapısı.
+- Yeni komut `coverdict.runTests` - Çalıştır görünümünün ilk öğesi, raporun gerçek mtime'ını ("12 dakika önce") gösteren bir açıklamayla.
+
+**Gerçek gson checkout'una karşı doğrulandı, kısmi:** `doctor --fix` gson'un
+6 modülünün hepsi için doğru classpath listelerini üretti (daha önce elle
+düzeltilen D-67 kardeş-modül tuzağı dahil - `mvn install -DskipTests`
+Task'ı gerçekten çözüyor). **Dürüstçe kaydedilen, çözülmemiş bir bulgu:**
+bu classpath'e karşı gerçek bir L3 mutasyon koşusu, doctor'ın ürettiği
+listede JUnit Platform engine jar'ı eksik olduğu için PIT'in kendi
+`"Cannot create Launcher without at least one TestEngine"` hatasıyla
+düştü - `doctor`'ın classpath üretimindeki gerçek bir boşluk, bu partinin
+hiçbir değişikliğiyle ilgisi yok. Bu oturumun kendi dersine göre (WTA
+dogfood retrospektifi ve loop-run'dan) **kovalanmadı, sadece kaydedildi** -
+`coverdict` reposunun kendi backlog'una taşınmalı.
+
+169 → 212 unit test, 57 integration test (değişmedi), SonarQube kalite
+kapısı OK (dokunulan her dosyada 0 açık bulgu - konteyner bu oturum
+ortasında bir kez yeniden başlatıldığında leak-period taban çizgisi
+sıfırlandığı için `sinceLeakPeriod=true` artık güvenilir değil, dosya
+bazlı `statuses=OPEN,CONFIRMED,REOPENED` sorgusu kullanıldı).
+
+**Bilinçli olarak ertelenenler (tekrar tartışılmasın diye buraya yazıldı):**
+- **`coverdict.config.json` tüketimi.** `doctor --write-config`'in ürettiği
+  dosya hâlâ hiç okunmuyor - classpath dosya yolları modül köküne göreli
+  olduğu için (id'ye bağlı değil) bu partide gerekli değildi, ama gerçek
+  bir sonraki adım hâlâ bu (eski §7.8 backlog'unun ikinci maddesiyle aynı).
+- **`doctor`'ın classpath üretimindeki JUnit Platform engine boşluğu** -
+  yukarıda kaydedildi, `coverdict` (CLI) reposunun işi.
+- **`MavenClient`'a `-am` eklemek** - sahte çözüm olurdu (reactor'ü
+  genişletir ama kardeş modül yine de kurulu değilse aynı hatayı verir);
+  gerçek çözüm zaten `mvn install -DskipTests` Task'ı.
+- **`doctor --json`** - `doctor`'ın çıktısı hâlâ yalnızca düz metin; exit
+  kodu + dosya varlığı + regex tabanlı yorumlama (`mavenErrorInterpreter.ts`)
+  ile idare edildi. Gerçek fayda var ama CLI reposunda ayrı bir
+  DECISIONS-gerektiren değişiklik.
+- **Gradle desteği** - `doctor` hâlâ yalnızca Maven; eklenti bunu açıkça
+  söylüyor, yarım çalışmıyor.
+- **Pom'un `argLine`'ını otomatik düzeltmek** - asla, modal her zaman
+  "Pom'u Aç"a yönlendiriyor.
+- **`-pl`/`-am` ile modül-kapsamlı test koşusu** - "Testleri Çalıştır" hâlâ
+  tüm reactor'ü koşuyor; hız optimizasyonu, doğruluk sorunu değil.
+- **Ağaç görünümlerinde modül bazlı gruplama** - veri birleşiyor (Faz 30
+  commit 1), görünümler düz kalıyor; istenmedi.
+- **İnsan-okur export raporu** - yukarıdaki "Fikir" paragrafı hâlâ geçerli,
+  ayrı bir tasarım turu gerektiriyor.
 
 ## 8. Faz 20 — mutasyon testi arayüzü (**yapıldı**)
 

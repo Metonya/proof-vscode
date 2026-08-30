@@ -1,14 +1,15 @@
 import * as vscode from 'vscode';
 
 import { detectClassName } from '../../model/classNameDetector';
-import { groupConsecutiveLines, testsForClass, testsToLines, type TestLineRef } from '../../model/lineIndex';
+import { allClasses, groupConsecutiveLines, testsForClass, testsToLines, type TestLineRef } from '../../model/lineIndex';
 import { findKillContribution, type KillContribution } from '../../model/mutationModel';
 import { classifySourcePath, toAbsolutePath, toRepoRelativePath, type SourceKind } from '../../model/pathIndex';
-import { buildProductionClassIndex, productionSourceRoots } from '../../model/productionClassIndex';
+import { buildProductionClassIndex, productionSourceRoots, testSourceRoots } from '../../model/productionClassIndex';
 import { getCoverageState, getMutationState, getPerTestState } from '../../model/store';
 import { indexFindingsByTestMethod, lineQuality, type TestVerdict } from '../../model/testQuality';
 import { parseTestIdentity } from '../../verdict/testIdentity';
 import type { Finding } from '../../verdict/types';
+import { locateTestFile } from '../testFileLocator';
 
 /**
  * Faz 15c: replaces the webview panel that used to show "which tests cover
@@ -30,7 +31,11 @@ import type { Finding } from '../../verdict/types';
 export type LineTestsNode =
 	| { kind: 'empty'; message: string }
 	| { kind: 'collectHint' }
-	| { kind: 'prodLine'; startLine: number; endLine: number; tests: readonly string[]; methodName: string | undefined }
+	/** Faz 31: diff hiç değişen sınıf bulamadığında ("ben değişiklik yapmadan tüm repoda tarama yapabilmeliyim") - diff'ten bağımsız, modüldeki her production sınıfını hedefleyen kurtarma eylemi. */
+	| { kind: 'scanAllHint' }
+	/** Faz 31: root shown when no Java file is active - mirrors the mutation view's "always show the whole run" landing. */
+	| { kind: 'class'; className: string; linesToTests: ReadonlyMap<number, readonly string[]>; linesToMethod: ReadonlyMap<number, string> }
+	| { kind: 'prodLine'; startLine: number; endLine: number; tests: readonly string[]; methodName: string | undefined; className?: string }
 	| { kind: 'prodTest'; startLine: number; endLine: number; rawTestId: string; verdict: TestVerdict; finding: Finding | undefined }
 	| { kind: 'testMethod'; methodName: string; refs: readonly TestLineRef[] }
 	| { kind: 'testLine'; methodName: string; ref: TestLineRef };
@@ -80,12 +85,16 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 		return group ? { kind: 'prodLine', startLine: group.startLine, endLine: group.endLine, tests: group.tests, methodName: group.methodName } : undefined;
 	}
 
-	getTreeItem(node: LineTestsNode): vscode.TreeItem {
+	getTreeItem(node: LineTestsNode): vscode.TreeItem | Thenable<vscode.TreeItem> {
 		switch (node.kind) {
 			case 'empty':
 				return leaf(node.message, 'info');
 			case 'collectHint':
 				return collectHintItem();
+			case 'scanAllHint':
+				return scanAllHintItem();
+			case 'class':
+				return classItem(node);
 			case 'prodLine':
 				return prodLineItem(node);
 			case 'prodTest':
@@ -104,6 +113,12 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 	getChildren(node?: LineTestsNode): LineTestsNode[] {
 		if (!node) {
 			return this.rootChildren();
+		}
+		if (node.kind === 'class') {
+			const findingsByTestMethod = indexFindingsByTestMethod(getCoverageState()?.findings ?? []);
+			const groups = groupConsecutiveLines(node.linesToTests, node.linesToMethod)
+				.filter((group) => !this.problemsOnly || hasProblem(group.tests, findingsByTestMethod));
+			return groups.map((group): LineTestsNode => ({ kind: 'prodLine', startLine: group.startLine, endLine: group.endLine, tests: group.tests, methodName: group.methodName, className: node.className }));
 		}
 		if (node.kind === 'prodLine') {
 			const findingsByTestMethod = indexFindingsByTestMethod(getCoverageState()?.findings ?? []);
@@ -130,13 +145,28 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 			const refs = view.reverse.get(`${view.className}#${node.methodName}()`);
 			return refs ? { kind: 'testMethod', methodName: node.methodName, refs } : undefined;
 		}
+		// Faz 31: "tüm sınıflar" kökü (hiç aktif dosya yok) - bir prodLine kendi
+		// className'ini taşıyor, o yüzden aktif-dosya görünümüne ihtiyaç
+		// duymadan üst class düğümü yeniden kurulabiliyor.
+		if (!view && node.kind === 'prodLine' && node.className) {
+			return this.classNodeFor(node.className);
+		}
 		return undefined;
+	}
+
+	private classNodeFor(className: string): LineTestsNode | undefined {
+		const perTest = getPerTestState()?.perTest;
+		if (!perTest) {
+			return undefined;
+		}
+		const found = allClasses(perTest, productionClassFilter()).find((c) => c.className === className);
+		return found ? { kind: 'class', className: found.className, linesToTests: found.linesToTests, linesToMethod: found.linesToMethod } : undefined;
 	}
 
 	private rootChildren(): LineTestsNode[] {
 		const view = this.computeView();
 		if (!view) {
-			return [{ kind: 'empty', message: 'Önce bir Java dosyası açın.' }];
+			return this.allClassesRoot();
 		}
 		if (view.kind === 'noPerTestData') {
 			// Faz 21: bir test dosyasında "topla" düğmesi test sınıfının
@@ -146,7 +176,11 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 			if (this.activeDocument && this.classifyActiveDocument(this.activeDocument) === 'test') {
 				return [{ kind: 'empty', message: 'Bu test sınıfının bu koşuda çalıştırdığı production satırı kaydı yok. Ters yön ancak production sınıfları hedeflenmiş bir koşuda dolar: bir production dosyası açıp "Bu Sınıf İçin Topla" deyin ya da Derin Tarama çalıştırın.' }];
 			}
-			return [{ kind: 'empty', message: noPerTestDataMessage() }, { kind: 'collectHint' }];
+			const nodes: LineTestsNode[] = [{ kind: 'empty', message: noPerTestDataMessage() }, { kind: 'collectHint' }];
+			if (hasNoChangedTargetsWarning()) {
+				nodes.push({ kind: 'scanAllHint' });
+			}
+			return nodes;
 		}
 		if (view.kind === 'production') {
 			const findingsByTestMethod = indexFindingsByTestMethod(getCoverageState()?.findings ?? []);
@@ -164,6 +198,37 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 		return methods.length === 0
 			? [{ kind: 'empty', message: 'Bu sınıfın hiçbir test metodu bu koşuda hedeflenen production kodunu çalıştırmadı.' }]
 			: methods;
+	}
+
+	/**
+	 * Faz 31: hiç Java dosyası açık değilken kök - mutasyon görünümünün her
+	 * zaman yaptığı gibi ("hiçbir şeye bağlı olmadan tüm koşuyu göster").
+	 * `allClasses()`'in bulduğu her sınıf, `problemsOnly` açıkken tüm
+	 * satırları filtrelenip **boş kalan** sınıflar listeden tamamen düşer -
+	 * `mutationView.ts`'in `rootChildren`'ının aynı deseni (boş sınıfı
+	 * göstermek yerine hiç listelememek).
+	 */
+	private allClassesRoot(): LineTestsNode[] {
+		const perTest = getPerTestState()?.perTest;
+		if (!perTest) {
+			const nodes: LineTestsNode[] = [{ kind: 'empty', message: noPerTestDataMessage() }];
+			if (hasNoChangedTargetsWarning()) {
+				nodes.push({ kind: 'scanAllHint' });
+			}
+			return nodes;
+		}
+		const findingsByTestMethod = indexFindingsByTestMethod(getCoverageState()?.findings ?? []);
+		const classes = allClasses(perTest, productionClassFilter())
+			.filter((c) => groupConsecutiveLines(c.linesToTests, c.linesToMethod).some((g) => !this.problemsOnly || hasProblem(g.tests, findingsByTestMethod)));
+		if (classes.length === 0) {
+			return [{
+				kind: 'empty',
+				message: this.problemsOnly
+					? 'Sorunlu satır yok - cover eden her testin doğrulaması var. (Filtreyi kaldırmak için başlıktaki süzgece tıklayın.)'
+					: 'Bu koşuda hiçbir sınıf için satır kaydı yok.',
+			}];
+		}
+		return classes.map((c): LineTestsNode => ({ kind: 'class', className: c.className, linesToTests: c.linesToTests, linesToMethod: c.linesToMethod }));
 	}
 
 	/**
@@ -199,13 +264,13 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 		const kind = this.classifyActiveDocument(document);
 
 		const reverseView = () => {
-			const reverse = testsToLines(perTestState.perTest!, perTestState.moduleId, productionClassFilter());
+			const reverse = testsToLines(perTestState.perTest!, productionClassFilter());
 			return [...reverse.keys()].some((key) => key.startsWith(`${className}#`))
 				? { kind: 'test' as const, className, reverse }
 				: undefined;
 		};
 		const productionView = () => {
-			const production = testsForClass(perTestState.perTest!, perTestState.moduleId, className);
+			const production = testsForClass(perTestState.perTest!, className);
 			return production.kind === 'found'
 				? { kind: 'production' as const, linesToTests: production.linesToTests, linesToMethod: production.linesToMethod }
 				: undefined;
@@ -245,8 +310,8 @@ function productionClassFilter(): ((outerClassName: string) => boolean) | undefi
 	if (!state?.fileCoverage) {
 		return undefined;
 	}
-	const index = buildProductionClassIndex(state.fileCoverage, productionSourceRoots(state.modules));
-	return (outerClassName) => index.has(outerClassName);
+	const { byClassName } = buildProductionClassIndex(state.fileCoverage, productionSourceRoots(state.modules));
+	return (outerClassName) => byClassName.has(outerClassName);
 }
 
 /** Bir satır "sorunlu" sayılır: cover eden testlerden en az biri `ok` değil (doğrulaması yok/zayıf/gereksiz ya da çözülemedi). */
@@ -254,10 +319,32 @@ function hasProblem(tests: readonly string[], findingsByTestMethod: ReturnType<t
 	return lineQuality(tests, findingsByTestMethod).tests.some((t) => t.verdict !== 'ok');
 }
 
+/** Faz 31: "ben değişiklik yapmadan tüm repoda tarama yapabilmeliyim" - diff hiç hedef bulamadığında sunulan kurtarma eylemi, `coverdict.perTestForModuleAll`. */
+function scanAllHintItem(): vscode.TreeItem {
+	const item = new vscode.TreeItem('Yine de Tüm Modülü Tara (diff\'siz)', vscode.TreeItemCollapsibleState.None);
+	item.iconPath = new vscode.ThemeIcon('play');
+	item.command = { command: 'coverdict.perTestForModuleAll', title: 'Tüm Modülü Tara' };
+	// Faz 31: real gson dogfood - 80 classes in one run outran the CLI's
+	// default 120s per-test budget (PIT minion force-killed mid-collection).
+	// coverdict.perTestTimeout now exists specifically for this.
+	item.tooltip = 'Diff\'ten bağımsız, bu modüldeki her production sınıfını hedefler - modül büyükse (onlarca sınıf) coverdict.perTestTimeout ayarını (varsayılan 120s) artırmanız gerekebilir, aksi hâlde PER_TEST_COLLECTION_FAILED ile durabilir.';
+	return item;
+}
+
 function collectHintItem(): vscode.TreeItem {
 	const item = new vscode.TreeItem('Bu Sınıf İçin Topla', vscode.TreeItemCollapsibleState.None);
 	item.iconPath = new vscode.ThemeIcon('play');
 	item.command = { command: 'coverdict.perTestForFile', title: 'Bu Sınıf İçin Topla' };
+	return item;
+}
+
+/** Faz 31: "tüm sınıflar" kökündeki bir sınıf düğümü - `mutationView.ts`'in `classItem`'ıyla aynı üslup. */
+function classItem(node: Extract<LineTestsNode, { kind: 'class' }>): vscode.TreeItem {
+	const item = new vscode.TreeItem(shortName(node.className), vscode.TreeItemCollapsibleState.Collapsed);
+	item.description = `${node.linesToTests.size} satır`;
+	item.iconPath = new vscode.ThemeIcon('symbol-class');
+	item.tooltip = node.className;
+	item.contextValue = 'coverdict.lineTestsClass';
 	return item;
 }
 
@@ -291,7 +378,7 @@ function prodLineItem(node: Extract<LineTestsNode, { kind: 'prodLine' }>): vscod
 	return item;
 }
 
-function prodTestItem(node: Extract<LineTestsNode, { kind: 'prodTest' }>): vscode.TreeItem {
+async function prodTestItem(node: Extract<LineTestsNode, { kind: 'prodTest' }>): Promise<vscode.TreeItem> {
 	const identity = parseTestIdentity(node.rawTestId);
 	const item = new vscode.TreeItem(identity.display, vscode.TreeItemCollapsibleState.None);
 	item.iconPath = new vscode.ThemeIcon(verdictIcon(node.verdict), verdictColor(node.verdict));
@@ -317,11 +404,21 @@ function prodTestItem(node: Extract<LineTestsNode, { kind: 'prodTest' }>): vscod
 	if (tooltipParts.length > 0) {
 		item.tooltip = new vscode.MarkdownString(tooltipParts.join('\n\n'));
 	}
+	// Faz 31: `node.finding` yalnızca test `ok` değilse dolu - önceden bu
+	// yüzden yalnızca sorunlu testler navigasyon alıyordu, sağlıklı bir
+	// testte hiçbir şey olmuyordu. `finding.path` yoksa `locateTestFile`
+	// (`hoverProvider.ts`'in zaten kullandığı aynı mekanizma) testin kendi
+	// kaynak kökündeki gerçek dosyasını arar; hiçbiri bulunamazsa (hard rule
+	// 3a) link hiç üretilmez.
 	const state = getCoverageState();
-	if (state && node.finding) {
-		const uri = vscode.Uri.file(toAbsolutePath(state.workspaceRoot, node.finding.path));
-		const selection = new vscode.Range(node.finding.startLine - 1, 0, node.finding.startLine - 1, 0);
-		item.command = { command: 'vscode.open', title: 'Test Dosyasını Aç', arguments: [uri, { selection }] };
+	if (state && identity.className) {
+		const path = await locateTestFile(state.workspaceRoot, testSourceRoots(state.modules), identity.className, node.finding?.path);
+		if (path) {
+			const uri = vscode.Uri.file(toAbsolutePath(state.workspaceRoot, path));
+			const startLine = node.finding?.startLine ?? 1;
+			const selection = new vscode.Range(startLine - 1, 0, startLine - 1, 0);
+			item.command = { command: 'vscode.open', title: 'Test Dosyasını Aç', arguments: [uri, { selection }] };
+		}
 	}
 	item.contextValue = contradiction ? 'coverdict.prodTest.contradiction' : 'coverdict.prodTest';
 	return item;
@@ -330,14 +427,14 @@ function prodTestItem(node: Extract<LineTestsNode, { kind: 'prodTest' }>): vscod
 /** `getMutationState()`'te bu test için gerçekten bir `killingTests` kaydı var mı - `ui/commands.ts`'in köprü komutu bunu `findMutationBridgeTarget`'a besler. */
 function findContradictionEvidence(testClassName: string, testMethodName: string): KillContribution | undefined {
 	const state = getMutationState();
-	return state?.mutation ? findKillContribution(state.mutation, state.moduleId, testClassName, testMethodName) : undefined;
+	return state?.mutation ? findKillContribution(state.mutation, testClassName, testMethodName) : undefined;
 }
 
 function testLineItem(node: Extract<LineTestsNode, { kind: 'testLine' }>): vscode.TreeItem {
 	const state = getCoverageState();
 	const item = leaf(`${shortName(node.ref.outerClassName)}.java : ${node.ref.line}`, 'circle-filled');
 	const productionIndex = state?.fileCoverage ? buildProductionClassIndex(state.fileCoverage, productionSourceRoots(state.modules)) : undefined;
-	const path = productionIndex?.get(node.ref.outerClassName);
+	const path = productionIndex?.byClassName.get(node.ref.outerClassName);
 	if (state && path) {
 		const uri = vscode.Uri.file(toAbsolutePath(state.workspaceRoot, path));
 		const selection = new vscode.Range(node.ref.line - 1, 0, node.ref.line - 1, 0);
@@ -346,9 +443,16 @@ function testLineItem(node: Extract<LineTestsNode, { kind: 'testLine' }>): vscod
 	return item;
 }
 
+/**
+ * Faz 31: an explicit `.tooltip` (not VS Code's own implicit
+ * label-overflow fallback) - a long `'empty'` explanation message wasn't
+ * reliably copyable from the auto-truncation hover, real user report.
+ * Harmless for short labels that already fit (identical text either way).
+ */
 function leaf(label: string, icon: string): vscode.TreeItem {
 	const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
 	item.iconPath = new vscode.ThemeIcon(icon);
+	item.tooltip = label;
 	return item;
 }
 
@@ -376,7 +480,12 @@ function verdictColor(verdict: TestVerdict): vscode.ThemeColor | undefined {
  */
 function noPerTestDataMessage(): string {
 	const perTestState = getPerTestState();
-	const warningFor = (code: string) => perTestState?.warnings.find((w) => w.code === code && (w.module === undefined || w.module === perTestState.moduleId));
+	// Faz 30: `perTestState.warnings` is already the complete, exact warning
+	// list this run produced - there is no "wrong module" a warning in it
+	// could belong to, so filtering by module (the old
+	// `w.module === perTestState.moduleId` check) never excluded anything
+	// real. Matching by code alone is the same behavior without a moduleId.
+	const warningFor = (code: string) => perTestState?.warnings.find((w) => w.code === code);
 
 	const truncated = warningFor('PER_TEST_TRUNCATED');
 	if (truncated) {
@@ -384,9 +493,14 @@ function noPerTestDataMessage(): string {
 	}
 	if (warningFor('PER_TEST_NO_CHANGED_TARGETS')) {
 		return 'Bu koşuda hiçbir sınıf değişmemiş, bu yüzden test bazlı kanıt boş - bu bir hata değil: L2 sadece diff\'te değişen production sınıflarını hedefler. '
-			+ 'Bu dosyada gerçek bir değişiklik yapıp tekrar tarayın, ya da coverdict.diffMode\'u "base" yapıp coverdict.baseRef\'e bu sınıfın değiştiği bir commit/branch girin.';
+			+ 'Bu dosyada gerçek bir değişiklik yapıp tekrar tarayın, coverdict.diffMode\'u "base" yapıp coverdict.baseRef\'e bu sınıfın değiştiği bir commit/branch girin, ya da aşağıdaki düğmeyle diff\'ten bağımsız tüm modülü tarayın.';
 	}
 	return 'Bu sınıf için test bazlı kanıt yok.';
+}
+
+/** Faz 31: `PER_TEST_NO_CHANGED_TARGETS` tam olarak buysa `'scanAllHint'` düğümü ekleniyor - başka bir `noPerTestData` sebebinde (kanıt kesildi, hiç kanıt yok) diff'siz tüm modül taraması bir çözüm değil. */
+function hasNoChangedTargetsWarning(): boolean {
+	return getPerTestState()?.warnings.some((w) => w.code === 'PER_TEST_NO_CHANGED_TARGETS') ?? false;
 }
 
 function shortName(fqcn: string): string {

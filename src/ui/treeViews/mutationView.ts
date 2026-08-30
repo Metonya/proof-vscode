@@ -3,10 +3,11 @@ import * as vscode from 'vscode';
 import { testsForClass } from '../../model/lineIndex';
 import { allMutantsNoCoverage, bucketOf, classesOf, findMutatedMethod, formatRelativeTime, methodLabel, mutatorLabel, productionMethodKey, scoreOf, scoreOfMethods, targetSummary, type MutantBucket, type MutationScore } from '../../model/mutationModel';
 import { toAbsolutePath } from '../../model/pathIndex';
-import { buildProductionClassIndex, productionSourceRoots } from '../../model/productionClassIndex';
+import { buildProductionClassIndex, productionSourceRoots, testSourceRoots } from '../../model/productionClassIndex';
 import { getCoverageState, getMutationState, getPerTestState } from '../../model/store';
 import { parseTestIdentity } from '../../verdict/testIdentity';
 import type { Finding, MutatedMethod, Mutant } from '../../verdict/types';
+import { locateTestFile } from '../testFileLocator';
 
 /**
  * Faz 20: mutasyon raporu. Kullanıcının isteği: "mutasyon testinde ne kadar
@@ -26,6 +27,8 @@ import type { Finding, MutatedMethod, Mutant } from '../../verdict/types';
 export type MutationNode =
 	| { kind: 'empty'; message: string }
 	| { kind: 'runHint' }
+	/** Faz 31: diff hiç değişen sınıf bulamadığında ("ben değişiklik yapmadan tüm repoda tarama yapabilmeliyim") - diff'ten bağımsız, modüldeki her production sınıfını hedefleyen kurtarma eylemi. */
+	| { kind: 'scanAllHint' }
 	/** Faz 22: "bu sonuç neyin, ne zaman?" - dosyadan dosyaya geçince panel değişmediği için hangi koşuya baktığı belli değildi. */
 	| { kind: 'header'; text: string }
 	| { kind: 'class'; className: string; methods: readonly MutatedMethod[] }
@@ -67,12 +70,14 @@ export class MutationTreeProvider implements vscode.TreeDataProvider<MutationNod
 		return node.kind === 'method' ? { kind: 'class', className: node.className, methods: node.siblings } : undefined;
 	}
 
-	getTreeItem(node: MutationNode): vscode.TreeItem {
+	getTreeItem(node: MutationNode): vscode.TreeItem | Thenable<vscode.TreeItem> {
 		switch (node.kind) {
 			case 'empty':
 				return leaf(node.message, 'info');
 			case 'runHint':
 				return runHintItem();
+			case 'scanAllHint':
+				return scanAllHintItem();
 			case 'header':
 				return headerItem(node.text);
 			case 'class':
@@ -113,23 +118,57 @@ export class MutationTreeProvider implements vscode.TreeDataProvider<MutationNod
 			];
 		}
 		if (!state.mutation) {
-			return [{ kind: 'empty', message: noMutationEvidenceMessage() }, { kind: 'runHint' }];
+			const nodes: MutationNode[] = [{ kind: 'empty', message: noMutationEvidenceMessage() }, { kind: 'runHint' }];
+			if (hasNoChangedTargetsWarning(state)) {
+				nodes.push({ kind: 'scanAllHint' });
+			}
+			return nodes;
 		}
 
 		const header: MutationNode = { kind: 'header', text: headerText(state) };
-		const classes = classesOf(state.mutation, state.moduleId, productionClassFilter())
+		const classes = classesOf(state.mutation, productionClassFilter())
 			.map((c) => ({ ...c, methods: this.visibleMethods(c.methods) }))
 			.filter((c) => c.methods.length > 0);
 
 		if (classes.length === 0) {
-			return [header, {
+			if (this.survivorsOnly) {
+				return [header, {
+					kind: 'empty',
+					message: 'Hayatta kalan mutant yok - üretilen her mutantı en az bir test yakaladı. (Süzgeci kaldırmak için başlıktaki filtreye tıklayın.)',
+				}];
+			}
+			// Faz 31 düzeltmesi: CLI, MUTATION_NO_CHANGED_TARGETS'ta bile boş
+			// (ama null olmayan) bir mutation nesnesi döndürüyor - state.mutation
+			// bu yüzden burada "var" görünüyor ve yukarıdaki !state.mutation dalı
+			// hiç çalışmıyor, "Tüm Modülü Tara" düğmesi gerçek bir sebep varken
+			// bile hiç görünmüyordu (gson dogfood'unda yakalandı). Aynı uyarı
+			// kontrolü burada da yapılmalı. `runHint` da eksikti - bir koşu zaten
+			// olsa bile (boş de olsa) "aktif dosya için çalıştır" seçeneği hep
+			// anlamlı, `!state.mutation` dalıyla aynı davranış (kullanıcı isteği).
+			const nodes: MutationNode[] = [header, {
 				kind: 'empty',
-				message: this.survivorsOnly
-					? 'Hayatta kalan mutant yok - üretilen her mutantı en az bir test yakaladı. (Süzgeci kaldırmak için başlıktaki filtreye tıklayın.)'
+				message: hasNoChangedTargetsWarning(state)
+					? noMutationEvidenceMessage()
 					: 'Bu koşuda hiçbir production metodu için mutant üretilmedi. Hedeflenen sınıflar mutasyona uygun kod içermiyor olabilir. (Test sınıflarının kendi mutantları kasten gösterilmiyor.)',
-			}];
+			}, { kind: 'runHint' }];
+			if (hasNoChangedTargetsWarning(state)) {
+				nodes.push({ kind: 'scanAllHint' });
+			}
+			return nodes;
 		}
-		return [header, ...classes.map((c): MutationNode => ({ kind: 'class', className: c.className, methods: c.methods }))];
+		// Kullanıcı isteği: gerçek bir sonuç ekrandayken (ör. bir sınıfın
+		// mutasyon sonucuna bakılırken) başka bir dosyaya geçince "aktif
+		// dosya için çalıştır"/"tüm modülü tara" seçenekleri tamamen
+		// kayboluyordu - sadece boş sonuç durumlarında vardı. Artık her
+		// zaman görünürler - başlığın hemen altında, sınıf sonuçlarının
+		// üstünde (kullanıcı isteği: uzun bir listeyi kaydırmadan
+		// erişilebilir olsunlar).
+		return [
+			header,
+			{ kind: 'runHint' },
+			{ kind: 'scanAllHint' },
+			...classes.map((c): MutationNode => ({ kind: 'class', className: c.className, methods: c.methods })),
+		];
 	}
 
 	private visibleMethods(methods: readonly MutatedMethod[]): readonly MutatedMethod[] {
@@ -144,9 +183,19 @@ export class MutationTreeProvider implements vscode.TreeDataProvider<MutationNod
  * söyler ve her biri farklı bir çözüm ister; hepsini "sonuç yok" diye
  * göstermek hard rule 3a ihlali olurdu.
  */
+/** Faz 31 düzeltmesi: paylaşılan kontrol, hem `!state.mutation` hem `classes.length === 0` dallarında kullanılıyor - bkz. rootChildren'daki not. */
+function hasNoChangedTargetsWarning(state: NonNullable<ReturnType<typeof getMutationState>>): boolean {
+	return state.warnings.some((w) => w.code === 'MUTATION_NO_CHANGED_TARGETS');
+}
+
 function noMutationEvidenceMessage(): string {
 	const state = getMutationState();
-	const warningFor = (code: string) => state?.warnings.find((w) => w.code === code && (w.module === undefined || w.module === state.moduleId));
+	// Faz 30: `state.warnings` is already the complete, exact warning list this
+	// run produced - there is no "wrong module" a warning in it could belong
+	// to, so filtering by module (the old `w.module === state.moduleId` check)
+	// never excluded anything real. Matching by code alone is the same
+	// behavior without a moduleId to compare against.
+	const warningFor = (code: string) => state?.warnings.find((w) => w.code === code);
 
 	if (warningFor('MUTATION_BUDGET_EXCEEDED')) {
 		return 'Mutasyon koşusu zaman bütçesini aştı ve sonuç üretemeden durduruldu. coverdict.mutationTimeout ayarını artırın ya da tek bir sınıf hedefleyin (dosyada sağ tık).';
@@ -161,7 +210,7 @@ function noMutationEvidenceMessage(): string {
 		return 'Mutasyon için classpath listesi bağlanmamış. Komutu tekrar çalıştırın; eklenti listeyi Maven ile üretmeyi teklif edecek.';
 	}
 	if (warningFor('MUTATION_NO_CHANGED_TARGETS')) {
-		return 'Bu koşuda değişen production sınıfı yok, bu yüzden mutasyona sokulacak hedef de yok. Tek bir sınıf için çalıştırmak isterseniz o dosyada sağ tık → "Bu Sınıf İçin Mutasyon Testi".';
+		return 'Bu koşuda değişen production sınıfı yok, bu yüzden mutasyona sokulacak hedef de yok. Tek bir sınıf için çalıştırmak isterseniz o dosyada sağ tık → "Bu Sınıf İçin Mutasyon Testi", ya da aşağıdaki düğmeyle diff\'ten bağımsız tüm modülü tarayın.';
 	}
 	if (warningFor('MUTATION_TRUNCATED')) {
 		return 'Mutant kayıtları üst sınıra takıldı - gösterilenler eksik. Daha dar bir hedefle tekrar çalıştırın.';
@@ -195,6 +244,15 @@ function runHintItem(): vscode.TreeItem {
 	item.iconPath = new vscode.ThemeIcon('play');
 	item.command = { command: 'coverdict.mutationForFile', title: 'Mutasyon Testi Çalıştır' };
 	item.tooltip = 'Açık Java dosyasındaki sınıf için mutasyon testi çalıştırır (tek sınıf: genelde saniyeler). Modül geneli için "Çalıştır" görünümündeki Mutasyon Testi maddesini kullanın.';
+	return item;
+}
+
+/** Faz 31: "ben değişiklik yapmadan tüm repoda tarama yapabilmeliyim" - diff hiç hedef bulamadığında sunulan kurtarma eylemi, `coverdict.mutationForModuleAll`. Diff-tabanlı koşudan daha pahalı olabileceği için kendi onay modalının arkasında. */
+function scanAllHintItem(): vscode.TreeItem {
+	const item = new vscode.TreeItem('Yine de Tüm Modülü Tara (diff\'siz)', vscode.TreeItemCollapsibleState.None);
+	item.iconPath = new vscode.ThemeIcon('play');
+	item.command = { command: 'coverdict.mutationForModuleAll', title: 'Tüm Modülü Tara' };
+	item.tooltip = 'Diff\'ten bağımsız, bu modüldeki her production sınıfını hedefler - değişmemiş sınıflar da dahil olduğu için diff-tabanlı "modül geneli" koşudan daha uzun sürebilir.';
 	return item;
 }
 
@@ -248,9 +306,24 @@ function findPseudoTestedFinding(className: string, methodName: string, methodDe
  * mutationModel.ts`'in `findKillContribution`'ıyla aynı, kuralı yeniden
  * türetmiyor.
  */
-function killingTestItem(rawTestId: string): vscode.TreeItem {
+/**
+ * Faz 31: bir mutantı öldüren test her zaman "başarılı" olduğu için burada
+ * hiç `finding` yok - eskiden bu yüzden navigasyon hiç yoktu. `locateTestFile`
+ * (`ui/testFileLocator.ts`, `hoverProvider.ts` ile aynı mekanizma) testin
+ * kendi kaynak kökündeki dosyasını arar; bulunamazsa (hard rule 3a) komut
+ * hiç eklenmez, sadece yaprak düğüm kalır.
+ */
+async function killingTestItem(rawTestId: string): Promise<vscode.TreeItem> {
 	const identity = parseTestIdentity(rawTestId);
 	const item = leaf(identity.display, 'check');
+	const state = getCoverageState();
+	if (state && identity.className) {
+		const path = await locateTestFile(state.workspaceRoot, testSourceRoots(state.modules), identity.className, undefined);
+		if (path) {
+			const uri = vscode.Uri.file(toAbsolutePath(state.workspaceRoot, path));
+			item.command = { command: 'vscode.open', title: 'Test Dosyasını Aç', arguments: [uri, { selection: new vscode.Range(0, 0, 0, 0) }] };
+		}
+	}
 	if (identity.className && identity.methodName) {
 		const key = `${identity.className}#${identity.methodName}()`;
 		const finding = getCoverageState()?.findings.find((f) => f.confidence === 'INCONCLUSIVE' && f.testMethod === key);
@@ -276,7 +349,7 @@ export function findMutationBridgeTarget(className: string, methodName: string, 
 	if (!state?.mutation) {
 		return undefined;
 	}
-	const classes = classesOf(state.mutation, state.moduleId, productionClassFilter());
+	const classes = classesOf(state.mutation, productionClassFilter());
 	const found = findMutatedMethod(classes, className, methodName, methodDescription);
 	return found ? { kind: 'method', className: found.cls.className, method: found.method, siblings: found.cls.methods } : undefined;
 }
@@ -305,7 +378,7 @@ function lineHasPerTestEvidence(className: string, line: number): boolean {
 	if (!perTestState?.perTest) {
 		return false;
 	}
-	const lookup = testsForClass(perTestState.perTest, perTestState.moduleId, className);
+	const lookup = testsForClass(perTestState.perTest, className);
 	return lookup.kind === 'found' && lookup.linesToTests.has(line);
 }
 
@@ -396,8 +469,8 @@ function productionClassFilter(): ((className: string) => boolean) | undefined {
 	if (!state?.fileCoverage) {
 		return undefined;
 	}
-	const index = buildProductionClassIndex(state.fileCoverage, productionSourceRoots(state.modules));
-	return (className) => index.has(className);
+	const { byClassName } = buildProductionClassIndex(state.fileCoverage, productionSourceRoots(state.modules));
+	return (className) => byClassName.has(className);
 }
 
 /** Sınıfın dosyası `fileCoverage.files[]`'ten çözülür; bilinmiyorsa komut yok - yanlış dosyaya atlamaktansa atlamamak yeğdir. */
@@ -406,7 +479,7 @@ function openCommandFor(className: string, line: number, title: string): vscode.
 	if (!state?.fileCoverage) {
 		return undefined;
 	}
-	const path = buildProductionClassIndex(state.fileCoverage, productionSourceRoots(state.modules)).get(className);
+	const path = buildProductionClassIndex(state.fileCoverage, productionSourceRoots(state.modules)).byClassName.get(className);
 	if (!path) {
 		return undefined;
 	}
@@ -415,9 +488,17 @@ function openCommandFor(className: string, line: number, title: string): vscode.
 	return { command: 'vscode.open', title, arguments: [uri, { selection }] };
 }
 
+/**
+ * Faz 31: an explicit `.tooltip` (not VS Code's own implicit
+ * label-overflow fallback) - a long `'empty'` explanation message wasn't
+ * reliably copyable from the auto-truncation hover, real user report.
+ * Harmless for short labels that already fit; callers that need a richer
+ * tooltip (e.g. `killingTestItem`'s contradiction note) overwrite it after.
+ */
 function leaf(label: string, icon: string): vscode.TreeItem {
 	const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
 	item.iconPath = new vscode.ThemeIcon(icon);
+	item.tooltip = label;
 	return item;
 }
 

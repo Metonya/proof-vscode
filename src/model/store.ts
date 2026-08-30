@@ -66,9 +66,14 @@ export function setGutterVisible(next: boolean): void {
 	gutterVisible = next;
 }
 
-/** F3: the last run's L2 evidence, set only by `coverdict.analyzePerTest` (a separate command from the main scan - --per-test-report needs a diff mode, D-55). */
+/**
+ * F3: the last run's L2 evidence, set only by `coverdict.analyzePerTest` (a
+ * separate command from the main scan - --per-test-report needs a diff
+ * mode, D-55). Faz 30: no `moduleId` - `perTest.modules[]` may hold several
+ * (a multi-module run), and every consumer merges across all of them
+ * rather than selecting one.
+ */
 export interface PerTestState {
-	moduleId: string;
 	perTest: PerTestBlock | undefined;
 	warnings: readonly Reason[];
 }
@@ -88,10 +93,9 @@ export function getPerTestState(): PerTestState | undefined {
  * mutasyon kendi komutundan gelir ve dakikalar/saatler sürebilir, bir
  * kapsama taraması onu ezmemeli. `targets` koşunun neyi hedeflediğini
  * söyler: "sonuç boş" ile "hiç sorulmadı" ayırt edilebilsin diye
- * (hard rule 3a).
+ * (hard rule 3a). Faz 30: no `moduleId` - same reason as `PerTestState`.
  */
 export interface MutationState {
-	moduleId: string;
 	mutation: MutationBlock | undefined;
 	warnings: readonly Reason[];
 	targets: readonly string[];

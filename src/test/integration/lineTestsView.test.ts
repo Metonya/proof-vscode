@@ -91,7 +91,7 @@ suite('Line tests view (Faz 15c)', () => {
 	});
 
 	test('production file: line node -> test leaf -> getParent round-trip', async () => {
-		setPerTestState({ moduleId: 'root', perTest: PER_TEST, warnings: [] });
+		setPerTestState({ perTest: PER_TEST, warnings: [] });
 		const { document, workspaceRoot } = await openProductionFile('Calculator');
 		setCoverageState({ ...STATE, workspaceRoot });
 
@@ -111,6 +111,86 @@ suite('Line tests view (Faz 15c)', () => {
 		assert.deepEqual(provider.getParent(tests[0]), roots[0]);
 		assert.deepEqual(provider.nodeForLine(37), roots[0]);
 		assert.equal(provider.nodeForLine(999), undefined);
+	});
+
+	/**
+	 * Faz 31: kullanıcının isteği - mutasyon görünümü hiç dosya açık değilken
+	 * de tüm koşunun sonucunu gösteriyor, Satır → Testler de artık aynısını
+	 * yapıyor. `setActiveDocument` hiç çağrılmıyor - bu tam olarak eklenti
+	 * ilk açıldığındaki, henüz hiçbir Java dosyasına tıklanmamış durum.
+	 */
+	test('with real per-test evidence but no active document, lists every class - mirrors the mutation view\'s always-show-everything landing', () => {
+		const twoClasses: PerTestBlock = {
+			engine: 'pitest', engineVersion: '1.15.8',
+			modules: [{
+				id: 'root',
+				entries: [
+					{ className: 'dev.coverdict.playground.Calculator', methodName: 'add', lines: [{ line: 7, tests: ['CalcTest#addsTwoNumbers()'] }] },
+					{ className: 'dev.coverdict.playground.Multiplier', methodName: 'times', lines: [{ line: 12, tests: ['MultiplierTest#timesTwo()'] }] },
+				],
+				ambient: [],
+			}],
+		};
+		setPerTestState({ perTest: twoClasses, warnings: [] });
+		setCoverageState({ ...STATE, workspaceRoot: 'C:/repo', findings: [] });
+
+		const provider = new LineTestsTreeProvider();
+		const roots = provider.getChildren();
+		assert.deepEqual(roots.map((r) => r.kind), ['class', 'class']);
+		assert.deepEqual(roots.map((r) => (r.kind === 'class' ? r.className : '')), ['dev.coverdict.playground.Calculator', 'dev.coverdict.playground.Multiplier']);
+
+		const calculatorLines = provider.getChildren(roots[0]);
+		assert.equal(calculatorLines.length, 1);
+		assert.equal(calculatorLines[0].kind, 'prodLine');
+		assert.deepEqual(provider.getParent(calculatorLines[0]), roots[0], 'a line born in "all classes" mode must resolve back to its own class node');
+	});
+
+	/**
+	 * Faz 31: a passing (`ok`) test never gets a `Finding` (findings only
+	 * exist for oracle-quality problems), so it used to have no navigation
+	 * at all - `prodTestItem` only wired `item.command` inside `if (node.finding)`.
+	 * `locateTestFile` now probes the real filesystem (same mechanism
+	 * `hoverProvider.ts` already used) and opens the test's own file at line
+	 * 1 - it does not know which line inside the test to jump to (no finding
+	 * to anchor on), but "the file itself" beats "nothing at all".
+	 */
+	test('prodTest: a passing test with no finding still navigates to its own file', async () => {
+		const perTest: PerTestBlock = {
+			engine: 'pitest', engineVersion: '1.15.8',
+			modules: [{
+				id: 'root',
+				entries: [{
+					className: 'dev.coverdict.playground.Calculator', methodName: 'add',
+					lines: [{ line: 7, tests: ['[class:dev.coverdict.playground.CalculatorGoodTest]/[method:addsTwoNumbers()]'] }],
+				}],
+				ambient: [],
+			}],
+		};
+		setPerTestState({ perTest, warnings: [] });
+		const { document, workspaceRoot } = await openProductionFile('Calculator');
+		setCoverageState({ ...STATE, workspaceRoot, findings: [] }); // no findings anywhere - this test is 'ok'
+
+		const testDir = path.join(workspaceRoot, 'src', 'test', 'java', 'dev', 'coverdict', 'playground');
+		fs.mkdirSync(testDir, { recursive: true });
+		const testFilePath = path.join(testDir, 'CalculatorGoodTest.java');
+		fs.writeFileSync(testFilePath, 'package dev.coverdict.playground;\n\nclass CalculatorGoodTest {\n}\n', 'utf8');
+
+		const provider = new LineTestsTreeProvider();
+		provider.setActiveDocument(document);
+
+		const line = provider.getChildren()[0];
+		const prodTest = provider.getChildren(line)[0];
+		assert.equal(prodTest.kind, 'prodTest');
+		if (prodTest.kind === 'prodTest') {
+			assert.equal(prodTest.verdict, 'ok');
+		}
+
+		const item = await provider.getTreeItem(prodTest);
+		assert.ok(item.command, 'a passing test must still navigate - it just has no finding to point at a specific line');
+		assert.equal(item.command?.command, 'vscode.open');
+		const [uri] = item.command!.arguments as [vscode.Uri];
+		// vscode.Uri.file() lower-cases the Windows drive letter - compare case-insensitively, same path otherwise.
+		assert.equal(uri.fsPath.toLowerCase(), testFilePath.toLowerCase());
 	});
 
 	/**
@@ -136,7 +216,7 @@ suite('Line tests view (Faz 15c)', () => {
 				ambient: [],
 			}],
 		};
-		setPerTestState({ moduleId: 'root', perTest: constructorPerTest, warnings: [] });
+		setPerTestState({ perTest: constructorPerTest, warnings: [] });
 		const { document, workspaceRoot } = await openProductionFile('Calculator');
 		setCoverageState({ ...STATE, workspaceRoot, findings: [] });
 
@@ -149,7 +229,7 @@ suite('Line tests view (Faz 15c)', () => {
 		if (roots[0].kind === 'prodLine') {
 			assert.equal(roots[0].methodName, '<init>');
 		}
-		const item = provider.getTreeItem(roots[0]);
+		const item = await provider.getTreeItem(roots[0]);
 		assert.match(String(item.label), /<init>\(\)/, 'the label must name the method the line belongs to, not just "Satır 4"');
 		assert.ok(item.tooltip, 'a constructor-attributed line must explain why its test count looks high');
 		assert.match(String((item.tooltip as { value?: string })?.value ?? item.tooltip), /constructor/i);
@@ -178,7 +258,7 @@ suite('Line tests view (Faz 15c)', () => {
 				ambient: [],
 			}],
 		};
-		setPerTestState({ moduleId: 'root', perTest: notifyingCalculatorPerTest, warnings: [] });
+		setPerTestState({ perTest: notifyingCalculatorPerTest, warnings: [] });
 		const { document, workspaceRoot } = await openProductionFile('NotifyingCalculator');
 		setCoverageState({ ...STATE, workspaceRoot, findings: [] });
 
@@ -225,7 +305,7 @@ suite('Line tests view (Faz 15c)', () => {
 				ambient: [],
 			}],
 		};
-		setPerTestState({ moduleId: 'root', perTest: mixedPerTest, warnings: [] });
+		setPerTestState({ perTest: mixedPerTest, warnings: [] });
 		const { document, workspaceRoot } = await openProductionFile('Calculator');
 		setCoverageState({ ...STATE, workspaceRoot });
 
@@ -248,7 +328,7 @@ suite('Line tests view (Faz 15c)', () => {
 	});
 
 	test('test file (reverse direction): test-method node -> production-line leaf', async () => {
-		setPerTestState({ moduleId: 'root', perTest: PER_TEST, warnings: [] });
+		setPerTestState({ perTest: PER_TEST, warnings: [] });
 		const { document, workspaceRoot } = await openTestFile('CalculatorPseudoTestedTest');
 		setCoverageState({ ...STATE, workspaceRoot });
 
@@ -307,7 +387,7 @@ suite('Line tests view (Faz 15c)', () => {
 				ambient: [],
 			}],
 		};
-		setPerTestState({ moduleId: 'root', perTest: realPerTest, warnings: [] });
+		setPerTestState({ perTest: realPerTest, warnings: [] });
 		const { document, workspaceRoot } = await openTestFile('CalculatorPseudoTestedTest');
 		// A real run always carries fileCoverage (the extension passes
 		// --file-coverage on every scan) - it is the authoritative listing of
@@ -335,7 +415,7 @@ suite('Line tests view (Faz 15c)', () => {
 
 	/** The same fixture from the other side: opening the production class must still give the forward direction. */
 	test('production file under sourceRoots renders the production direction even when test classes are in entries', async () => {
-		setPerTestState({ moduleId: 'root', perTest: PER_TEST, warnings: [] });
+		setPerTestState({ perTest: PER_TEST, warnings: [] });
 		const { document, workspaceRoot } = await openProductionFile('Calculator');
 		setCoverageState({ ...STATE, workspaceRoot });
 
@@ -348,7 +428,7 @@ suite('Line tests view (Faz 15c)', () => {
 	});
 
 	test('a Java file with no per-test evidence at all shows the collect hint, not a bare empty message', async () => {
-		setPerTestState({ moduleId: 'root', perTest: PER_TEST, warnings: [] });
+		setPerTestState({ perTest: PER_TEST, warnings: [] });
 		const { document, workspaceRoot } = await openProductionFile('Untouched');
 		setCoverageState({ ...STATE, workspaceRoot });
 
@@ -398,8 +478,8 @@ suite('Line tests view (Faz 15c)', () => {
 			}],
 		};
 
-		setPerTestState({ moduleId: 'root', perTest: addPerTest, warnings: [] });
-		setMutationState({ moduleId: 'root', mutation: addMutation, warnings: [], targets: [], ranAt: Date.now() });
+		setPerTestState({ perTest: addPerTest, warnings: [] });
+		setMutationState({ mutation: addMutation, warnings: [], targets: [], ranAt: Date.now() });
 		const { document, workspaceRoot } = await openProductionFile('Calculator');
 		setCoverageState({ ...STATE, workspaceRoot, findings: [inconclusiveFinding] });
 
@@ -414,7 +494,7 @@ suite('Line tests view (Faz 15c)', () => {
 			assert.equal(prodTest.verdict, 'inconclusive');
 		}
 
-		const item = provider.getTreeItem(prodTest);
+		const item = await provider.getTreeItem(prodTest);
 		assert.equal(item.contextValue, 'coverdict.prodTest.contradiction');
 		const tooltip = String((item.tooltip as vscode.MarkdownString).value);
 		assert.match(tooltip, /Mutasyon kanıtı bunu çürütüyor/);
@@ -422,7 +502,7 @@ suite('Line tests view (Faz 15c)', () => {
 	});
 
 	test('an INCONCLUSIVE test that never killed anything gets the plain contextValue, no fabricated contradiction', async () => {
-		setPerTestState({ moduleId: 'root', perTest: PER_TEST, warnings: [] });
+		setPerTestState({ perTest: PER_TEST, warnings: [] });
 		const inconclusiveFinding: Finding = { ...FINDINGS[0], confidence: 'INCONCLUSIVE' };
 		const { document, workspaceRoot } = await openProductionFile('Calculator');
 		setCoverageState({ ...STATE, workspaceRoot, findings: [inconclusiveFinding] });
@@ -433,6 +513,7 @@ suite('Line tests view (Faz 15c)', () => {
 
 		const line = provider.getChildren()[0];
 		const prodTest = provider.getChildren(line)[0];
-		assert.equal(provider.getTreeItem(prodTest).contextValue, 'coverdict.prodTest', 'no mutation evidence at all - must not claim a contradiction');
+		const item = await provider.getTreeItem(prodTest);
+		assert.equal(item.contextValue, 'coverdict.prodTest', 'no mutation evidence at all - must not claim a contradiction');
 	});
 });

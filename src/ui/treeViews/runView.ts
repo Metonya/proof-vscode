@@ -1,5 +1,8 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 
+import { formatRelativeTime } from '../../model/mutationModel';
 import { isGutterVisible } from '../../model/store';
 
 /**
@@ -42,6 +45,16 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 		const scopeText = diffModeText(diffMode, config.get<string>('baseRef'));
 
 		const items = [
+			// Faz 30 (§7.8): kullanıcının açıkça istediği "kolay tekrar koşma
+			// düğmesi" - her zaman erişilebilir, rapor eksikken de dolu bir
+			// analiz koşusu beklemek zorunda kalmadan.
+			new RunItem(
+				'Testleri Çalıştır',
+				reportFreshnessText(folder),
+				'coverdict.runTests',
+				'run-all',
+				'Maven ile testleri JaCoCo altında çalıştırır (görünür bir terminalde) ve raporu tazeler. Pom\'da JaCoCo eklentisi yoksa coverdict komut satırından ekler, kalıcı bir pom değişikliği yapmaz. Bitince Hızlı Tarama otomatik çalışır.',
+			),
 			new RunItem(
 				'Hızlı Tarama',
 				`coverage + kötü test bulguları · yeni kod: ${scopeText}`,
@@ -99,6 +112,17 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 				'Editördeki satır renklerini ve Dosya Gezgini rozetlerini birlikte açar/kapatır. Yeniden tarama yapmaz.',
 			));
 		return items;
+	}
+}
+
+/** Best-effort: the configured report's own mtime, the same "is this stale?" signal `--file-coverage`-driven staleness already relies on elsewhere. A missing report is not an error here, just "henüz yok" (hard rule 3a: absence gets its own state, not a guess). */
+function reportFreshnessText(folder: vscode.WorkspaceFolder): string {
+	const reportPath = vscode.workspace.getConfiguration('coverdict', folder).get<string>('reportPath') || 'target/site/jacoco/jacoco.xml';
+	try {
+		const stat = fs.statSync(path.join(folder.uri.fsPath, reportPath));
+		return `rapor: ${formatRelativeTime(stat.mtimeMs, Date.now())}`;
+	} catch {
+		return 'rapor: henüz yok';
 	}
 }
 

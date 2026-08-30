@@ -1,4 +1,7 @@
 import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 
 import { setCoverageState, setMutationState, setPerTestState, type CoverageState } from '../../model/store';
@@ -78,20 +81,20 @@ function classNodes(provider: MutationTreeProvider) {
 }
 
 suite('Mutation view (Faz 20)', () => {
-	test('with no run at all, offers to run rather than claiming there is nothing to find', () => {
+	test('with no run at all, offers to run rather than claiming there is nothing to find', async () => {
 		const provider = new MutationTreeProvider();
 		const roots = provider.getChildren();
 		assert.equal(roots.length, 2);
 		assert.equal(roots[0].kind, 'empty');
 		assert.equal(roots[1].kind, 'runHint');
-		assert.doesNotThrow(() => provider.getTreeItem(roots[1]));
+		await assert.doesNotReject(async () => provider.getTreeItem(roots[1]));
 	});
 
 	/** Hard rule 3a: "the run failed" and "the run found nothing" must not look identical. No mutation block -> no header either, there is nothing to date-stamp. */
 	test('an empty result explains the specific warning that caused it', () => {
 		setCoverageState(STATE);
 		setMutationState({
-			moduleId: 'root', mutation: undefined, targets: [], ranAt: undefined,
+			mutation: undefined, targets: [], ranAt: undefined,
 			warnings: [{ code: 'MUTATION_BUDGET_EXCEEDED', message: 'budget exhausted', module: 'root' }],
 		});
 		const provider = new MutationTreeProvider();
@@ -105,43 +108,90 @@ suite('Mutation view (Faz 20)', () => {
 	});
 
 	/**
+	 * Faz 31 düzeltmesi, gerçek gson dogfood'unda yakalandı: CLI, diff hiç
+	 * hedef bulamadığında bile `mutation` alanını (boş `modules` ile) çıktıya
+	 * koyuyor - `state.mutation` bu yüzden burada "var" görünür ve
+	 * `!state.mutation` dalı hiç çalışmaz. "Tüm Modülü Tara" düğmesi tam
+	 * burada, gerçek bir açıklaması varken bile hiç görünmüyordu. Aynı
+	 * sebeple aktif dosya için çalıştırma düğmesi de (`runHint`) hiç
+	 * görünmüyordu - kullanıcının kendi isteğiyle eklendi.
+	 */
+	test('mutation present but empty (real MUTATION_NO_CHANGED_TARGETS shape) still offers both recovery actions', () => {
+		setCoverageState(STATE);
+		setMutationState({
+			mutation: { engine: 'pitest', engineVersion: '1.15.8', modules: [] },
+			targets: [], ranAt: Date.now(),
+			warnings: [{ code: 'MUTATION_NO_CHANGED_TARGETS', message: 'no changed production class', module: 'root' }],
+		});
+		const provider = new MutationTreeProvider();
+		const roots = provider.getChildren();
+		assert.equal(roots[0].kind, 'header', 'a real (if empty) mutation block still dates the run');
+		assert.equal(roots[1].kind, 'empty');
+		if (roots[1].kind === 'empty') {
+			assert.match(roots[1].message, /değişen production sınıfı yok/, 'the real reason, not the generic "no mutable code" guess');
+		}
+		assert.equal(roots[2]?.kind, 'runHint', 'running for the active file is still a valid recovery, not just scanning everything');
+		assert.equal(roots[3]?.kind, 'scanAllHint', 'the module-wide recovery action must also be offered, not silently dropped');
+	});
+
+	/**
 	 * Faz 22: kullanıcının bulduğu gerçek kafa karışıklığı - panel dosyadan
 	 * dosyaya geçince değişmiyordu, hangi koşuya bakıldığı belli değildi.
 	 * Şimdi kökler her zaman "Hedef: ... · ..." başlığıyla başlıyor.
 	 */
-	test('a fresh run shows a header naming the target and "az önce"', () => {
+	test('a fresh run shows a header naming the target and "az önce"', async () => {
 		setCoverageState(STATE);
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: ['dev.coverdict.playground.Calculator'], ranAt: Date.now() });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: ['dev.coverdict.playground.Calculator'], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
 		const roots = provider.getChildren();
 		assert.equal(roots[0].kind, 'header');
-		const headerItem = provider.getTreeItem(roots[0]);
+		const headerItem = await provider.getTreeItem(roots[0]);
 		assert.match(String(headerItem.label), /Hedef: Calculator/);
 		assert.match(String(headerItem.label), /az önce/);
 	});
 
-	/** A result restored from disk (extension.ts on window reload) has no `ranAt` - the header must say so, not guess a time. */
-	test('a restored result (no ranAt) says so instead of guessing a time', () => {
+	/**
+	 * Kullanıcı isteği: bir sınıfın gerçek sonucuna bakarken başka bir
+	 * dosyaya geçmek "aktif dosya için çalıştır"/"tüm modülü tara"
+	 * seçeneklerini tamamen kaybettiriyordu - sadece boş sonuç
+	 * durumlarında vardı. Artık gerçek bir sonuç gösterilirken de - hem de
+	 * uzun bir sınıf listesini kaydırmaya gerek kalmadan, başlığın hemen
+	 * altında - duruyorlar.
+	 */
+	test('a real, non-empty result still offers both recovery actions, right under the header', () => {
 		setCoverageState(STATE);
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: undefined });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: ['dev.coverdict.playground.Calculator'], ranAt: Date.now() });
+		const provider = new MutationTreeProvider();
+
+		const roots = provider.getChildren();
+		assert.ok(roots.some((n) => n.kind === 'class'), 'sanity: this is the real-result branch, not an empty one');
+		assert.equal(roots[0].kind, 'header');
+		assert.equal(roots[1].kind, 'runHint');
+		assert.equal(roots[2].kind, 'scanAllHint');
+	});
+
+	/** A result restored from disk (extension.ts on window reload) has no `ranAt` - the header must say so, not guess a time. */
+	test('a restored result (no ranAt) says so instead of guessing a time', async () => {
+		setCoverageState(STATE);
+		setMutationState({ mutation: MUTATION, warnings: [], targets: [], ranAt: undefined });
 		const provider = new MutationTreeProvider();
 
 		const header = provider.getChildren()[0];
-		const item = provider.getTreeItem(header);
+		const item = await provider.getTreeItem(header);
 		assert.match(String(item.label), /kaydedilmiş sonuç/);
 		assert.match(String(item.label), /diff'teki değişen sınıflar/, 'empty targets = module-wide, diff-derived');
 	});
 
-	test('class -> method -> mutant -> killing test, with test classes filtered out', () => {
+	test('class -> method -> mutant -> killing test, with test classes filtered out', async () => {
 		setCoverageState(STATE);
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: ['dev.coverdict.playground.Calculator'], ranAt: Date.now() });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: ['dev.coverdict.playground.Calculator'], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
 		const classes = classNodes(provider);
 		assert.equal(classes.length, 1, 'CalculatorSubsumedTest is a test class - its own mutants must not be reported');
 		assert.equal(classes[0].kind, 'class');
-		const classItem = provider.getTreeItem(classes[0]);
+		const classItem = await provider.getTreeItem(classes[0]);
 		// 1 killed, 1 survived, 1 indeterminate -> 50%, and the indeterminate must stay visible.
 		assert.match(String(classItem.description), /50%/);
 		assert.match(String(classItem.description), /1 belirsiz/, 'an indeterminate mutant must never be hidden or folded into the score');
@@ -152,7 +202,7 @@ suite('Mutation view (Faz 20)', () => {
 		const survived = methods.find((m) => m.kind === 'method' && m.method.methodName === 'square')!;
 		const mutants = provider.getChildren(survived);
 		assert.equal(mutants.length, 1);
-		const mutantItem = provider.getTreeItem(mutants[0]);
+		const mutantItem = await provider.getTreeItem(mutants[0]);
 		assert.match(String(mutantItem.label), /PrimitiveReturns/, 'PIT\'s fully-qualified mutator name must be shortened for the label');
 		assert.ok(!String(mutantItem.label).includes('org.pitest'), 'the full class name belongs in the tooltip, not the label');
 		assert.match(String(mutantItem.description), /HAYATTA KALDI/);
@@ -160,23 +210,24 @@ suite('Mutation view (Faz 20)', () => {
 		const killed = methods.find((m) => m.kind === 'method' && m.method.methodName === 'divide')!;
 		const killingTests = provider.getChildren(provider.getChildren(killed)[0]);
 		assert.equal(killingTests.length, 1);
-		assert.match(String(provider.getTreeItem(killingTests[0]).label), /divideNarrow/, 'a raw JUnit5 UniqueId must be rendered readable');
+		const killingTestItem = await provider.getTreeItem(killingTests[0]);
+		assert.match(String(killingTestItem.label), /divideNarrow/, 'a raw JUnit5 UniqueId must be rendered readable');
 	});
 
 	/** A NO_COVERAGE mutant is not evidence of a bad test - it is evidence of no test at all. */
-	test('an indeterminate mutant is labelled with its own status, never as killed or survived', () => {
+	test('an indeterminate mutant is labelled with its own status, never as killed or survived', async () => {
 		setCoverageState(STATE);
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
 		const methods = provider.getChildren(classNodes(provider)[0]);
 		const negate = methods.find((m) => m.kind === 'method' && m.method.methodName === 'negate')!;
-		const item = provider.getTreeItem(provider.getChildren(negate)[0]);
+		const item = await provider.getTreeItem(provider.getChildren(negate)[0]);
 		assert.match(String(item.description), /belirsiz/);
 		assert.match(String(item.description), /NO_COVERAGE/, 'the raw status stays visible - "indeterminate" alone does not say why');
 
 		// The method's own score has no denominator at all.
-		const negateItem = provider.getTreeItem(negate);
+		const negateItem = await provider.getTreeItem(negate);
 		assert.match(String(negateItem.description), /skor yok/);
 		// Faz 24 (§7.6 madde 7): every mutant here is NO_COVERAGE (real negate() shape) - say why plainly, not just "belirsiz".
 		assert.match(String(negateItem.description), /hiçbir test bu metoda uğramıyor/);
@@ -184,7 +235,7 @@ suite('Mutation view (Faz 20)', () => {
 	});
 
 	/** Faz 24 (§7.6 madde 7): the mixed real describe() shape (NO_COVERAGE + SURVIVED) must NOT claim "no test reaches it" - a SURVIVED mutant proves a test did reach it. */
-	test('a method with mixed NO_COVERAGE and other statuses does not falsely claim no test reaches it', () => {
+	test('a method with mixed NO_COVERAGE and other statuses does not falsely claim no test reaches it', async () => {
 		const mixedMethod: MutationBlock = {
 			engine: 'pitest', engineVersion: '1.15.8',
 			modules: [{
@@ -200,16 +251,17 @@ suite('Mutation view (Faz 20)', () => {
 			}],
 		};
 		setCoverageState(STATE);
-		setMutationState({ moduleId: 'root', mutation: mixedMethod, warnings: [], targets: [], ranAt: Date.now() });
+		setMutationState({ mutation: mixedMethod, warnings: [], targets: [], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
 		const describe = provider.getChildren(classNodes(provider)[0]).find((m) => m.kind === 'method' && m.method.methodName === 'describe')!;
-		assert.doesNotMatch(String(provider.getTreeItem(describe).description), /hiçbir test bu metoda uğramıyor/);
+		const describeItem = await provider.getTreeItem(describe);
+		assert.doesNotMatch(String(describeItem.description), /hiçbir test bu metoda uğramıyor/);
 	});
 
 	test('survivors-only filter keeps the methods worth looking at and can be turned back off', () => {
 		setCoverageState(STATE);
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
 		assert.equal(provider.isSurvivorsOnly(), false, 'default: hide nothing');
@@ -242,22 +294,22 @@ suite('Mutation view (Faz 20)', () => {
 		fingerprint: 'e1f087bbb5ce5bc8',
 	};
 
-	test('a method with a matching real PSEUDO_TESTED_METHOD finding gets the bridge contextValue, an unrelated method does not', () => {
+	test('a method with a matching real PSEUDO_TESTED_METHOD finding gets the bridge contextValue, an unrelated method does not', async () => {
 		setCoverageState({ ...STATE, findings: [SQUARE_PSEUDO_TESTED_FINDING] });
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
 		const methods = provider.getChildren(classNodes(provider)[0]);
 		const square = methods.find((m) => m.kind === 'method' && m.method.methodName === 'square')!;
 		const divide = methods.find((m) => m.kind === 'method' && m.method.methodName === 'divide')!;
 
-		assert.equal(provider.getTreeItem(square).contextValue, 'coverdict.mutationMethod.pseudoTested');
-		assert.equal(provider.getTreeItem(divide).contextValue, 'coverdict.mutationMethod', 'divide has no matching finding - must not get the bridge affordance');
+		assert.equal((await provider.getTreeItem(square)).contextValue, 'coverdict.mutationMethod.pseudoTested');
+		assert.equal((await provider.getTreeItem(divide)).contextValue, 'coverdict.mutationMethod', 'divide has no matching finding - must not get the bridge affordance');
 	});
 
 	test('getParent: a method node resolves back to its class node, siblings intact for reveal()', () => {
 		setCoverageState(STATE);
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
 		const classNode = classNodes(provider)[0];
@@ -268,7 +320,7 @@ suite('Mutation view (Faz 20)', () => {
 
 	test('findMutationBridgeTarget: finds the real square() method by its productionMethod-derived identity', () => {
 		setCoverageState(STATE);
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
 
 		const target = findMutationBridgeTarget('dev.coverdict.playground.Calculator', 'square', '(I)I');
 		assert.ok(target);
@@ -280,13 +332,13 @@ suite('Mutation view (Faz 20)', () => {
 
 	test('findMutationBridgeTarget: no mutation data at all -> undefined, not a guess', () => {
 		setCoverageState(STATE);
-		setMutationState({ moduleId: 'root', mutation: undefined, warnings: [], targets: [], ranAt: undefined });
+		setMutationState({ mutation: undefined, warnings: [], targets: [], ranAt: undefined });
 		assert.equal(findMutationBridgeTarget('dev.coverdict.playground.Calculator', 'square', '(I)I'), undefined);
 	});
 
 	test('findMutationBridgeTarget: mutation data present but this method is not in it (stale result) -> undefined', () => {
 		setCoverageState(STATE);
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
 		assert.equal(findMutationBridgeTarget('dev.coverdict.playground.Calculator', 'notAMethod', '()V'), undefined);
 	});
 
@@ -297,7 +349,7 @@ suite('Mutation view (Faz 20)', () => {
 	 * olduğu varsayımıyla, mutasyon ağacındaki bu killing test yaprağı da
 	 * çelişkiyi hatırlatmalı - "Satır → Testler"deki köprünün simetriği.
 	 */
-	test('a killing test with a real INCONCLUSIVE finding gets a contradiction tooltip note', () => {
+	test('a killing test with a real INCONCLUSIVE finding gets a contradiction tooltip note', async () => {
 		const inconclusiveFinding: Finding = {
 			rule: 'NO_RECOGNIZED_ORACLE', confidence: 'INCONCLUSIVE', severity: 'WARNING', module: 'root',
 			path: 'src/test/java/dev/coverdict/playground/CalculatorSubsumedTest.java', startLine: 19, endLine: 19,
@@ -305,26 +357,55 @@ suite('Mutation view (Faz 20)', () => {
 			testMethod: 'dev.coverdict.playground.CalculatorSubsumedTest#divideNarrow()',
 		};
 		setCoverageState({ ...STATE, findings: [inconclusiveFinding] });
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: ['dev.coverdict.playground.Calculator'], ranAt: Date.now() });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: ['dev.coverdict.playground.Calculator'], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
 		const divide = provider.getChildren(classNodes(provider)[0]).find((m) => m.kind === 'method' && m.method.methodName === 'divide')!;
 		const killingTest = provider.getChildren(provider.getChildren(divide)[0])[0];
-		const item = provider.getTreeItem(killingTest);
+		const item = await provider.getTreeItem(killingTest);
 		assert.equal(item.contextValue, 'coverdict.killingTest.contradiction');
 		assert.match(String((item.tooltip as vscode.MarkdownString).value), /belirsiz/);
 	});
 
-	test('a killing test with no matching finding at all gets the plain leaf, no fabricated note', () => {
+	test('a killing test with no matching finding at all gets the plain leaf, no fabricated note', async () => {
 		setCoverageState({ ...STATE, findings: [] });
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
 		const divide = provider.getChildren(classNodes(provider)[0]).find((m) => m.kind === 'method' && m.method.methodName === 'divide')!;
 		const killingTest = provider.getChildren(provider.getChildren(divide)[0])[0];
-		const item = provider.getTreeItem(killingTest);
+		const item = await provider.getTreeItem(killingTest);
 		assert.equal(item.contextValue, undefined);
-		assert.equal(item.tooltip, undefined);
+		// Faz 31: leaf() always sets a plain tooltip (copyable hover for long
+		// labels) - the thing that must NOT happen is a fabricated *contradiction* note.
+		assert.equal(item.tooltip, item.label);
+	});
+
+	/**
+	 * Faz 31: a killing test never has a `Finding` (it did its job - "killed
+	 * the mutant" is a success), so `killingTestItem` used to have zero
+	 * navigation wiring. `locateTestFile` probes the real filesystem for the
+	 * test's own file, same mechanism `hoverProvider.ts` already used.
+	 */
+	test('killingTest: navigates to its own real test file on disk', async () => {
+		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-mutationView-'));
+		const testDir = path.join(workspaceRoot, 'src', 'test', 'java', 'dev', 'coverdict', 'playground');
+		fs.mkdirSync(testDir, { recursive: true });
+		const testFilePath = path.join(testDir, 'CalculatorSubsumedTest.java');
+		fs.writeFileSync(testFilePath, 'package dev.coverdict.playground;\n\nclass CalculatorSubsumedTest {\n}\n', 'utf8');
+
+		setCoverageState({ ...STATE, workspaceRoot, findings: [] });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: ['dev.coverdict.playground.Calculator'], ranAt: Date.now() });
+		const provider = new MutationTreeProvider();
+
+		const divide = provider.getChildren(classNodes(provider)[0]).find((m) => m.kind === 'method' && m.method.methodName === 'divide')!;
+		const killingTest = provider.getChildren(provider.getChildren(divide)[0])[0];
+		const item = await provider.getTreeItem(killingTest);
+		assert.ok(item.command, 'a killing test must navigate to its own file');
+		assert.equal(item.command?.command, 'vscode.open');
+		const [uri] = item.command!.arguments as [vscode.Uri];
+		// vscode.Uri.file() lower-cases the Windows drive letter - compare case-insensitively, same path otherwise.
+		assert.equal(uri.fsPath.toLowerCase(), testFilePath.toLowerCase());
 	});
 
 	/**
@@ -347,39 +428,40 @@ suite('Mutation view (Faz 20)', () => {
 		}],
 	};
 
-	test('a SURVIVED mutant whose line has real perTest coverage gets the bridge contextValue and tooltip note', () => {
+	test('a SURVIVED mutant whose line has real perTest coverage gets the bridge contextValue and tooltip note', async () => {
 		setCoverageState(STATE);
-		setPerTestState({ moduleId: 'root', perTest: SQUARE_PER_TEST, warnings: [] });
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+		setPerTestState({ perTest: SQUARE_PER_TEST, warnings: [] });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
 		const square = provider.getChildren(classNodes(provider)[0]).find((m) => m.kind === 'method' && m.method.methodName === 'square')!;
 		const mutant = provider.getChildren(square)[0];
-		const item = provider.getTreeItem(mutant);
+		const item = await provider.getTreeItem(mutant);
 		assert.equal(item.contextValue, 'coverdict.mutant.hasLineEvidence');
 		assert.match(String((item.tooltip as vscode.MarkdownString).value), /Satır → Testler'de Göster/);
 	});
 
-	test('a mutant whose line has no perTest record at all gets the plain contextValue, no fabricated bridge', () => {
+	test('a mutant whose line has no perTest record at all gets the plain contextValue, no fabricated bridge', async () => {
 		setCoverageState(STATE);
-		setPerTestState({ moduleId: 'root', perTest: SQUARE_PER_TEST, warnings: [] });
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+		setPerTestState({ perTest: SQUARE_PER_TEST, warnings: [] });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
 		const divide = provider.getChildren(classNodes(provider)[0]).find((m) => m.kind === 'method' && m.method.methodName === 'divide')!;
 		const mutant = provider.getChildren(divide)[0];
-		const item = provider.getTreeItem(mutant);
+		const item = await provider.getTreeItem(mutant);
 		assert.equal(item.contextValue, 'coverdict.mutant', 'divide has no perTest entry in this fixture - must not claim a bridge');
 	});
 
-	test('no perTest data collected at all - every mutant gets the plain contextValue', () => {
+	test('no perTest data collected at all - every mutant gets the plain contextValue', async () => {
 		setCoverageState(STATE);
-		setPerTestState({ moduleId: 'root', perTest: undefined, warnings: [] });
-		setMutationState({ moduleId: 'root', mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
+		setPerTestState({ perTest: undefined, warnings: [] });
+		setMutationState({ mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
 		const square = provider.getChildren(classNodes(provider)[0]).find((m) => m.kind === 'method' && m.method.methodName === 'square')!;
 		const mutant = provider.getChildren(square)[0];
-		assert.equal(provider.getTreeItem(mutant).contextValue, 'coverdict.mutant');
+		const item = await provider.getTreeItem(mutant);
+		assert.equal(item.contextValue, 'coverdict.mutant');
 	});
 });

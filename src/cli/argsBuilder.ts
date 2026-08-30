@@ -1,10 +1,25 @@
 /**
  * Pure: builds the `analyze` argv from already-resolved inputs, never
  * touches the filesystem or `vscode` (Plan.md Bölüm 2/6 - unit-testable
- * with plain `node --test`). Single-module shorthand only for now (F1's
- * self-scan case); multi-module bindings and their all-or-nothing rule
- * (D-27's bare-vs-id-report conflict) land with F8's config UI, when there
- * is a real multi-module case to build it against.
+ * with plain `node --test`).
+ *
+ * Two report-binding shapes (Faz 30 generalizes Faz 29's single-module one):
+ *   - `reportPath` (+ optional `module`) - the original single-module
+ *     shorthand. Omitting `module` reproduces the exact byte-identical
+ *     bare `--report <path>` invocation from before Faz 29 - the
+ *     self-scan/playground non-regression case.
+ *   - `modules` - a real multi-module run (Faz 30, gson dogfood): repeats
+ *     `--module <id>=<root>` and `--report <id>=<path>` once per bound
+ *     module. Takes priority over `reportPath`/`module` when both are
+ *     given (callers should only ever supply one or the other).
+ *
+ * L2/L3 evidence (`perTest`/`mutation`) similarly moved from a single
+ * `classpathModuleId`/`classpathPath` pair to a `classpaths` list - a
+ * multi-module run needs one `--per-test-classpath`/`--mutation-classpath`
+ * per module, since the CLI validates each id independently and there is
+ * no repo-wide classpath. `targets` now carries its own `moduleId` per
+ * entry instead of assuming a single shared one, since a diff-derived or
+ * per-file target legitimately belongs to a specific module.
  */
 
 export type DiffMode =
@@ -12,22 +27,49 @@ export type DiffMode =
 	| { kind: 'uncommitted' }
 	| { kind: 'base'; ref: string };
 
+export interface ModuleReportBinding {
+	id: string;
+	root: string;
+	reportPath: string;
+}
+
+export interface ClasspathBinding {
+	moduleId: string;
+	path: string;
+}
+
+export interface TargetBinding {
+	moduleId: string;
+	fqcn: string;
+}
+
 export interface AnalyzeArgsInput {
 	repo: string;
 	diffMode: DiffMode;
-	reportPath: string;
+	/** Single-module shorthand - see file doc comment. Ignored when `modules` is given. */
+	reportPath?: string;
+	/** Single-module shorthand's optional explicit module binding. Ignored when `modules` is given. */
+	module?: { id: string; root: string };
+	/** Faz 30: real multi-module binding, repeated `--module`/`--report`. */
+	modules?: readonly ModuleReportBinding[];
 	outPath: string;
 	fileCoverage?: boolean;
 	/** Sonar-style `sonar.coverage.exclusions` globs (D-05) - passed through verbatim, one authored list, never merged with a repo's own coverdict.config.json. */
 	coverageExclusions?: readonly string[];
 	/**
-	 * F3 (Plan.md Bölüm 4): L2 per-test evidence. Requires perTestClasspathPath
-	 * - both or neither, never one alone. `targets` (Faz 14b) names explicit
-	 * FQCNs via `--per-test-target`, the CLI's diff-free entry point (Faz
-	 * 14a) - when given, it lifts the CLI's own --no-vcs rejection, so this
-	 * builder does not need to know or enforce the diff-mode rule itself.
+	 * F3 (Plan.md Bölüm 4): L2 per-test evidence. `classpaths` requires at
+	 * least one entry - each `--per-test-classpath <id>=<path>` matches one
+	 * bound module. `targets` (Faz 14b) names explicit FQCNs via
+	 * `--per-test-target`, the CLI's diff-free entry point (Faz 14a) - when
+	 * given, it lifts the CLI's own --no-vcs rejection, so this builder does
+	 * not need to know or enforce the diff-mode rule itself.
+	 *
+	 * Faz 31: `timeoutSeconds` mirrors `mutation`'s own field - the CLI's
+	 * `--per-test-timeout` (default 120s) exists specifically because a
+	 * large explicit `--per-test-target` list (many `targets` here at once,
+	 * the "scan the whole module anyway" gesture) can outrun the default.
 	 */
-	perTest?: { classpathModuleId: string; classpathPath: string; targets?: readonly string[] };
+	perTest?: { classpaths: readonly ClasspathBinding[]; targets?: readonly TargetBinding[]; timeoutSeconds?: number };
 	/**
 	 * Faz 20: L3 mutasyon kanıtı. `perTest` ile aynı şekil ve aynı kural -
 	 * `targets` (D-71'in `--mutation-target`'ı) verildiğinde CLI'ın diff
@@ -40,25 +82,14 @@ export interface AnalyzeArgsInput {
 	 * koşu öldürülür ve `MUTATION_BUDGET_EXCEEDED` ile döner - kısmi sonuç
 	 * yine yazılır.
 	 */
-	mutation?: { classpathModuleId: string; classpathPath: string; targets?: readonly string[]; timeoutSeconds?: number };
+	mutation?: { classpaths: readonly ClasspathBinding[]; targets?: readonly TargetBinding[]; timeoutSeconds?: number };
 }
 
 export function buildAnalyzeArgs(input: AnalyzeArgsInput): string[] {
 	const args: string[] = ['analyze', '--repo', input.repo];
+	appendDiffMode(args, input.diffMode);
+	appendReportBinding(args, input);
 
-	switch (input.diffMode.kind) {
-		case 'no-vcs':
-			args.push('--no-vcs');
-			break;
-		case 'uncommitted':
-			args.push('--uncommitted');
-			break;
-		case 'base':
-			args.push('--base', input.diffMode.ref);
-			break;
-	}
-
-	args.push('--report', input.reportPath);
 	if (input.fileCoverage) {
 		args.push('--file-coverage');
 	}
@@ -66,16 +97,13 @@ export function buildAnalyzeArgs(input: AnalyzeArgsInput): string[] {
 		args.push('--coverage-exclusions', input.coverageExclusions.join(','));
 	}
 	if (input.perTest) {
-		args.push('--per-test-report', '--per-test-classpath', `${input.perTest.classpathModuleId}=${input.perTest.classpathPath}`);
-		for (const target of input.perTest.targets ?? []) {
-			args.push('--per-test-target', `${input.perTest.classpathModuleId}=${target}`);
+		appendEvidenceFlags(args, '--per-test-report', '--per-test-classpath', '--per-test-target', input.perTest);
+		if (input.perTest.timeoutSeconds !== undefined) {
+			args.push('--per-test-timeout', String(input.perTest.timeoutSeconds));
 		}
 	}
 	if (input.mutation) {
-		args.push('--mutation-report', '--mutation-classpath', `${input.mutation.classpathModuleId}=${input.mutation.classpathPath}`);
-		for (const target of input.mutation.targets ?? []) {
-			args.push('--mutation-target', `${input.mutation.classpathModuleId}=${target}`);
-		}
+		appendEvidenceFlags(args, '--mutation-report', '--mutation-classpath', '--mutation-target', input.mutation);
 		if (input.mutation.timeoutSeconds !== undefined) {
 			args.push('--mutation-timeout', String(input.mutation.timeoutSeconds));
 		}
@@ -83,4 +111,44 @@ export function buildAnalyzeArgs(input: AnalyzeArgsInput): string[] {
 	args.push('--out', input.outPath);
 
 	return args;
+}
+
+function appendDiffMode(args: string[], diffMode: DiffMode): void {
+	switch (diffMode.kind) {
+		case 'no-vcs':
+			args.push('--no-vcs');
+			break;
+		case 'uncommitted':
+			args.push('--uncommitted');
+			break;
+		case 'base':
+			args.push('--base', diffMode.ref);
+			break;
+	}
+}
+
+function appendReportBinding(args: string[], input: Pick<AnalyzeArgsInput, 'reportPath' | 'module' | 'modules'>): void {
+	if (input.modules && input.modules.length > 0) {
+		for (const m of input.modules) {
+			args.push('--module', `${m.id}=${m.root}`);
+		}
+		for (const m of input.modules) {
+			args.push('--report', `${m.id}=${m.reportPath}`);
+		}
+	} else if (input.module) {
+		args.push('--module', `${input.module.id}=${input.module.root}`, '--report', `${input.module.id}=${input.reportPath}`);
+	} else if (input.reportPath) {
+		args.push('--report', input.reportPath);
+	}
+}
+
+/** Shared shape between `perTest` and `mutation`: one report-enabling flag, one `--*-classpath <id>=<path>` per bound module, one `--*-target <id>=<fqcn>` per explicit target. */
+function appendEvidenceFlags(args: string[], reportFlag: string, classpathFlag: string, targetFlag: string, evidence: { classpaths: readonly ClasspathBinding[]; targets?: readonly TargetBinding[] }): void {
+	args.push(reportFlag);
+	for (const cp of evidence.classpaths) {
+		args.push(classpathFlag, `${cp.moduleId}=${cp.path}`);
+	}
+	for (const target of evidence.targets ?? []) {
+		args.push(targetFlag, `${target.moduleId}=${target.fqcn}`);
+	}
 }

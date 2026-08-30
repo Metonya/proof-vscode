@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { getStaleFiles, isFileStale, markFileStale, setCoverageState, type CoverageState } from '../../../model/store';
+import { getMutationState, getPerTestState, getStaleFiles, isFileStale, markFileStale, setCoverageState, setMutationState, setPerTestState, type CoverageState } from '../../../model/store';
 import type { MetricSet } from '../../../verdict/types';
 
 const METRIC = { numeratorName: 'a', numerator: 1, denominatorName: 'b', denominator: 1, percent: 100 };
@@ -35,4 +35,15 @@ test('marking the same file stale twice is a no-op, not a growing set', () => {
 	markFileStale('/repo/src/Foo.java');
 	assert.equal(getStaleFiles().size, 1);
 	setCoverageState(STATE); // reset for later tests in this process
+});
+
+/** Faz 30: PerTestState/MutationState no longer carry a moduleId - a multi-module run's evidence lives entirely inside perTest.modules[]/mutation.modules[], nothing left to select. */
+test('PerTestState/MutationState round-trip with no moduleId field', () => {
+	const perTestBlock = { engine: 'pitest', engineVersion: '1.15.8', modules: [] };
+	setPerTestState({ perTest: perTestBlock, warnings: [] });
+	assert.deepEqual(getPerTestState(), { perTest: perTestBlock, warnings: [] });
+
+	const mutationBlock = { engine: 'pitest', engineVersion: '1.15.8', modules: [] };
+	setMutationState({ mutation: mutationBlock, warnings: [], targets: [], ranAt: undefined });
+	assert.deepEqual(getMutationState(), { mutation: mutationBlock, warnings: [], targets: [], ranAt: undefined });
 });

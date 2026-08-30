@@ -93,17 +93,13 @@ export interface MutatedClass {
 	methods: readonly MutatedMethod[];
 }
 
+/** Faz 30: merges every bound module's methods - `mutation.modules` may hold several in a multi-module run. */
 export function classesOf(
 	mutation: MutationBlock,
-	moduleId: string,
 	isProductionClass?: (className: string) => boolean,
 ): MutatedClass[] {
-	const module = mutation.modules.find((m) => m.id === moduleId);
-	if (!module) {
-		return [];
-	}
 	const byClass = new Map<string, MutatedMethod[]>();
-	for (const method of module.methods) {
+	for (const method of mutation.modules.flatMap((m) => m.methods)) {
 		// Faz 20: PIT test sınıflarını da mutasyona sokuyor - gerçek bir
 		// playground koşusunda 16 metodun 8'i test sınıflarındandı
 		// (`CalculatorSubsumedTest`, `CalculatorGoodTest`, ...). Testin
@@ -254,12 +250,8 @@ export interface KillContribution {
 	mutantLine: number;
 }
 
-export function findKillContribution(mutation: MutationBlock, moduleId: string, testClassName: string, testMethodName: string): KillContribution | undefined {
-	const module = mutation.modules.find((m) => m.id === moduleId);
-	if (!module) {
-		return undefined;
-	}
-	for (const method of module.methods) {
+export function findKillContribution(mutation: MutationBlock, testClassName: string, testMethodName: string): KillContribution | undefined {
+	for (const method of mutation.modules.flatMap((m) => m.methods)) {
 		for (const mutant of method.mutants) {
 			for (const rawTestId of mutant.killingTests) {
 				const identity = parseTestIdentity(rawTestId);

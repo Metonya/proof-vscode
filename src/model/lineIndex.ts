@@ -16,7 +16,8 @@ import type { PerTestBlock, PerTestEntry } from '../verdict/types';
  * mixing it into the same list.
  */
 export type ClassLookupResult =
-	| { kind: 'moduleNotFound' }
+	/** Faz 30: `perTest.modules` is empty - no L2 evidence was collected at all this run. Distinct from `classNotFound` (evidence exists, just not for this class) per hard rule 3a. */
+	| { kind: 'noEvidence' }
 	| { kind: 'classNotFound' }
 	| {
 		kind: 'found';
@@ -33,20 +34,60 @@ export type ClassLookupResult =
 		ambientLinesToMethod: ReadonlyMap<number, string>;
 	};
 
-export function testsForClass(perTest: PerTestBlock, moduleId: string, className: string): ClassLookupResult {
-	const module = perTest.modules.find((m) => m.id === moduleId);
-	if (!module) {
-		return { kind: 'moduleNotFound' };
+/** Faz 30: merges evidence across every bound module - `perTest.modules` may now hold several (a multi-module run), and a class lives in exactly one of them, so merging is safe (no cross-module line-number collisions to worry about; a shared class name across modules is the `productionClassIndex.ts` ambiguity concern, not this one). */
+export function testsForClass(perTest: PerTestBlock, className: string): ClassLookupResult {
+	if (perTest.modules.length === 0) {
+		return { kind: 'noEvidence' };
 	}
 
 	const outerClassName = stripNestedSuffix(className);
-	const { linesToTests, linesToMethod } = collectLines(module.entries, outerClassName);
-	const { linesToTests: ambientLinesToTests, linesToMethod: ambientLinesToMethod } = collectLines(module.ambient, outerClassName);
+	const allEntries = perTest.modules.flatMap((m) => m.entries);
+	const allAmbient = perTest.modules.flatMap((m) => m.ambient);
+	const { linesToTests, linesToMethod } = collectLines(allEntries, outerClassName);
+	const { linesToTests: ambientLinesToTests, linesToMethod: ambientLinesToMethod } = collectLines(allAmbient, outerClassName);
 
 	if (linesToTests.size === 0 && ambientLinesToTests.size === 0) {
 		return { kind: 'classNotFound' };
 	}
 	return { kind: 'found', linesToTests, ambientLinesToTests, linesToMethod, ambientLinesToMethod };
+}
+
+/** One class's line-level evidence, `testsForClass`'s `'found'` shape without the ambient half - `allClasses`'s per-class entry. */
+export interface ClassLines {
+	className: string;
+	linesToTests: ReadonlyMap<number, readonly string[]>;
+	linesToMethod: ReadonlyMap<number, string>;
+}
+
+/**
+ * Faz 31: mirrors `model/mutationModel.ts`'s `classesOf` - "Satır → Testler"
+ * artık hiç Java dosyası açık değilken de (mutasyon görünümünün her zaman
+ * yaptığı gibi) bir şey gösterebiliyor: `perTest.entries`'teki **her**
+ * sınıfın satır → test haritası, aktif dosyadan bağımsız. `isProductionClass`
+ * verilmezse hiçbir şey elenmez (test sınıflarının kendi satırları da
+ * görünür kalır) - `collectLines`'ın sınıf başına çağrılması, `testsForClass`
+ * ile aynı mantığı tekrar üretmek yerine tek kaynaktan besleniyor.
+ */
+export function allClasses(perTest: PerTestBlock, isProductionClass?: (outerClassName: string) => boolean): ClassLines[] {
+	const entriesByClass = new Map<string, PerTestEntry[]>();
+	for (const entry of perTest.modules.flatMap((m) => m.entries)) {
+		const outerClassName = stripNestedSuffix(entry.className);
+		if (isProductionClass && !isProductionClass(outerClassName)) {
+			continue;
+		}
+		const existing = entriesByClass.get(outerClassName);
+		if (existing) {
+			existing.push(entry);
+		} else {
+			entriesByClass.set(outerClassName, [entry]);
+		}
+	}
+	return [...entriesByClass.entries()]
+		.map(([className, entries]): ClassLines => {
+			const { linesToTests, linesToMethod } = collectLines(entries, className);
+			return { className, linesToTests, linesToMethod };
+		})
+		.sort((a, b) => a.className.localeCompare(b.className));
 }
 
 function collectLines(entries: readonly PerTestEntry[], outerClassName: string): { linesToTests: Map<number, string[]>; linesToMethod: Map<number, string> } {
@@ -107,28 +148,25 @@ export interface TestLineRef {
  */
 export function testsToLines(
 	perTest: PerTestBlock,
-	moduleId: string,
 	isProductionClass?: (outerClassName: string) => boolean,
 ): ReadonlyMap<string, readonly TestLineRef[]> {
-	const module = perTest.modules.find((m) => m.id === moduleId);
 	const result = new Map<string, TestLineRef[]>();
-	if (!module) {
-		return result;
-	}
-	for (const entry of module.entries) {
-		const outerClassName = stripNestedSuffix(entry.className);
-		// Faz 21: PIT'in L2 toplayıcısı test sınıflarını da `entries`'e
-		// yazıyor (gerçek veriyle doğrulandı) - süzülmezse bir test kendi
-		// gövdesinin satırlarını "çalıştırdığı production satırları" diye
-		// listeler. Süzgeç verilmezse (fileCoverage yoksa hangi sınıfın
-		// production olduğunu bilemeyiz) hepsi geçer: eksik veriyle
-		// süzmektense süzmemek yeğdir, çünkü yanlış eleme kanıt yok eder.
-		if (isProductionClass && !isProductionClass(outerClassName)) {
-			continue;
-		}
-		for (const line of entry.lines) {
-			for (const rawTestId of line.tests) {
-				addTestLineRef(result, rawTestId, outerClassName, line.line);
+	for (const module of perTest.modules) {
+		for (const entry of module.entries) {
+			const outerClassName = stripNestedSuffix(entry.className);
+			// Faz 21: PIT'in L2 toplayıcısı test sınıflarını da `entries`'e
+			// yazıyor (gerçek veriyle doğrulandı) - süzülmezse bir test kendi
+			// gövdesinin satırlarını "çalıştırdığı production satırları" diye
+			// listeler. Süzgeç verilmezse (fileCoverage yoksa hangi sınıfın
+			// production olduğunu bilemeyiz) hepsi geçer: eksik veriyle
+			// süzmektense süzmemek yeğdir, çünkü yanlış eleme kanıt yok eder.
+			if (isProductionClass && !isProductionClass(outerClassName)) {
+				continue;
+			}
+			for (const line of entry.lines) {
+				for (const rawTestId of line.tests) {
+					addTestLineRef(result, rawTestId, outerClassName, line.line);
+				}
 			}
 		}
 	}

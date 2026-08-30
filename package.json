@@ -83,7 +83,12 @@
         "coverdict.show.lineGutter": {
           "type": "boolean",
           "default": true,
-          "description": "Açık bir dosyada, her satırın solunda o satırın kapsanıp kapsanmadığını gösteren renkli bir çizgi çiz (yeşil: kapsandı, sarı: kısmen, kırmızı: kapsanmadı). coverdict.show.explorerBadges'ten bağımsızdır: bunu kapatırsanız sadece bu çizgiler gider, Dosya Gezgini'ndeki yüzde rozetleri etkilenmez."
+          "description": "Açık bir dosyada, her satırın solunda o satırın kapsanıp kapsanmadığını gösteren renkli bir çizgi çiz (yeşil: kapsandı, sarı: kısmen, kırmızı: kapsanmadı - coverdict.colorblindMode açıkken farklı bir palet kullanılır). coverdict.show.explorerBadges'ten bağımsızdır: bunu kapatırsanız sadece bu çizgiler gider, Dosya Gezgini'ndeki yüzde rozetleri etkilenmez."
+        },
+        "coverdict.colorblindMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Satır kapsama çizgilerinde (coverdict.show.lineGutter) kırmızı/yeşili kullanmak yerine, üç tip renk körlüğü altında da (protanopi, döteranopi, tritanopi) birbirinden ayrılabilir kalan bir palet kullan (Okabe-Ito paleti: mavi=kapsandı, sarı=kısmen, vermilyon=kapsanmadı, mor=\"yalancı yeşil\"). Değiştirir değiştirmez açık editörlere hemen yansır, pencere yenilemeye gerek yok."
         },
         "coverdict.show.oraclelessLines": {
           "type": "boolean",
@@ -105,13 +110,51 @@
           "default": 300,
           "minimum": 1,
           "description": "Mutasyon testinde bir modül için saniye cinsinden zaman bütçesi (--mutation-timeout). Aşılırsa koşu durdurulur ve sonuç kısmi kalır - kısmi sonuç yine gösterilir, sessizce atılmaz. Tek sınıf koşuları genelde saniyeler sürer; modül geneli koşular için artırmanız gerekebilir."
+        },
+        "coverdict.perTestTimeout": {
+          "type": "number",
+          "default": 120,
+          "minimum": 1,
+          "description": "Derin Tarama'da bir modül için saniye cinsinden zaman bütçesi (--per-test-timeout). Aşılırsa koşu durdurulur (PER_TEST_COLLECTION_FAILED). Diff'te değişen birkaç sınıf için varsayılan genelde yeterlidir; \"Yine de Tüm Modülü Tara\" gibi çok sayıda sınıfı tek seferde hedefleyen koşularda artırmanız gerekebilir."
+        },
+        "coverdict.testCommandPhase": {
+          "type": "string",
+          "enum": [
+            "test",
+            "verify"
+          ],
+          "default": "test",
+          "description": "\"coverdict: Testleri Çalıştır\" hangi Maven aşamasını çalıştırsın. test (varsayılan): en kısa yol, JaCoCo raporunu üretmek için genelde yeterli. verify: modülleriniz paketlenmiş bir jar'a ihtiyaç duyuyorsa (ör. bir JPMS/OSGi testi) gereklidir - daha uzun sürer."
+        },
+        "coverdict.jacocoPluginVersion": {
+          "type": "string",
+          "default": "0.8.13",
+          "description": "Pom'da JaCoCo eklentisi tanımlı değilse \"coverdict: Testleri Çalıştır\"ın komut satırından bağlayacağı org.jacoco:jacoco-maven-plugin sürümü. Pom zaten kendi JaCoCo sürümünü tanımlıyorsa bu ayar kullanılmaz - pom'a asla dokunulmaz."
         }
       }
     },
+    "taskDefinitions": [
+      {
+        "type": "coverdict",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "coverdict'in kendi başlattığı görev türü (ör. runTests)."
+          }
+        }
+      }
+    ],
     "commands": [
       {
         "command": "coverdict.analyze",
         "title": "coverdict: Hızlı Tarama"
+      },
+      {
+        "command": "coverdict.runTests",
+        "title": "coverdict: Testleri Çalıştır"
       },
       {
         "command": "coverdict.toggleCoverage",
@@ -124,6 +167,10 @@
       {
         "command": "coverdict.perTestForFile",
         "title": "coverdict: Bu Sınıf İçin Hangi Test Hangi Satırı Kapsıyor"
+      },
+      {
+        "command": "coverdict.perTestForModuleAll",
+        "title": "coverdict: Tüm Modül İçin Derin Tarama (diff'siz)"
       },
       {
         "command": "coverdict.copyItem",
@@ -151,6 +198,10 @@
       {
         "command": "coverdict.mutationForModule",
         "title": "coverdict: Mutasyon Testi (Modül Geneli)"
+      },
+      {
+        "command": "coverdict.mutationForModuleAll",
+        "title": "coverdict: Mutasyon Testi - Tüm Modül (diff'siz)"
       },
       {
         "command": "coverdict.mutationView.toggleSurvivorsOnly",
@@ -315,7 +366,7 @@
     "@stylistic/eslint-plugin": "^2.9.0",
     "@types/node": "^22.20.1",
     "@types/vscode": "^1.88.0",
-    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-cli": "^0.0.11",
     "@vscode/test-electron": "^3.1.0",
     "c8": "^10.1.3",
     "esbuild": "^0.25.0",

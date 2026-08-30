@@ -26,11 +26,35 @@ export interface GutterDecorationTypes {
 	oracleless: vscode.TextEditorDecorationType;
 }
 
-export function createGutterDecorationTypes(): GutterDecorationTypes {
+/**
+ * Faz 31 (user request): red/green (covered/uncovered) is exactly the
+ * classic red-green color-vision-deficiency confusion pair - the two
+ * states a coverage gutter most needs to keep visually distinct. Swapped
+ * for the Okabe-Ito palette (Okabe & Ito, "Color Universal Design", 2008)
+ * when `coverdict.colorblindMode` is on - blue/vermillion/yellow/purple
+ * stay distinguishable under protanopia, deuteranopia, *and* tritanopia
+ * simultaneously, which a single hand-picked "colorblind-friendly" pair
+ * usually is not (different CVD types confuse different hues). Raw hex,
+ * not `ThemeColor`, deliberately: this palette is chosen for CVD
+ * distinguishability specifically, not to follow the active color theme.
+ */
+const COLORBLIND_PALETTE = {
+	covered: '#0072B2', // blue
+	partial: '#F0E442', // yellow
+	uncovered: '#D55E00', // vermillion
+	oracleless: '#CC79A7', // reddish purple
+} as const;
+
+/**
+ * Called at activation and again, live, whenever `coverdict.colorblindMode`
+ * changes (`extension.ts`'s own `onDidChangeConfiguration` handler disposes
+ * the old types and swaps in a fresh set) - no window reload needed.
+ */
+export function createGutterDecorationTypes(colorblindMode = false): GutterDecorationTypes {
 	return {
-		covered: borderDecoration(new vscode.ThemeColor('charts.green')),
-		partial: borderDecoration(new vscode.ThemeColor('charts.yellow')),
-		uncovered: borderDecoration(new vscode.ThemeColor('charts.red')),
+		covered: borderDecoration(colorblindMode ? COLORBLIND_PALETTE.covered : new vscode.ThemeColor('charts.green')),
+		partial: borderDecoration(colorblindMode ? COLORBLIND_PALETTE.partial : new vscode.ThemeColor('charts.yellow')),
+		uncovered: borderDecoration(colorblindMode ? COLORBLIND_PALETTE.uncovered : new vscode.ThemeColor('charts.red')),
 		excluded: vscode.window.createTextEditorDecorationType({
 			isWholeLine: true,
 			backgroundColor: new vscode.ThemeColor('editorInactiveSelection.background'),
@@ -57,11 +81,11 @@ export function createGutterDecorationTypes(): GutterDecorationTypes {
 				margin: '0 0 0 1em',
 			},
 		}),
-		oracleless: borderDecoration(new vscode.ThemeColor('charts.orange')),
+		oracleless: borderDecoration(colorblindMode ? COLORBLIND_PALETTE.oracleless : new vscode.ThemeColor('charts.orange')),
 	};
 }
 
-function borderDecoration(color: vscode.ThemeColor): vscode.TextEditorDecorationType {
+function borderDecoration(color: string | vscode.ThemeColor): vscode.TextEditorDecorationType {
 	return vscode.window.createTextEditorDecorationType({
 		isWholeLine: true,
 		borderWidth: '0 0 0 3px',

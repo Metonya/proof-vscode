@@ -2,7 +2,10 @@ import { defineConfig } from '@vscode/test-cli';
 
 export default defineConfig({
 	tests: [
-		{ files: 'out/test/integration/**/*.test.js' },
+		// Faz 31: `--disable-gpu` trims the Extension Host window's render
+		// startup cost - not real headless (Windows has no equivalent to
+		// Linux's `xvfb-run`), the window still flashes open, just cheaper.
+		{ files: 'out/test/integration/**/*.test.js', launchArgs: ['--disable-gpu'] },
 	],
 	// Faz 27 (§7.4): src/ui/** ve extension.ts yalnızca gerçek Extension
 	// Host testleriyle kapsanıyor - `npm run test:unit:coverage`'ın c8'i
