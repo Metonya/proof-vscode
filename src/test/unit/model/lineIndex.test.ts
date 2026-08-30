@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { groupConsecutiveLines, testsForClass, testsToLines } from '../../../model/lineIndex';
+import { allClasses, groupConsecutiveLines, testsForClass, testsToLines } from '../../../model/lineIndex';
 import type { PerTestBlock } from '../../../verdict/types';
 
 const BLOCK: PerTestBlock = {
@@ -71,6 +71,49 @@ test('an empty modules array is noEvidence, distinct from a missing class', () =
 test('a class with no matching entries is classNotFound - "L2 sadece değişen sınıflar için"', () => {
 	const result = testsForClass(BLOCK, 'dev.coverdict.playground.NotAChangedClass');
 	assert.equal(result.kind, 'classNotFound');
+});
+
+/** Faz 31: `allClasses` - "Satır → Testler"'in hiç dosya açık değilken gösterdiği kök. */
+const TWO_CLASSES: PerTestBlock = {
+	engine: 'pitest', engineVersion: '1.15.8',
+	modules: [{
+		id: 'root',
+		entries: [
+			{ className: 'dev.coverdict.playground.Calculator', methodName: 'add', lines: [{ line: 7, tests: ['CalcTest#addsTwoNumbers()'] }] },
+			{ className: 'dev.coverdict.playground.Multiplier', methodName: 'times', lines: [{ line: 12, tests: ['MultiplierTest#timesTwo()'] }] },
+			{ className: 'dev.coverdict.playground.CalculatorGoodTest', methodName: 'addsTwoNumbers', lines: [{ line: 5, tests: ['CalcTest#addsTwoNumbers()'] }] },
+		],
+		ambient: [],
+	}],
+};
+
+test('allClasses: groups entries by outer class name, one ClassLines per real class', () => {
+	const classes = allClasses(TWO_CLASSES);
+	assert.deepEqual(classes.map((c) => c.className), ['dev.coverdict.playground.Calculator', 'dev.coverdict.playground.CalculatorGoodTest', 'dev.coverdict.playground.Multiplier']);
+	const calculator = classes.find((c) => c.className === 'dev.coverdict.playground.Calculator')!;
+	assert.deepEqual(calculator.linesToTests.get(7), ['CalcTest#addsTwoNumbers()']);
+	assert.equal(calculator.linesToMethod.get(7), 'add');
+});
+
+test('allClasses: with a production-class filter, test classes (PIT mutates them too) are dropped - same convention as classesOf/testsToLines', () => {
+	const isProduction = (className: string) => className !== 'dev.coverdict.playground.CalculatorGoodTest';
+	const classes = allClasses(TWO_CLASSES, isProduction);
+	assert.deepEqual(classes.map((c) => c.className), ['dev.coverdict.playground.Calculator', 'dev.coverdict.playground.Multiplier']);
+});
+
+test('allClasses: without a filter nothing is dropped - missing information must not silently delete evidence', () => {
+	assert.equal(allClasses(TWO_CLASSES).length, 3);
+});
+
+test('allClasses: an empty modules array returns an empty list, not an error', () => {
+	const empty: PerTestBlock = { engine: 'pitest', engineVersion: '1.15.8', modules: [] };
+	assert.deepEqual(allClasses(empty), []);
+});
+
+test('allClasses: a nested class entry is grouped under its outer class name', () => {
+	const classes = allClasses(BLOCK);
+	assert.deepEqual(classes.map((c) => c.className), ['dev.coverdict.playground.Calculator']);
+	assert.deepEqual(classes[0].linesToTests.get(40), ['CalcTest#innerHelperTest()'], 'the $Inner entry must merge into the outer class');
 });
 
 /** Faz 30: a multi-module run's evidence merges - a class in either module's entries is found, without needing to know which module it came from. */

@@ -52,6 +52,44 @@ export function testsForClass(perTest: PerTestBlock, className: string): ClassLo
 	return { kind: 'found', linesToTests, ambientLinesToTests, linesToMethod, ambientLinesToMethod };
 }
 
+/** One class's line-level evidence, `testsForClass`'s `'found'` shape without the ambient half - `allClasses`'s per-class entry. */
+export interface ClassLines {
+	className: string;
+	linesToTests: ReadonlyMap<number, readonly string[]>;
+	linesToMethod: ReadonlyMap<number, string>;
+}
+
+/**
+ * Faz 31: mirrors `model/mutationModel.ts`'s `classesOf` - "Satır → Testler"
+ * artık hiç Java dosyası açık değilken de (mutasyon görünümünün her zaman
+ * yaptığı gibi) bir şey gösterebiliyor: `perTest.entries`'teki **her**
+ * sınıfın satır → test haritası, aktif dosyadan bağımsız. `isProductionClass`
+ * verilmezse hiçbir şey elenmez (test sınıflarının kendi satırları da
+ * görünür kalır) - `collectLines`'ın sınıf başına çağrılması, `testsForClass`
+ * ile aynı mantığı tekrar üretmek yerine tek kaynaktan besleniyor.
+ */
+export function allClasses(perTest: PerTestBlock, isProductionClass?: (outerClassName: string) => boolean): ClassLines[] {
+	const entriesByClass = new Map<string, PerTestEntry[]>();
+	for (const entry of perTest.modules.flatMap((m) => m.entries)) {
+		const outerClassName = stripNestedSuffix(entry.className);
+		if (isProductionClass && !isProductionClass(outerClassName)) {
+			continue;
+		}
+		const existing = entriesByClass.get(outerClassName);
+		if (existing) {
+			existing.push(entry);
+		} else {
+			entriesByClass.set(outerClassName, [entry]);
+		}
+	}
+	return [...entriesByClass.entries()]
+		.map(([className, entries]): ClassLines => {
+			const { linesToTests, linesToMethod } = collectLines(entries, className);
+			return { className, linesToTests, linesToMethod };
+		})
+		.sort((a, b) => a.className.localeCompare(b.className));
+}
+
 function collectLines(entries: readonly PerTestEntry[], outerClassName: string): { linesToTests: Map<number, string[]>; linesToMethod: Map<number, string> } {
 	const linesToTests = new Map<number, string[]>();
 	const methodNamesPerLine = new Map<number, Set<string>>();

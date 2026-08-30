@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 
 import { detectClassName } from '../../model/classNameDetector';
-import { groupConsecutiveLines, testsForClass, testsToLines, type TestLineRef } from '../../model/lineIndex';
+import { allClasses, groupConsecutiveLines, testsForClass, testsToLines, type TestLineRef } from '../../model/lineIndex';
 import { findKillContribution, type KillContribution } from '../../model/mutationModel';
 import { classifySourcePath, toAbsolutePath, toRepoRelativePath, type SourceKind } from '../../model/pathIndex';
 import { buildProductionClassIndex, productionSourceRoots, testSourceRoots } from '../../model/productionClassIndex';
@@ -31,7 +31,9 @@ import { locateTestFile } from '../testFileLocator';
 export type LineTestsNode =
 	| { kind: 'empty'; message: string }
 	| { kind: 'collectHint' }
-	| { kind: 'prodLine'; startLine: number; endLine: number; tests: readonly string[]; methodName: string | undefined }
+	/** Faz 31: root shown when no Java file is active - mirrors the mutation view's "always show the whole run" landing. */
+	| { kind: 'class'; className: string; linesToTests: ReadonlyMap<number, readonly string[]>; linesToMethod: ReadonlyMap<number, string> }
+	| { kind: 'prodLine'; startLine: number; endLine: number; tests: readonly string[]; methodName: string | undefined; className?: string }
 	| { kind: 'prodTest'; startLine: number; endLine: number; rawTestId: string; verdict: TestVerdict; finding: Finding | undefined }
 	| { kind: 'testMethod'; methodName: string; refs: readonly TestLineRef[] }
 	| { kind: 'testLine'; methodName: string; ref: TestLineRef };
@@ -87,6 +89,8 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 				return leaf(node.message, 'info');
 			case 'collectHint':
 				return collectHintItem();
+			case 'class':
+				return classItem(node);
 			case 'prodLine':
 				return prodLineItem(node);
 			case 'prodTest':
@@ -105,6 +109,12 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 	getChildren(node?: LineTestsNode): LineTestsNode[] {
 		if (!node) {
 			return this.rootChildren();
+		}
+		if (node.kind === 'class') {
+			const findingsByTestMethod = indexFindingsByTestMethod(getCoverageState()?.findings ?? []);
+			const groups = groupConsecutiveLines(node.linesToTests, node.linesToMethod)
+				.filter((group) => !this.problemsOnly || hasProblem(group.tests, findingsByTestMethod));
+			return groups.map((group): LineTestsNode => ({ kind: 'prodLine', startLine: group.startLine, endLine: group.endLine, tests: group.tests, methodName: group.methodName, className: node.className }));
 		}
 		if (node.kind === 'prodLine') {
 			const findingsByTestMethod = indexFindingsByTestMethod(getCoverageState()?.findings ?? []);
@@ -131,13 +141,28 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 			const refs = view.reverse.get(`${view.className}#${node.methodName}()`);
 			return refs ? { kind: 'testMethod', methodName: node.methodName, refs } : undefined;
 		}
+		// Faz 31: "tüm sınıflar" kökü (hiç aktif dosya yok) - bir prodLine kendi
+		// className'ini taşıyor, o yüzden aktif-dosya görünümüne ihtiyaç
+		// duymadan üst class düğümü yeniden kurulabiliyor.
+		if (!view && node.kind === 'prodLine' && node.className) {
+			return this.classNodeFor(node.className);
+		}
 		return undefined;
+	}
+
+	private classNodeFor(className: string): LineTestsNode | undefined {
+		const perTest = getPerTestState()?.perTest;
+		if (!perTest) {
+			return undefined;
+		}
+		const found = allClasses(perTest, productionClassFilter()).find((c) => c.className === className);
+		return found ? { kind: 'class', className: found.className, linesToTests: found.linesToTests, linesToMethod: found.linesToMethod } : undefined;
 	}
 
 	private rootChildren(): LineTestsNode[] {
 		const view = this.computeView();
 		if (!view) {
-			return [{ kind: 'empty', message: 'Önce bir Java dosyası açın.' }];
+			return this.allClassesRoot();
 		}
 		if (view.kind === 'noPerTestData') {
 			// Faz 21: bir test dosyasında "topla" düğmesi test sınıfının
@@ -165,6 +190,33 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 		return methods.length === 0
 			? [{ kind: 'empty', message: 'Bu sınıfın hiçbir test metodu bu koşuda hedeflenen production kodunu çalıştırmadı.' }]
 			: methods;
+	}
+
+	/**
+	 * Faz 31: hiç Java dosyası açık değilken kök - mutasyon görünümünün her
+	 * zaman yaptığı gibi ("hiçbir şeye bağlı olmadan tüm koşuyu göster").
+	 * `allClasses()`'in bulduğu her sınıf, `problemsOnly` açıkken tüm
+	 * satırları filtrelenip **boş kalan** sınıflar listeden tamamen düşer -
+	 * `mutationView.ts`'in `rootChildren`'ının aynı deseni (boş sınıfı
+	 * göstermek yerine hiç listelememek).
+	 */
+	private allClassesRoot(): LineTestsNode[] {
+		const perTest = getPerTestState()?.perTest;
+		if (!perTest) {
+			return [{ kind: 'empty', message: noPerTestDataMessage() }];
+		}
+		const findingsByTestMethod = indexFindingsByTestMethod(getCoverageState()?.findings ?? []);
+		const classes = allClasses(perTest, productionClassFilter())
+			.filter((c) => groupConsecutiveLines(c.linesToTests, c.linesToMethod).some((g) => !this.problemsOnly || hasProblem(g.tests, findingsByTestMethod)));
+		if (classes.length === 0) {
+			return [{
+				kind: 'empty',
+				message: this.problemsOnly
+					? 'Sorunlu satır yok - cover eden her testin doğrulaması var. (Filtreyi kaldırmak için başlıktaki süzgece tıklayın.)'
+					: 'Bu koşuda hiçbir sınıf için satır kaydı yok.',
+			}];
+		}
+		return classes.map((c): LineTestsNode => ({ kind: 'class', className: c.className, linesToTests: c.linesToTests, linesToMethod: c.linesToMethod }));
 	}
 
 	/**
@@ -259,6 +311,16 @@ function collectHintItem(): vscode.TreeItem {
 	const item = new vscode.TreeItem('Bu Sınıf İçin Topla', vscode.TreeItemCollapsibleState.None);
 	item.iconPath = new vscode.ThemeIcon('play');
 	item.command = { command: 'coverdict.perTestForFile', title: 'Bu Sınıf İçin Topla' };
+	return item;
+}
+
+/** Faz 31: "tüm sınıflar" kökündeki bir sınıf düğümü - `mutationView.ts`'in `classItem`'ıyla aynı üslup. */
+function classItem(node: Extract<LineTestsNode, { kind: 'class' }>): vscode.TreeItem {
+	const item = new vscode.TreeItem(shortName(node.className), vscode.TreeItemCollapsibleState.Collapsed);
+	item.description = `${node.linesToTests.size} satır`;
+	item.iconPath = new vscode.ThemeIcon('symbol-class');
+	item.tooltip = node.className;
+	item.contextValue = 'coverdict.lineTestsClass';
 	return item;
 }
 

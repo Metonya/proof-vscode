@@ -114,6 +114,38 @@ suite('Line tests view (Faz 15c)', () => {
 	});
 
 	/**
+	 * Faz 31: kullanıcının isteği - mutasyon görünümü hiç dosya açık değilken
+	 * de tüm koşunun sonucunu gösteriyor, Satır → Testler de artık aynısını
+	 * yapıyor. `setActiveDocument` hiç çağrılmıyor - bu tam olarak eklenti
+	 * ilk açıldığındaki, henüz hiçbir Java dosyasına tıklanmamış durum.
+	 */
+	test('with real per-test evidence but no active document, lists every class - mirrors the mutation view\'s always-show-everything landing', () => {
+		const twoClasses: PerTestBlock = {
+			engine: 'pitest', engineVersion: '1.15.8',
+			modules: [{
+				id: 'root',
+				entries: [
+					{ className: 'dev.coverdict.playground.Calculator', methodName: 'add', lines: [{ line: 7, tests: ['CalcTest#addsTwoNumbers()'] }] },
+					{ className: 'dev.coverdict.playground.Multiplier', methodName: 'times', lines: [{ line: 12, tests: ['MultiplierTest#timesTwo()'] }] },
+				],
+				ambient: [],
+			}],
+		};
+		setPerTestState({ perTest: twoClasses, warnings: [] });
+		setCoverageState({ ...STATE, workspaceRoot: 'C:/repo', findings: [] });
+
+		const provider = new LineTestsTreeProvider();
+		const roots = provider.getChildren();
+		assert.deepEqual(roots.map((r) => r.kind), ['class', 'class']);
+		assert.deepEqual(roots.map((r) => (r.kind === 'class' ? r.className : '')), ['dev.coverdict.playground.Calculator', 'dev.coverdict.playground.Multiplier']);
+
+		const calculatorLines = provider.getChildren(roots[0]);
+		assert.equal(calculatorLines.length, 1);
+		assert.equal(calculatorLines[0].kind, 'prodLine');
+		assert.deepEqual(provider.getParent(calculatorLines[0]), roots[0], 'a line born in "all classes" mode must resolve back to its own class node');
+	});
+
+	/**
 	 * Faz 31: a passing (`ok`) test never gets a `Finding` (findings only
 	 * exist for oracle-quality problems), so it used to have no navigation
 	 * at all - `prodTestItem` only wired `item.command` inside `if (node.finding)`.
