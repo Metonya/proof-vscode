@@ -63,8 +63,13 @@ export interface AnalyzeArgsInput {
 	 * `--per-test-target`, the CLI's diff-free entry point (Faz 14a) - when
 	 * given, it lifts the CLI's own --no-vcs rejection, so this builder does
 	 * not need to know or enforce the diff-mode rule itself.
+	 *
+	 * Faz 31: `timeoutSeconds` mirrors `mutation`'s own field - the CLI's
+	 * `--per-test-timeout` (default 120s) exists specifically because a
+	 * large explicit `--per-test-target` list (many `targets` here at once,
+	 * the "scan the whole module anyway" gesture) can outrun the default.
 	 */
-	perTest?: { classpaths: readonly ClasspathBinding[]; targets?: readonly TargetBinding[] };
+	perTest?: { classpaths: readonly ClasspathBinding[]; targets?: readonly TargetBinding[]; timeoutSeconds?: number };
 	/**
 	 * Faz 20: L3 mutasyon kanıtı. `perTest` ile aynı şekil ve aynı kural -
 	 * `targets` (D-71'in `--mutation-target`'ı) verildiğinde CLI'ın diff
@@ -93,6 +98,9 @@ export function buildAnalyzeArgs(input: AnalyzeArgsInput): string[] {
 	}
 	if (input.perTest) {
 		appendEvidenceFlags(args, '--per-test-report', '--per-test-classpath', '--per-test-target', input.perTest);
+		if (input.perTest.timeoutSeconds !== undefined) {
+			args.push('--per-test-timeout', String(input.perTest.timeoutSeconds));
+		}
 	}
 	if (input.mutation) {
 		appendEvidenceFlags(args, '--mutation-report', '--mutation-classpath', '--mutation-target', input.mutation);

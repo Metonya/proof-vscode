@@ -111,6 +111,12 @@
           "minimum": 1,
           "description": "Mutasyon testinde bir modül için saniye cinsinden zaman bütçesi (--mutation-timeout). Aşılırsa koşu durdurulur ve sonuç kısmi kalır - kısmi sonuç yine gösterilir, sessizce atılmaz. Tek sınıf koşuları genelde saniyeler sürer; modül geneli koşular için artırmanız gerekebilir."
         },
+        "coverdict.perTestTimeout": {
+          "type": "number",
+          "default": 120,
+          "minimum": 1,
+          "description": "Derin Tarama'da bir modül için saniye cinsinden zaman bütçesi (--per-test-timeout). Aşılırsa koşu durdurulur (PER_TEST_COLLECTION_FAILED). Diff'te değişen birkaç sınıf için varsayılan genelde yeterlidir; \"Yine de Tüm Modülü Tara\" gibi çok sayıda sınıfı tek seferde hedefleyen koşularda artırmanız gerekebilir."
+        },
         "coverdict.testCommandPhase": {
           "type": "string",
           "enum": [

@@ -581,7 +581,7 @@ async function runAnalyzePerTest(context: vscode.ExtensionContext, output: vscod
 	}
 
 	const parsed = await runAnalyzeCore(context, output, folder, diffMode, {
-		perTest: {},
+		perTest: { timeoutSeconds: readPerTestTimeout(folder) },
 		progressTitle: 'coverdict: derin tarama',
 	});
 	if (!parsed) {
@@ -630,7 +630,7 @@ async function runPerTestForFile(context: vscode.ExtensionContext, output: vscod
 	const fileName = path.basename(editor.document.fileName, '.java');
 	const className = detectClassName(editor.document.getText(), fileName);
 	const parsed = await runAnalyzeCore(context, output, folder, diffMode, {
-		perTest: { targets: [{ filePath: editor.document.fileName, fqcn: className }] },
+		perTest: { targets: [{ filePath: editor.document.fileName, fqcn: className }], timeoutSeconds: readPerTestTimeout(folder) },
 		progressTitle: `coverdict: ${className.split('.').pop()} için test kanıtı`,
 	});
 	if (!parsed) {
@@ -746,7 +746,7 @@ async function runAnalyzePerTestAll(context: vscode.ExtensionContext, output: vs
 	}
 
 	const parsed = await runAnalyzeCore(context, output, folder, diffMode, {
-		perTest: { targets },
+		perTest: { targets, timeoutSeconds: readPerTestTimeout(folder) },
 		progressTitle: `coverdict: tüm modül için derin tarama (${targets.length} sınıf)`,
 	});
 	if (!parsed) {
@@ -841,6 +841,11 @@ function readMutationTimeout(folder: vscode.WorkspaceFolder): number {
 	return vscode.workspace.getConfiguration('coverdict', folder).get<number>('mutationTimeout') ?? 300;
 }
 
+/** Faz 31: `--per-test-timeout`'un varsayılanıyla aynı (120) - CLI'ın kendi varsayılanını burada tekrarlamak yerine ayarın kendi `default`ı (`package.json`) tek kaynak, burada yalnızca ayar hiç okunamazsa (teorik) bir yedek. */
+function readPerTestTimeout(folder: vscode.WorkspaceFolder): number {
+	return vscode.workspace.getConfiguration('coverdict', folder).get<number>('perTestTimeout') ?? 120;
+}
+
 /** Faz 15c/15e: yeni "Satır → Testler" kenar çubuğu görünümüne odaklanır - eski webview'in aksine, tıklanınca kendini boşaltmaz (o hatanın doğrudan dersi, bkz. `ui/treeViews/lineTestsView.ts`). */
 function revealLineTestsView(sinks: CoverageSinks): void {
 	sinks.lineTestsView.refresh();
@@ -872,8 +877,15 @@ function readDiffMode(folder: vscode.WorkspaceFolder): DiffMode | undefined {
  * never need their own error UI for this part.
  */
 interface EvidenceOptions {
-	/** Present (even empty) to request L2. `targets` names explicit classes by file; omitted/empty lets the CLI derive diff-scoped targets per bound module's classpath. */
-	perTest?: { targets?: readonly { filePath: string; fqcn: string }[] };
+	/**
+	 * Present (even empty) to request L2. `targets` names explicit classes by
+	 * file; omitted/empty lets the CLI derive diff-scoped targets per bound
+	 * module's classpath. `timeoutSeconds` mirrors `mutation`'s own field -
+	 * relevant mainly for a large explicit `targets` list (the "scan the
+	 * whole module anyway" gesture), which can outrun the CLI's own
+	 * `--per-test-timeout` default.
+	 */
+	perTest?: { targets?: readonly { filePath: string; fqcn: string }[]; timeoutSeconds?: number };
 	/** Faz 20: L3. Verildiğinde ilerleme bildirimi de mutasyon diliyle konuşur ve iptal süreç ağacını öldürür. */
 	mutation?: { targets?: readonly { filePath: string; fqcn: string }[]; timeoutSeconds?: number };
 	/** Bildirim başlığı - mutasyon dakikalar/saatler sürebildiği için "analiz ediliyor" yetersiz kalıyor. */
@@ -964,7 +976,7 @@ async function runAnalyzeCore(
 		if (!resolved) {
 			return undefined;
 		}
-		perTestArg = resolved;
+		perTestArg = { ...resolved, timeoutSeconds: evidence.perTest.timeoutSeconds };
 	}
 
 	let mutationArg: Parameters<typeof buildAnalyzeArgs>[0]['mutation'];

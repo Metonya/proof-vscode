@@ -324,6 +324,10 @@ function scanAllHintItem(): vscode.TreeItem {
 	const item = new vscode.TreeItem('Yine de Tüm Modülü Tara (diff\'siz)', vscode.TreeItemCollapsibleState.None);
 	item.iconPath = new vscode.ThemeIcon('play');
 	item.command = { command: 'coverdict.perTestForModuleAll', title: 'Tüm Modülü Tara' };
+	// Faz 31: real gson dogfood - 80 classes in one run outran the CLI's
+	// default 120s per-test budget (PIT minion force-killed mid-collection).
+	// coverdict.perTestTimeout now exists specifically for this.
+	item.tooltip = 'Diff\'ten bağımsız, bu modüldeki her production sınıfını hedefler - modül büyükse (onlarca sınıf) coverdict.perTestTimeout ayarını (varsayılan 120s) artırmanız gerekebilir, aksi hâlde PER_TEST_COLLECTION_FAILED ile durabilir.';
 	return item;
 }
 

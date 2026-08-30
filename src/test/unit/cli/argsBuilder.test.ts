@@ -110,6 +110,22 @@ test('perTest without targets never appends --per-test-target', () => {
 	assert.ok(!args.includes('--per-test-target'));
 });
 
+test('perTest.timeoutSeconds appends --per-test-timeout, mirroring mutation\'s own timeout flag (Faz 31)', () => {
+	const args = buildAnalyzeArgs({
+		repo: '/repo', diffMode: { kind: 'uncommitted' }, reportPath: 'jacoco.xml', outPath: '/tmp/out.json',
+		perTest: { classpaths: [{ moduleId: 'root', path: 'coverdict-classpath.txt' }], timeoutSeconds: 180 },
+	});
+	assert.equal(args[args.indexOf('--per-test-timeout') + 1], '180');
+});
+
+test('perTest without an explicit timeoutSeconds never appends --per-test-timeout', () => {
+	const args = buildAnalyzeArgs({
+		repo: '/repo', diffMode: { kind: 'uncommitted' }, reportPath: 'jacoco.xml', outPath: '/tmp/out.json',
+		perTest: { classpaths: [{ moduleId: 'root', path: 'coverdict-classpath.txt' }] },
+	});
+	assert.ok(!args.includes('--per-test-timeout'));
+});
+
 test('--out is always the last two args, so a caller can rely on args[args.length - 1]', () => {
 	const args = buildAnalyzeArgs({
 		repo: '/repo', diffMode: { kind: 'no-vcs' }, reportPath: 'jacoco.xml', outPath: '/tmp/out.json',
