@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 
 import { buildAnalyzeArgs, type DiffMode, type TargetBinding } from '../cli/argsBuilder';
 import { locateJar } from '../cli/jarLocator';
+import { interpretMavenFailure } from '../cli/mavenErrorInterpreter';
 import { incrementFor, parseProgressLine, progressMessage } from '../cli/progressParser';
 import { moduleForPath, toRepoRelativePosix } from '../cli/reportDiscovery';
 import { run } from '../cli/runner';
@@ -140,11 +141,13 @@ export function registerRunTestsCommand(context: vscode.ExtensionContext, output
 		// repo would just be a no-op flag on an already-unscoped build.
 		const boundModules = getCoverageState()?.modules;
 		const moduleRoots = boundModules && boundModules.length > 1 ? boundModules.map((m) => m.root) : undefined;
-		const success = await runTestsTask(folder, output, moduleRoots);
-		if (success) {
+		const result = await runTestsTask(folder, output, moduleRoots);
+		if (result?.success) {
 			await runAnalyze(context, output, sinks);
-		} else if (success === false) {
-			vscode.window.showErrorMessage('coverdict: Maven başarısız oldu - terminaldeki çıktıya bakın.');
+		} else if (result && !result.success) {
+			const interpretation = interpretMavenFailure(result.capturedOutput);
+			const reasonSuffix = interpretation ? ` Sebep: ${interpretation.detail}` : ' Ayrıntı için terminaldeki çıktıya bakın.';
+			vscode.window.showErrorMessage(`coverdict: Maven başarısız oldu.${reasonSuffix}`);
 		}
 		sinks.runView.refresh();
 	});

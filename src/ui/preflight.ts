@@ -6,7 +6,7 @@ import type { ModuleReportBinding } from '../cli/argsBuilder';
 import { type DoctorResult, runDoctor } from '../cli/doctorRunner';
 import { interpretMavenFailure } from '../cli/mavenErrorInterpreter';
 import { parseDoctorProgressLine } from '../cli/progressParser';
-import { bindModules, describeSiblingProjects, isProjectRoot, PROJECT_ROOT_MARKER_FILES, toRepoRelativePosix } from '../cli/reportDiscovery';
+import { bindModules, describeSiblingProjects, discoverModuleRootsFromPoms, isProjectRoot, moduleForPath, PROJECT_ROOT_MARKER_FILES, toRepoRelativePosix } from '../cli/reportDiscovery';
 import { runMavenInstallTask, runTestsTask } from './mavenTestTask';
 
 /**
@@ -58,6 +58,82 @@ function reportNotAProjectRoot(folder: vscode.WorkspaceFolder, configuredReportP
 	void offerToOpenSetting(`coverdict: rapor dosyası bulunamadı: ${configuredReportPath}. Önce testleri JaCoCo ile çalıştırın, ya da coverdict.reportPath ayarını düzeltin.`, 'coverdict.reportPath');
 }
 
+interface RunTestsModuleQuickPickItem extends vscode.QuickPickItem {
+	moduleRoot: string;
+}
+
+/** A real, checkable fact (not a relevance guess) shown next to a module in the picker - `undefined` when the module has an ordinary `src/main/java`. */
+function describeMissingMainSource(workspaceRoot: string, moduleRoot: string): string | undefined {
+	const dir = moduleRoot === '.' ? workspaceRoot : path.join(workspaceRoot, moduleRoot);
+	return fs.existsSync(path.join(dir, 'src/main/java')) ? undefined : 'src/main/java yok';
+}
+
+/**
+ * Faz 31: the real, general fix behind the gson `test-jpms` failure (JPMS
+ * `module-info.java` can never resolve a sibling module before `package`)
+ * - a first-ever "run tests" click had no way to know which module(s) the
+ * user actually cares about, so it always ran the whole reactor, including
+ * sibling modules coverdict never needed and that can have their own
+ * unrelated toolchain requirements (JPMS/native-image/ProGuard/...).
+ *
+ * Module discovery here is a blind `pom.xml` glob (every `pom.xml` under
+ * the workspace root), deliberately mirroring `resolveReportBinding`'s own
+ * jacoco.xml glob rather than
+ * calling `doctor` - `doctor` would give real module ids for free, but its
+ * only output is prose (no `--json`), and this codebase's own rule
+ * (`cli/progressParser.ts`) is that doctor's prose is never parsed for
+ * control flow. `-pl` accepts a relative directory path, not just an
+ * artifactId (verified this session), so the glob's raw roots are enough.
+ *
+ * `undefined` return means "don't run at all" - the user dismissed the
+ * picker (Escape, or unchecked every module), a real decline distinct
+ * from "run everything" (empty `moduleRoots` inside a defined result).
+ */
+export async function resolveRunTestsModuleScope(folder: vscode.WorkspaceFolder): Promise<{ moduleRoots: readonly string[] | undefined } | undefined> {
+	const pomUris = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, '**/pom.xml'), '**/node_modules/**', 50);
+	if (pomUris.length <= 1) {
+		return { moduleRoots: undefined };
+	}
+	const modules = discoverModuleRootsFromPoms(pomUris.map((uri) => toRepoRelativePosix(uri.fsPath, folder.uri.fsPath)));
+
+	// A real, non-guessed signal: the file the user is actually looking at,
+	// mapped to its containing module via the same longest-prefix logic
+	// `--*-target` resolution already uses. Silent, no prompt - this is not
+	// picking among options, it is reading a fact already in front of the user.
+	const activeDocument = vscode.window.activeTextEditor?.document;
+	if (activeDocument?.languageId === 'java') {
+		const relative = toRepoRelativePosix(activeDocument.fileName, folder.uri.fsPath);
+		const matchedId = moduleForPath(relative, modules);
+		const matched = modules.find((m) => m.id === matchedId);
+		if (matched && matched.root !== '.') {
+			return { moduleRoots: [matched.root] };
+		}
+	}
+
+	// No usable active-file signal - ask, defaulting to everything checked
+	// (today's whole-reactor behavior, unchanged if the user just confirms).
+	// This is not the QuickPick pattern the user rejected earlier (that one
+	// picked *which report to trust* among reports that all equally
+	// belonged to the same run); this is *which modules to actually build*,
+	// a real action decision where different modules can have genuinely
+	// conflicting toolchain requirements.
+	const items: RunTestsModuleQuickPickItem[] = modules.map((m) => ({
+		label: m.root === '.' ? '. (workspace kökü)' : m.root,
+		picked: true,
+		description: describeMissingMainSource(folder.uri.fsPath, m.root),
+		moduleRoot: m.root,
+	}));
+	const picked = await vscode.window.showQuickPick(items, {
+		canPickMany: true,
+		title: 'coverdict: testler hangi modül(ler)de çalıştırılsın?',
+		placeHolder: `${modules.length} modül bulundu - varsayılan hepsi seçili, ihtiyacınız olmayanları işaretinden çıkarabilirsiniz`,
+	});
+	if (!picked || picked.length === 0) {
+		return undefined;
+	}
+	return { moduleRoots: picked.length === modules.length ? undefined : picked.map((p) => p.moduleRoot) };
+}
+
 /**
  * Faz 30 (§7.8): the user's explicit ask - offer to run the tests
  * ourselves rather than just naming the missing file. Returns whether the
@@ -74,11 +150,17 @@ async function offerToRunTestsNow(folder: vscode.WorkspaceFolder, output: vscode
 	if (choice !== 'Testleri Çalıştır') {
 		return false;
 	}
-	const success = await runTestsTask(folder, output);
-	if (success === false) {
-		vscode.window.showErrorMessage('coverdict: Maven başarısız oldu - terminaldeki çıktıya bakın. Tarama başlatılmadı.');
+	const scope = await resolveRunTestsModuleScope(folder);
+	if (!scope) {
+		return false;
 	}
-	return success === true;
+	const result = await runTestsTask(folder, output, scope.moduleRoots);
+	if (result && !result.success) {
+		const interpretation = interpretMavenFailure(result.capturedOutput);
+		const reasonSuffix = interpretation ? ` Sebep: ${interpretation.detail}` : ' Ayrıntı için terminaldeki çıktıya bakın.';
+		vscode.window.showErrorMessage(`coverdict: Maven başarısız oldu.${reasonSuffix} Tarama başlatılmadı.`);
+	}
+	return result?.success === true;
 }
 
 /**
@@ -272,7 +354,7 @@ async function handleClasspathGenerationFailure(ctx: ClasspathGenerationContext,
 	}
 
 	const choice = await vscode.window.showErrorMessage(`${CLASSPATH_UNAVAILABLE_PREFIX}${reasonSuffix}`, 'mvn install -DskipTests Çalıştır');
-	if (choice !== 'mvn install -DskipTests Çalıştır' || !(await runMavenInstallTask(folder, output))) {
+	if (choice !== 'mvn install -DskipTests Çalıştır' || !(await runMavenInstallTask(folder, output)).success) {
 		vscode.window.showErrorMessage(CLASSPATH_UNAVAILABLE_PREFIX);
 		return undefined;
 	}

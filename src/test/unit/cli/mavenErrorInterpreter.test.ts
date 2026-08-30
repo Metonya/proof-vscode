@@ -42,6 +42,26 @@ test('interpretMavenFailure: enforcerJdk quotes Maven\'s own sentence verbatim',
 	assert.match(result!.detail, /Detected JDK Version: 25\.0\.1 is not in the allowed range \[17,22\)\./);
 });
 
+/**
+ * Real output captured this session running "Testleri Çalıştır" against
+ * gson's whole reactor from the root: `test-jpms`'s own JPMS module-info
+ * requires `com.google.gson` as a module, but that descriptor is only
+ * added to the gson module's JAR at the `package` phase (ModiTect) - a
+ * `test`-phase build never produces one, verified live, not from docs.
+ */
+const GSON_TEST_JPMS_MODULE_NOT_FOUND = `
+[ERROR] COMPILATION ERROR :
+[ERROR] /C:/Users/Mert/Desktop/coverdict-ws/coverdict-corpus/gson/test-jpms/src/test/java/module-info.java:[19,22] module not found: com.google.gson
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.15.0:testCompile (default-testCompile) on project test-jpms: Compilation failure
+`;
+
+test('interpretMavenFailure: unresolvedJpmsModule on gson\'s real test-jpms module-info failure', () => {
+	const result = interpretMavenFailure(GSON_TEST_JPMS_MODULE_NOT_FOUND);
+	assert.equal(result?.kind, 'unresolvedJpmsModule');
+	assert.match(result!.detail, /com\.google\.gson/);
+	assert.match(result!.detail, /package/);
+});
+
 test('interpretMavenFailure: an unrecognized failure returns undefined, never a guess', () => {
 	const result = interpretMavenFailure('[ERROR] Some completely different Maven failure nobody has seen before.');
 	assert.equal(result, undefined);

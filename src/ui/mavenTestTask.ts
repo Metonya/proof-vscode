@@ -5,6 +5,7 @@ import * as vscode from 'vscode';
 import { buildMavenTestArgs, type MavenTestPhase } from '../cli/mavenTestCommand';
 import { inspectPom } from '../cli/pomInspector';
 import { toRepoRelativePosix } from '../cli/reportDiscovery';
+import { run } from '../cli/runner';
 
 /**
  * Faz 30 (§7.8): "if there is no JaCoCo report, offer to run tests" -
@@ -47,29 +48,71 @@ function resolveMavenExecutable(folder: vscode.WorkspaceFolder): string {
 	return configured || (process.platform === 'win32' ? 'mvn.cmd' : 'mvn');
 }
 
-/** Shared by every visible-Task runner in this file - one dedicated terminal, no `-q`, no `clean` (Faz 19's classpath-list deletion trap). */
-async function runVisibleMavenTask(folder: vscode.WorkspaceFolder, output: vscode.OutputChannel, taskKind: string, label: string, args: readonly string[]): Promise<boolean> {
+export interface MavenTaskResult {
+	success: boolean;
+	/** Combined stdout+stderr, so a failure can be handed to `cli/mavenErrorInterpreter.ts` for an honest cause instead of a bare "failed". */
+	capturedOutput: string;
+}
+
+/**
+ * Shared by every visible-Task runner in this file - one dedicated
+ * terminal, no `-q`, no `clean` (Faz 19's classpath-list deletion trap).
+ *
+ * Faz 31: rebuilt on `vscode.CustomExecution`/`Pseudoterminal` instead of
+ * `ShellExecution` - a plain `ShellExecution` gives VS Code no way to hand
+ * its output back to the extension, so a real Maven failure (the gson
+ * `test-jpms` JPMS error) could only ever be shown as a bare "Maven başarısız
+ * oldu - terminaldeki çıktıya bakın", never interpreted. The pty relays
+ * `cli/runner.ts`'s own `run()` (already used for the CLI jar and `doctor`,
+ * already handles line buffering and tree-kill cancellation) into the visible
+ * terminal verbatim, byte for byte, while also capturing it into a string.
+ */
+async function runVisibleMavenTask(folder: vscode.WorkspaceFolder, output: vscode.OutputChannel, taskKind: string, label: string, args: readonly string[]): Promise<MavenTaskResult> {
 	const mavenExecutable = resolveMavenExecutable(folder);
 	output.appendLine(`coverdict: ${mavenExecutable} ${args.join(' ')} (${folder.uri.fsPath})`);
+
+	const writeEmitter = new vscode.EventEmitter<string>();
+	const closeEmitter = new vscode.EventEmitter<number>();
+	let cancelProcess: (() => void) | undefined;
+	let resolveDone: ((result: { exitCode: number | null; capturedOutput: string }) => void) | undefined;
+	const done = new Promise<{ exitCode: number | null; capturedOutput: string }>((resolve) => {
+		resolveDone = resolve;
+	});
+
+	const pty: vscode.Pseudoterminal = {
+		onDidWrite: writeEmitter.event,
+		onDidClose: closeEmitter.event,
+		open: () => {
+			const handle = run({
+				javaExecutable: mavenExecutable,
+				args: [...args],
+				cwd: folder.uri.fsPath,
+				shell: true,
+				onStdoutLine: (line) => writeEmitter.fire(`${line}\r\n`),
+				onStderrLine: (line) => writeEmitter.fire(`${line}\r\n`),
+			});
+			cancelProcess = handle.cancel;
+			void handle.result.then((result) => {
+				const exitCode = result.exitCode ?? 1;
+				closeEmitter.fire(exitCode);
+				resolveDone?.({ exitCode: result.exitCode, capturedOutput: result.stdout + result.stderr });
+			});
+		},
+		close: () => cancelProcess?.(),
+	};
 
 	const task = new vscode.Task(
 		{ type: 'coverdict', kind: taskKind },
 		folder,
 		label,
 		'coverdict',
-		new vscode.ShellExecution(mavenExecutable, [...args], { cwd: folder.uri.fsPath }),
+		new vscode.CustomExecution(() => Promise.resolve(pty)),
 	);
 	task.presentationOptions = { reveal: vscode.TaskRevealKind.Always, panel: vscode.TaskPanelKind.Dedicated, clear: true };
+	await vscode.tasks.executeTask(task);
 
-	const executed = await vscode.tasks.executeTask(task);
-	return new Promise<boolean>((resolve) => {
-		const disposable = vscode.tasks.onDidEndTaskProcess((e) => {
-			if (e.execution === executed) {
-				disposable.dispose();
-				resolve(e.exitCode === 0);
-			}
-		});
-	});
+	const { exitCode, capturedOutput } = await done;
+	return { success: exitCode === 0, capturedOutput };
 }
 
 /**
@@ -78,7 +121,7 @@ async function runVisibleMavenTask(folder: vscode.WorkspaceFolder, output: vscod
  * `dependency:build-classpath` cannot resolve it. `-DskipTests` because this
  * run's only purpose is populating the local repo, not verifying anything.
  */
-export async function runMavenInstallTask(folder: vscode.WorkspaceFolder, output: vscode.OutputChannel): Promise<boolean> {
+export async function runMavenInstallTask(folder: vscode.WorkspaceFolder, output: vscode.OutputChannel): Promise<MavenTaskResult> {
 	return runVisibleMavenTask(folder, output, 'installSkipTests', 'mvn install -DskipTests', ['-B', 'install', '-DskipTests']);
 }
 
@@ -95,7 +138,7 @@ export async function runMavenInstallTask(folder: vscode.WorkspaceFolder, output
  * analyzed. The very first run (no scan yet) has nothing to scope to and
  * stays whole-reactor - guessing a module here would be a guess.
  */
-export async function runTestsTask(folder: vscode.WorkspaceFolder, output: vscode.OutputChannel, moduleRoots?: readonly string[]): Promise<boolean | undefined> {
+export async function runTestsTask(folder: vscode.WorkspaceFolder, output: vscode.OutputChannel, moduleRoots?: readonly string[]): Promise<MavenTaskResult | undefined> {
 	const facts = await scanPoms(folder);
 
 	if (facts.literalArgLine) {
