@@ -86,8 +86,16 @@ export async function runMavenInstallTask(folder: vscode.WorkspaceFolder, output
  * `undefined` return means the task never ran at all (argLine modal
  * declined, or the user opened the pom instead) - distinct from `false`
  * (the task ran and Maven itself failed or was cancelled).
+ *
+ * `moduleRoots` (Faz 31): scopes the build to already-bound module(s) via
+ * `-pl ... -am` when the caller has them (a re-run after a scan already
+ * happened) - real gson testing found a whole-reactor run pulling in
+ * sibling modules coverdict never needed (native-image, ProGuard-obfuscated
+ * tests, JPMS) whose own fragility has nothing to do with the module being
+ * analyzed. The very first run (no scan yet) has nothing to scope to and
+ * stays whole-reactor - guessing a module here would be a guess.
  */
-export async function runTestsTask(folder: vscode.WorkspaceFolder, output: vscode.OutputChannel): Promise<boolean | undefined> {
+export async function runTestsTask(folder: vscode.WorkspaceFolder, output: vscode.OutputChannel, moduleRoots?: readonly string[]): Promise<boolean | undefined> {
 	const facts = await scanPoms(folder);
 
 	if (facts.literalArgLine) {
@@ -116,6 +124,6 @@ export async function runTestsTask(folder: vscode.WorkspaceFolder, output: vscod
 	const config = vscode.workspace.getConfiguration('coverdict', folder);
 	const phase = (config.get<MavenTestPhase>('testCommandPhase')) || 'test';
 	const jacocoPluginVersion = config.get<string>('jacocoPluginVersion') || '0.8.13';
-	const args = buildMavenTestArgs({ phase, injectJacocoGoals: !facts.hasJacocoPlugin, jacocoPluginVersion });
+	const args = buildMavenTestArgs({ phase, injectJacocoGoals: !facts.hasJacocoPlugin, jacocoPluginVersion, moduleRoots });
 	return runVisibleMavenTask(folder, output, 'runTests', 'Testleri Çalıştır (JaCoCo)', args);
 }

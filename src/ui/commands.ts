@@ -134,7 +134,13 @@ export function registerRunTestsCommand(context: vscode.ExtensionContext, output
 			vscode.window.showErrorMessage('coverdict: önce bir klasör açın.');
 			return;
 		}
-		const success = await runTestsTask(folder, output);
+		// Faz 31: a re-run after a scan already bound module(s) - scope the
+		// build to them (`-pl ... -am`) instead of the whole reactor. Only
+		// worth doing past a single module: `-pl . -am` on a single-module
+		// repo would just be a no-op flag on an already-unscoped build.
+		const boundModules = getCoverageState()?.modules;
+		const moduleRoots = boundModules && boundModules.length > 1 ? boundModules.map((m) => m.root) : undefined;
+		const success = await runTestsTask(folder, output, moduleRoots);
 		if (success) {
 			await runAnalyze(context, output, sinks);
 		} else if (success === false) {
