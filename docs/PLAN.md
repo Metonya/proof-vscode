@@ -1156,11 +1156,13 @@ davranış aynen sürüyor. 169 unit + 57 integration (169 = önceki 165 + bu
 ikinci düzeltmenin 4 yeni testi), SonarQube kalite kapısı OK.
 
 **Hâlâ backlog, gerçek bir sonraki adım (F8'in asıl kapsamı):**
-- Birden fazla modülü **aynı koşuda** birlikte bağlamak (coverdict CLI'ın
-  `--module`u tekrarlı destekliyor, eklenti hâlâ tek modül seçiyor).
+- ~~Birden fazla modülü **aynı koşuda** birlikte bağlamak~~ — **KAPANDI
+  (Faz 30, §7.9):** `showQuickPick` tamamen kalktı, bulunan her modül tek
+  koşuda birden bağlanıyor.
 - `doctor`'ın ürettiği `coverdict.config.json`'u (D-40/D-66) okuyup
-  kullanma - bugün eklenti onu hiç okumuyor, her koşuda kendi keşfini
-  tekrarlıyor.
+  kullanma - **Faz 30'da da yapılmadı, bilinçli olarak ertelendi** (§7.9,
+  "ertelenenler"): eklenti hâlâ her koşuda kendi keşfini tekrarlıyor, dosya
+  yalnızca `doctor --write-config` ile üretiliyor ve elle düzenlenebiliyor.
 
 **UX isteği 1 (kullanıcı, 2026-08-29) — bu oturumda ayrıca düzeltildi.**
 `coverdict.jar` bulunamadı hatası **zaten** `offerToOpenSetting` kullanıyordu
@@ -1169,21 +1171,13 @@ mesajı bunu kullanmıyormuş, düz `showErrorMessage` idi. Tek satırlık fark,
 düzeltildi: `coverdict.jarPath` sorgusuyla ayarları açan bir düğme artık
 o hata mesajında da var.
 
-**UX isteği 2 (kullanıcı, 2026-08-29):** JaCoCo raporu bulunamadığında
-kullanıcının Maven'i elle çalıştırmasına gerek kalmadan eklentiden hızlıca
-"testleri JaCoCo ile çalıştır" diyebileceği bir aksiyon eklensek mi -
-**düşünülecek, tasarım kararı verilmedi.** Riskler: hangi build komutunun
-doğru olduğu repodan repoya değişir (bu gson koşusunda dört farklı manuel
-düzeltme gerekti - JDK 17-21 enforcer kısıtı, kök pom'da JaCoCo hiç
-tanımlı değildi, `test` değil `verify` gerekiyordu çünkü `test-jpms` modülü
-paketlenmiş jar'a bağımlı, ve Surefire'ın kendi `argLine`'ı JaCoCo agent'ını
-eziyordu - `@{argLine}` fix'i gson'ın pom'una elle uygulandı). Bu, bir
-"tek tık testleri koştur" düğmesinin genel-amaçlı Maven reposu için
-**güvenilir bir varsayılan komut bulmasının zor olduğunu** gösteriyor -
-coverdict-cli'ın kendi `doctor` komutu bile bunu yapmıyor, sadece teşhis
-ediyor ve öneriyor. Olası yön: eklenti de aynı şekilde sadece önerilen
-komutu (kopyalanabilir, çalıştırılmaz) gösterse, `doctor`'ı arka planda
-çağırıp.
+**UX isteği 2 (kullanıcı, 2026-08-29) — KAPANDI (Faz 30, §7.9).** JaCoCo
+raporu bulunamadığında eklenti artık kendisi "testleri JaCoCo ile şimdi
+çalıştıralım mı?" diye soruyor ve Maven'i **görünür bir VS Code Task**
+olarak çalıştırıyor. O zamanki risk analizi ("hangi build komutu doğru,
+repodan repoya değişir") doğru çıktı ama çözümü "genel-amaçlı bir tek-tık
+komutu tahmin etmek" değil, **gson'ın dört sorununu tek tek gerçek koda
+karşı teşhis etmek** oldu - ayrıntı §7.9'da.
 
 **Fikir - insan-okur "test kanıtı" raporu (kullanıcı, 2026-08-29):**
 SonarQube/Cucumber tarzı, hangi testlerin çalıştığını ve sonuçlarını
@@ -1194,6 +1188,80 @@ bu ihtiyacın ilk somut talebi. **Tasarlanmadı, kapsamlandırılmadı** - ayrı
 bir oturumda ele alınmalı: CLI'ın kendi JSON'u zaten tek kaynak (hard rule
 7), bir HTML/rapor render'ı JSON'u tüketen yeni bir render katmanı olur,
 schema değişikliği gerektirmez.
+
+### 7.9 Faz 30 (2026-08-29) — ön koşulları eklenti kendisi hallediyor (**yapıldı**)
+
+İkinci gson dogfood turunun (§7.8'in devamı) çıkardığı dört somut istek tek
+bütçede çözüldü: ön koşullar açıkça söylenmiyor, rapor yoksa öneri yok,
+kolay bir "tekrar koş" yok, ve en önemlisi - kullanıcının kendi ekran
+görüntüsüyle gösterdiği gibi - *"birden fazla jacoco bulunan target olabilir
+hepsinden içerik almak yerine gittin listeden seç diyorsun saçma değil
+mi"*. Bu son cümle mimariyi baştan belirledi: **hiçbir yerde artık gerçek
+modüller arasında seçim yaptırılmıyor**, hepsi birden bağlanıyor.
+
+**5 commit, sırayla:**
+
+| Commit | İçerik |
+|---|---|
+| `60b26bd` model | `moduleId` state'ten tamamen kalktı; L2/L3 kanıtı modüller arasında birleşiyor; FQCN çakışması `ambiguous: ReadonlySet<string>` ile düşürülüyor (son-yazan-kazanır değil). |
+| `24b39d4` feat | `reportDiscovery.bindModules()` bulunan **her** jacoco.xml'i gerçek id'leriyle bağlıyor (`showQuickPick` silindi); `classpathBuilder.ts`/`classpathParser.ts` (en-uzun-satır hatası dahil) silindi, yerine `doctor --fix` - CLI'ın kendi `mvn -pl <modül> dependency:build-classpath`'i. |
+| `5b38d1b` feat | "Testleri Çalıştır" - `pomInspector.ts` (saf, argLine/jacoco-plugin tespiti) + `mavenTestCommand.ts` (saf, argv üretimi) + `ui/mavenTestTask.ts` (görünür `vscode.Task`, gerçek terminal). argLine tuzağı koşudan **önce** modal ile tespit ediliyor - "bu komut satırından düzeltilemez" diyor, pom'u asla otomatik düzenlemiyor. |
+| `4dbc25a` feat | `cli/mavenErrorInterpreter.ts` (saf) - `doctor --fix`'in stderr'inde gerçekten akan Maven hata metnini üç şekle ayırıyor (`unresolvedReactorSibling`/D-67, `noPluginPrefix`, `enforcerJdk`); tanımadığı her şey için `undefined` döner, asla uydurmaz. `unresolvedReactorSibling`'de `mvn install -DskipTests` görünür Task olarak önerilip `doctor --fix` bir kez tekrar deneniyor. |
+| `7ccb65d` fix | Çok-modüllü bir koşuda ilerleme çubuğunun donmasına yol açan gerçek regresyon düzeltildi: `incrementFor` artık modül başına (`Map<moduleId, done>`) sayaç tutuyor ve `100/moduleCount` ile ölçekleniyor. `doctor --fix`'in kendi ilerlemesi de (`parseDoctorProgressLine`) iptal edilebilir bir bildirime bağlandı. |
+
+**Yeni/silinen dosyalar:**
+- Yeni (saf, `vscode` import etmiyor): `cli/pomInspector.ts`, `cli/mavenTestCommand.ts`, `cli/mavenErrorInterpreter.ts`.
+- Yeni (impure): `cli/doctorRunner.ts`, `ui/preflight.ts` (eski `resolveReportBinding`/`ensurePerTestClasspath` mantığının hepsi buraya taşındı), `ui/mavenTestTask.ts`.
+- Silindi: `cli/classpathBuilder.ts`, `cli/classpathParser.ts` (ve testleri) - `-pl`/`-am` olmadan reactor kökünden koşan, en uzun satırı alan kırık el yapımı mantık.
+
+**Yeni ayarlar/komutlar:**
+- `coverdict.testCommandPhase` (`test` | `verify`, varsayılan `test`) - "Testleri Çalıştır"ın hangi Maven aşamasını koşacağı.
+- `coverdict.jacocoPluginVersion` (varsayılan `0.8.13`) - pom'da JaCoCo hiç tanımlı değilse enjekte edilen CLI-goal sürümü (D-30'un yaklaşımı, pom asla düzenlenmiyor).
+- `coverdict.perTestClasspathPath`'in rolü değişti: artık "biz üretiyoruz"un yolu değil, tek-modüllü bir koşuda `doctor`'a bırakmak istemeyen kullanıcı için salt-okunur bir kaçış kapısı.
+- Yeni komut `coverdict.runTests` - Çalıştır görünümünün ilk öğesi, raporun gerçek mtime'ını ("12 dakika önce") gösteren bir açıklamayla.
+
+**Gerçek gson checkout'una karşı doğrulandı, kısmi:** `doctor --fix` gson'un
+6 modülünün hepsi için doğru classpath listelerini üretti (daha önce elle
+düzeltilen D-67 kardeş-modül tuzağı dahil - `mvn install -DskipTests`
+Task'ı gerçekten çözüyor). **Dürüstçe kaydedilen, çözülmemiş bir bulgu:**
+bu classpath'e karşı gerçek bir L3 mutasyon koşusu, doctor'ın ürettiği
+listede JUnit Platform engine jar'ı eksik olduğu için PIT'in kendi
+`"Cannot create Launcher without at least one TestEngine"` hatasıyla
+düştü - `doctor`'ın classpath üretimindeki gerçek bir boşluk, bu partinin
+hiçbir değişikliğiyle ilgisi yok. Bu oturumun kendi dersine göre (WTA
+dogfood retrospektifi ve loop-run'dan) **kovalanmadı, sadece kaydedildi** -
+`coverdict` reposunun kendi backlog'una taşınmalı.
+
+169 → 212 unit test, 57 integration test (değişmedi), SonarQube kalite
+kapısı OK (dokunulan her dosyada 0 açık bulgu - konteyner bu oturum
+ortasında bir kez yeniden başlatıldığında leak-period taban çizgisi
+sıfırlandığı için `sinceLeakPeriod=true` artık güvenilir değil, dosya
+bazlı `statuses=OPEN,CONFIRMED,REOPENED` sorgusu kullanıldı).
+
+**Bilinçli olarak ertelenenler (tekrar tartışılmasın diye buraya yazıldı):**
+- **`coverdict.config.json` tüketimi.** `doctor --write-config`'in ürettiği
+  dosya hâlâ hiç okunmuyor - classpath dosya yolları modül köküne göreli
+  olduğu için (id'ye bağlı değil) bu partide gerekli değildi, ama gerçek
+  bir sonraki adım hâlâ bu (eski §7.8 backlog'unun ikinci maddesiyle aynı).
+- **`doctor`'ın classpath üretimindeki JUnit Platform engine boşluğu** -
+  yukarıda kaydedildi, `coverdict` (CLI) reposunun işi.
+- **`MavenClient`'a `-am` eklemek** - sahte çözüm olurdu (reactor'ü
+  genişletir ama kardeş modül yine de kurulu değilse aynı hatayı verir);
+  gerçek çözüm zaten `mvn install -DskipTests` Task'ı.
+- **`doctor --json`** - `doctor`'ın çıktısı hâlâ yalnızca düz metin; exit
+  kodu + dosya varlığı + regex tabanlı yorumlama (`mavenErrorInterpreter.ts`)
+  ile idare edildi. Gerçek fayda var ama CLI reposunda ayrı bir
+  DECISIONS-gerektiren değişiklik.
+- **Gradle desteği** - `doctor` hâlâ yalnızca Maven; eklenti bunu açıkça
+  söylüyor, yarım çalışmıyor.
+- **Pom'un `argLine`'ını otomatik düzeltmek** - asla, modal her zaman
+  "Pom'u Aç"a yönlendiriyor.
+- **`-pl`/`-am` ile modül-kapsamlı test koşusu** - "Testleri Çalıştır" hâlâ
+  tüm reactor'ü koşuyor; hız optimizasyonu, doğruluk sorunu değil.
+- **Ağaç görünümlerinde modül bazlı gruplama** - veri birleşiyor (Faz 30
+  commit 1), görünümler düz kalıyor; istenmedi.
+- **İnsan-okur export raporu** - yukarıdaki "Fikir" paragrafı hâlâ geçerli,
+  ayrı bir tasarım turu gerektiriyor.
 
 ## 8. Faz 20 — mutasyon testi arayüzü (**yapıldı**)
 
