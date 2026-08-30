@@ -160,13 +160,14 @@ export class MutationTreeProvider implements vscode.TreeDataProvider<MutationNod
 		// mutasyon sonucuna bakılırken) başka bir dosyaya geçince "aktif
 		// dosya için çalıştır"/"tüm modülü tara" seçenekleri tamamen
 		// kayboluyordu - sadece boş sonuç durumlarında vardı. Artık her
-		// zaman listenin sonunda duruyorlar, hangi sonuç gösteriliyor
-		// olursa olsun.
+		// zaman görünürler - başlığın hemen altında, sınıf sonuçlarının
+		// üstünde (kullanıcı isteği: uzun bir listeyi kaydırmadan
+		// erişilebilir olsunlar).
 		return [
 			header,
-			...classes.map((c): MutationNode => ({ kind: 'class', className: c.className, methods: c.methods })),
 			{ kind: 'runHint' },
 			{ kind: 'scanAllHint' },
+			...classes.map((c): MutationNode => ({ kind: 'class', className: c.className, methods: c.methods })),
 		];
 	}
 
