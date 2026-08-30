@@ -138,18 +138,25 @@ export function registerRunTestsCommand(context: vscode.ExtensionContext, output
 		}
 		// Faz 31: prefer this window's own in-memory scan (exact, no prompt) -
 		// scope the build to it via `-pl ... -am` instead of the whole
-		// reactor. A fresh window (or one that just hasn't scanned yet) has
-		// none, even when a jacoco.xml already exists on disk from an
-		// earlier session - real gson testing hit exactly this and ran the
-		// whole reactor unscoped, straight into test-jpms. Falling back to
-		// the same pom.xml-based discovery the first-ever "run tests" offer
-		// uses (`resolveRunTestsModuleScope`) means this button is scoped
-		// correctly from its very first click too, not only after this
-		// window's own first successful scan.
+		// reactor. Real gson testing found a second bug here: "only 1 module
+		// bound -> skip scoping" is wrong whenever that one root is a real
+		// submodule name (`gson`), not the trivial single-project root (`.`)
+		// - gson's reactor has 7 modules, but only `gson` ever produces a
+		// jacoco.xml (`test-jpms` crashes before it gets one), so exactly 1
+		// module was "bound" while the reactor itself still has many - the
+		// old `length > 1` check treated that 1 as "no real choice to make"
+		// and ran the whole reactor unscoped anyway, straight into test-jpms.
+		// A fresh window (or one that just hasn't scanned yet) has no bound
+		// modules at all, even when a jacoco.xml already exists on disk from
+		// an earlier session; that case falls back to the same pom.xml-based
+		// discovery the first-ever "run tests" offer uses
+		// (`resolveRunTestsModuleScope`), so the button is scoped correctly
+		// from its very first click too, not only after this window's own
+		// first successful scan.
 		const boundModules = getCoverageState()?.modules;
 		let moduleRoots: readonly string[] | undefined;
 		if (boundModules) {
-			moduleRoots = boundModules.length > 1 ? boundModules.map((m) => m.root) : undefined;
+			moduleRoots = moduleRootsFromBoundModules(boundModules);
 		} else {
 			const scope = await resolveRunTestsModuleScope(folder);
 			if (!scope) {
@@ -167,6 +174,21 @@ export function registerRunTestsCommand(context: vscode.ExtensionContext, output
 		}
 		sinks.runView.refresh();
 	});
+}
+
+/**
+ * Faz 31: real bug, found live against gson - "exactly 1 module bound"
+ * does NOT mean "no real choice to make". gson's reactor has 7 modules,
+ * but only `gson` ever produces a jacoco.xml (`test-jpms` crashes before
+ * it gets one), so exactly 1 module gets bound while the reactor itself
+ * still has many - treating that 1 as equivalent to a true single-module
+ * repo ran the whole reactor unscoped anyway, straight into test-jpms.
+ * The only case that is genuinely a no-op to scope is the trivial
+ * single-project root (`root: '.'`, no real submodule name at all).
+ */
+export function moduleRootsFromBoundModules(boundModules: readonly { root: string }[]): readonly string[] | undefined {
+	const roots = boundModules.map((m) => m.root);
+	return roots.length === 1 && roots[0] === '.' ? undefined : roots;
 }
 
 /** F3: a diff-mode run with --per-test-report, superset of the plain scan (still paints coverage with the same fileCoverage data). */

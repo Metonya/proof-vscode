@@ -1,6 +1,6 @@
 import * as assert from 'node:assert';
 
-import { allProductionTargets, describeNode } from '../../ui/commands';
+import { allProductionTargets, describeNode, moduleRootsFromBoundModules } from '../../ui/commands';
 import type { CoverageState } from '../../model/store';
 import type { MetricSet } from '../../verdict/types';
 
@@ -109,5 +109,28 @@ suite('allProductionTargets (Faz 31)', () => {
 			fileCoverage: { files: [{ module: 'root', path: 'some/unrelated/generated/Thing.java', metrics: METRIC, lines: [] }], excluded: [] },
 		};
 		assert.deepEqual(allProductionTargets(state), []);
+	});
+});
+
+/**
+ * Faz 31: real bug, found live against gson - "exactly 1 module bound"
+ * does NOT mean "no real choice to make" when that one module is a real
+ * submodule name. gson's reactor has 7 modules but only `gson` ever
+ * produces a jacoco.xml (`test-jpms` crashes before it gets one), so
+ * exactly 1 module got bound while the reactor itself still had many -
+ * "Testleri Çalıştır" ran the whole reactor unscoped anyway, straight
+ * into test-jpms's real JPMS module-info failure.
+ */
+suite('moduleRootsFromBoundModules (Faz 31)', () => {
+	test('a real submodule name, even alone, is still scoped - the exact gson bug', () => {
+		assert.deepEqual(moduleRootsFromBoundModules([{ root: 'gson' }]), ['gson']);
+	});
+
+	test('the trivial single-project root (".") is the only true no-op case', () => {
+		assert.equal(moduleRootsFromBoundModules([{ root: '.' }]), undefined);
+	});
+
+	test('several bound modules are all scoped, unchanged from before', () => {
+		assert.deepEqual(moduleRootsFromBoundModules([{ root: 'gson' }, { root: 'extras' }]), ['gson', 'extras']);
 	});
 });
