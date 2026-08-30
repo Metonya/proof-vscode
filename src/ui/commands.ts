@@ -32,7 +32,7 @@ import { publishFindings } from './diagnostics';
 import type { ExplorerBadgeProvider } from './explorerBadges';
 import { applyGutterCoverage, clearGutterCoverage, type GutterDecorationTypes } from './gutterRenderer';
 import { runTestsTask } from './mavenTestTask';
-import { offerToOpenSetting, resolveEvidenceClasspaths, resolveReportBinding, type ClasspathKind } from './preflight';
+import { offerToOpenSetting, resolveEvidenceClasspaths, resolveReportBinding, resolveRunTestsModuleScope, type ClasspathKind } from './preflight';
 import { showCoverageSummary, showNoFileCoverageWarning } from './statusBar';
 import type { CoverageTreeProvider } from './treeViews/coverageView';
 import type { LineTestsNode, LineTestsTreeProvider } from './treeViews/lineTestsView';
@@ -136,12 +136,27 @@ export function registerRunTestsCommand(context: vscode.ExtensionContext, output
 			vscode.window.showErrorMessage('coverdict: önce bir klasör açın.');
 			return;
 		}
-		// Faz 31: a re-run after a scan already bound module(s) - scope the
-		// build to them (`-pl ... -am`) instead of the whole reactor. Only
-		// worth doing past a single module: `-pl . -am` on a single-module
-		// repo would just be a no-op flag on an already-unscoped build.
+		// Faz 31: prefer this window's own in-memory scan (exact, no prompt) -
+		// scope the build to it via `-pl ... -am` instead of the whole
+		// reactor. A fresh window (or one that just hasn't scanned yet) has
+		// none, even when a jacoco.xml already exists on disk from an
+		// earlier session - real gson testing hit exactly this and ran the
+		// whole reactor unscoped, straight into test-jpms. Falling back to
+		// the same pom.xml-based discovery the first-ever "run tests" offer
+		// uses (`resolveRunTestsModuleScope`) means this button is scoped
+		// correctly from its very first click too, not only after this
+		// window's own first successful scan.
 		const boundModules = getCoverageState()?.modules;
-		const moduleRoots = boundModules && boundModules.length > 1 ? boundModules.map((m) => m.root) : undefined;
+		let moduleRoots: readonly string[] | undefined;
+		if (boundModules) {
+			moduleRoots = boundModules.length > 1 ? boundModules.map((m) => m.root) : undefined;
+		} else {
+			const scope = await resolveRunTestsModuleScope(folder);
+			if (!scope) {
+				return;
+			}
+			moduleRoots = scope.moduleRoots;
+		}
 		const result = await runTestsTask(folder, output, moduleRoots);
 		if (result?.success) {
 			await runAnalyze(context, output, sinks);
