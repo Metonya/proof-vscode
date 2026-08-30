@@ -61,6 +61,27 @@ suite('describeNode (Faz 31 - "Kopyala" coverage)', () => {
 		assert.equal(describeNode(null), undefined);
 		assert.equal(describeNode('a raw string, not a node'), undefined);
 	});
+
+	/**
+	 * Faz 31 follow-up, real user report: right-clicking "Kopyala" on the
+	 * Çalıştır view's own items still did nothing. `runView.ts`'s `RunItem`
+	 * is not a `{kind, ...}` data node at all - it *is* a `vscode.TreeItem`
+	 * subclass, with real `label`/`description` already set and no `kind`
+	 * field whatsoever, so none of the `kind`-dispatched branches above
+	 * could ever match it.
+	 */
+	test('a plain TreeItem-shaped node (no `kind`, e.g. runView.ts\'s RunItem) uses its own real label/description', () => {
+		assert.equal(describeNode({ label: 'Testleri Çalıştır', description: 'rapor: henüz yok' }), 'Testleri Çalıştır - rapor: henüz yok');
+		assert.equal(describeNode({ label: 'Coverage Görünümü', description: 'açık - gizlemek için tıklayın' }), 'Coverage Görünümü - açık - gizlemek için tıklayın');
+	});
+
+	test('a plain TreeItem-shaped node with no description copies just the label', () => {
+		assert.equal(describeNode({ label: 'Hızlı Tarama' }), 'Hızlı Tarama');
+	});
+
+	test('a plain TreeItem-shaped node with a boolean description (VS Code\'s "always show" flag, not real text) copies just the label', () => {
+		assert.equal(describeNode({ label: 'Hızlı Tarama', description: true }), 'Hızlı Tarama');
+	});
 });
 
 const METRIC: MetricSet = {

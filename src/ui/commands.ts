@@ -364,7 +364,6 @@ export function registerCopyCommands(sinks: CoverageSinks): vscode.Disposable[] 
 	];
 }
 
-/** Ağaç düğümlerinden panoya yazılacak düz metin - tanımadığımız bir şekle `undefined` döner, uydurmaz. */
 /**
  * Faz 31: real user report - right-clicking "Kopyala" on an `'empty'`
  * explanation node (the long "no changed class" message, real screenshot)
@@ -375,6 +374,13 @@ export function registerCopyCommands(sinks: CoverageSinks): vscode.Disposable[] 
  * kind added without updating this) keeps returning `undefined` rather
  * than guessing at a representation (hard rule 3a) - the button just does
  * nothing for it, same as today, instead of copying something wrong.
+ *
+ * Faz 31 follow-up, real user report: still silent on `coverdict.runView`'s
+ * own items - `RunTreeProvider`'s `RunItem` (`ui/treeViews/runView.ts`) is
+ * not a `{kind, ...}` data node at all, it *is* a `vscode.TreeItem`
+ * subclass with a real `label`/`description` already set. The generic
+ * fallback below covers that shape (and any other plain `TreeItem` this
+ * extension ever right-clicks "Kopyala" on) without needing a `kind` field.
  */
 interface DescribableNode {
 	kind?: string; finding?: Finding; reason?: Reason; rule?: string; path?: string; rawTestId?: string;
@@ -382,6 +388,8 @@ interface DescribableNode {
 	ref?: { outerClassName?: string; line?: number };
 	method?: { methodName?: string; methodDescription?: string };
 	mutant?: { line?: number; mutator?: string; status?: string };
+	label?: string | { label: string };
+	description?: string | boolean;
 }
 
 export function describeNode(node: unknown): string | undefined {
@@ -389,7 +397,16 @@ export function describeNode(node: unknown): string | undefined {
 		return undefined;
 	}
 	const n = node as DescribableNode;
-	return describeQualityOrCoverageNode(n) ?? describeTestOrMutationTreeNode(n);
+	return describeQualityOrCoverageNode(n) ?? describeTestOrMutationTreeNode(n) ?? describePlainTreeItem(n);
+}
+
+/** A plain `vscode.TreeItem` (or subclass) with no recognized `kind` - e.g. `runView.ts`'s `RunItem`. Uses whatever real label/description it already carries rather than guessing a shape. */
+function describePlainTreeItem(n: DescribableNode): string | undefined {
+	const label = typeof n.label === 'string' ? n.label : n.label?.label;
+	if (!label) {
+		return undefined;
+	}
+	return typeof n.description === 'string' ? `${label} - ${n.description}` : label;
 }
 
 /** Quality/coverage views' node kinds - `qualityView.ts`/`coverageView.ts`. */
