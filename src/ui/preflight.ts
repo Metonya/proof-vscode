@@ -8,6 +8,7 @@ import { interpretMavenFailure } from '../cli/mavenErrorInterpreter';
 import { parseDoctorProgressLine } from '../cli/progressParser';
 import { bindModules, describeSiblingProjects, discoverModuleRootsFromPoms, isProjectRoot, moduleForPath, PROJECT_ROOT_MARKER_FILES, toRepoRelativePosix } from '../cli/reportDiscovery';
 import { runMavenInstallTask, runTestsTask } from './mavenTestTask';
+import { resolveWorkspaceEnv } from './workspaceEnv';
 
 /**
  * Faz 30 (§7.8 follow-ups, gson dogfood): everything the extension needs
@@ -211,11 +212,12 @@ export async function resolveReportBinding(folder: vscode.WorkspaceFolder, confi
  * than anything the CLI claims - a module already usable is skipped without
  * a line, so the bar can legitimately finish under 100%, never over.
  */
-async function runDoctorFixWithProgress(javaExecutable: string, jarPath: string, workspaceRoot: string, output: vscode.OutputChannel, moduleCount: number): Promise<DoctorResult> {
+async function runDoctorFixWithProgress(javaExecutable: string, jarPath: string, folder: vscode.WorkspaceFolder, output: vscode.OutputChannel, moduleCount: number): Promise<DoctorResult> {
 	return vscode.window.withProgress(
 		{ location: vscode.ProgressLocation.Notification, title: 'coverdict: classpath listeleri üretiliyor (doctor --fix)', cancellable: true },
 		(progress, token) => new Promise<DoctorResult>((resolve, reject) => {
-			runDoctor(javaExecutable, jarPath, workspaceRoot, {
+			runDoctor(javaExecutable, jarPath, folder.uri.fsPath, {
+				env: resolveWorkspaceEnv(folder),
 				onStderrLine: (line) => {
 					output.appendLine(line);
 					const fixing = parseDoctorProgressLine(line);
@@ -311,7 +313,7 @@ export async function resolveEvidenceClasspaths(
 		return undefined;
 	}
 
-	const doctorResult = await runDoctorFixWithProgress(javaExecutable, jarPath, workspaceRoot, output, modules.length);
+	const doctorResult = await runDoctorFixWithProgress(javaExecutable, jarPath, folder, output, modules.length);
 	output.appendLine(doctorResult.stdout);
 
 	check = checkClasspaths(workspaceRoot, modules, kind, escapeHatchPath);
@@ -360,7 +362,7 @@ async function handleClasspathGenerationFailure(ctx: ClasspathGenerationContext,
 	}
 
 	const workspaceRoot = folder.uri.fsPath;
-	const retried = await runDoctorFixWithProgress(javaExecutable, jarPath, workspaceRoot, output, modules.length);
+	const retried = await runDoctorFixWithProgress(javaExecutable, jarPath, folder, output, modules.length);
 	output.appendLine(retried.stdout);
 
 	const check = checkClasspaths(workspaceRoot, modules, kind, escapeHatchPath);

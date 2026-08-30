@@ -39,6 +39,7 @@ import type { LineTestsNode, LineTestsTreeProvider } from './treeViews/lineTests
 import { findMutationBridgeTarget, type MutationNode, type MutationTreeProvider } from './treeViews/mutationView';
 import { findQualityBridgeTarget, type QualityNode, type QualityTreeProvider } from './treeViews/qualityView';
 import type { RunTreeProvider } from './treeViews/runView';
+import { resolveWorkspaceEnv } from './workspaceEnv';
 
 
 /**
@@ -962,6 +963,7 @@ async function runAnalyzeCore(
 			const moduleCountFor = { mutation: mutationArg?.classpaths.length ?? 1, perTest: perTestArg?.classpaths.length ?? 1 };
 			const handle = run({
 				javaExecutable, jarPath, args,
+				env: resolveWorkspaceEnv(folder),
 				onStderrLine: (line) => {
 					output.appendLine(line);
 					const event = parseProgressLine(line);

@@ -6,7 +6,7 @@ import { buildMavenTestArgs, type MavenTestPhase } from '../cli/mavenTestCommand
 import { inspectPom } from '../cli/pomInspector';
 import { toRepoRelativePosix } from '../cli/reportDiscovery';
 import { run } from '../cli/runner';
-import { resolveEnvOverrides } from '../cli/terminalEnv';
+import { resolveWorkspaceEnv } from './workspaceEnv';
 
 /**
  * Faz 30 (§7.8): "if there is no JaCoCo report, offer to run tests" -
@@ -49,27 +49,6 @@ function resolveMavenExecutable(folder: vscode.WorkspaceFolder): string {
 	return configured || (process.platform === 'win32' ? 'mvn.cmd' : 'mvn');
 }
 
-/**
- * Reconstructs the environment a real VS Code integrated terminal would use
- * for this workspace - `CustomExecution` bypasses the terminal entirely
- * (see `cli/terminalEnv.ts`'s own comment for why this exists at all), so
- * without this a workspace-pinned JDK (`terminal.integrated.env.*`, the
- * standard VS Code mechanism for exactly this) silently stops applying and
- * Maven falls back to whatever JDK happens to be on the extension host's
- * own PATH.
- */
-function resolveMavenEnv(folder: vscode.WorkspaceFolder): NodeJS.ProcessEnv {
-	const overrides = vscode.workspace.getConfiguration('terminal.integrated', folder).get<Record<string, string>>(`env.${terminalPlatformKey()}`) ?? {};
-	return { ...process.env, ...resolveEnvOverrides(overrides, process.env) };
-}
-
-const TERMINAL_PLATFORM_KEYS: Record<string, string> = { win32: 'windows', darwin: 'osx' };
-
-/** VS Code's own `terminal.integrated.env.<platform>` setting key for the current OS - `linux` is the fallback for every non-Windows, non-macOS platform, matching VS Code's own default. */
-function terminalPlatformKey(): string {
-	return TERMINAL_PLATFORM_KEYS[process.platform] ?? 'linux';
-}
-
 export interface MavenTaskResult {
 	success: boolean;
 	/** Combined stdout+stderr, so a failure can be handed to `cli/mavenErrorInterpreter.ts` for an honest cause instead of a bare "failed". */
@@ -110,7 +89,7 @@ async function runVisibleMavenTask(folder: vscode.WorkspaceFolder, output: vscod
 				args: [...args],
 				cwd: folder.uri.fsPath,
 				shell: true,
-				env: resolveMavenEnv(folder),
+				env: resolveWorkspaceEnv(folder),
 				onStdoutLine: (line) => writeEmitter.fire(`${line}\r\n`),
 				onStderrLine: (line) => writeEmitter.fire(`${line}\r\n`),
 			});

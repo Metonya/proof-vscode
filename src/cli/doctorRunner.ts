@@ -25,6 +25,8 @@ export interface DoctorResult {
 export interface DoctorOptions {
 	fix?: boolean;
 	writeConfig?: boolean;
+	/** Faz 31: `doctor --fix` shells out to `mvn` internally (`MavenClient.java`) - without this it only ever sees the extension host's own environment, not a workspace-pinned JDK (`terminal.integrated.env.*`, see `ui/workspaceEnv.ts`). Defaults to `process.env` when omitted. */
+	env?: NodeJS.ProcessEnv;
 	onStderrLine?: (line: string) => void;
 	/** Handed the process's own `cancel()` as soon as it is spawned, so a `vscode`-aware caller can wire it to a `CancellationToken` without this file importing `vscode` itself. */
 	onStart?: (cancel: () => void) => void;
@@ -38,7 +40,7 @@ export async function runDoctor(javaExecutable: string, jarPath: string, repo: s
 	if (options.writeConfig) {
 		args.push('--write-config');
 	}
-	const handle = run({ javaExecutable, jarPath, args, onStderrLine: options.onStderrLine });
+	const handle = run({ javaExecutable, jarPath, args, env: options.env, onStderrLine: options.onStderrLine });
 	options.onStart?.(handle.cancel);
 	const result = await handle.result;
 	return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr };
