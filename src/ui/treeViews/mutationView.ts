@@ -142,13 +142,15 @@ export class MutationTreeProvider implements vscode.TreeDataProvider<MutationNod
 			// bu yüzden burada "var" görünüyor ve yukarıdaki !state.mutation dalı
 			// hiç çalışmıyor, "Tüm Modülü Tara" düğmesi gerçek bir sebep varken
 			// bile hiç görünmüyordu (gson dogfood'unda yakalandı). Aynı uyarı
-			// kontrolü burada da yapılmalı.
+			// kontrolü burada da yapılmalı. `runHint` da eksikti - bir koşu zaten
+			// olsa bile (boş de olsa) "aktif dosya için çalıştır" seçeneği hep
+			// anlamlı, `!state.mutation` dalıyla aynı davranış (kullanıcı isteği).
 			const nodes: MutationNode[] = [header, {
 				kind: 'empty',
 				message: hasNoChangedTargetsWarning(state)
 					? noMutationEvidenceMessage()
 					: 'Bu koşuda hiçbir production metodu için mutant üretilmedi. Hedeflenen sınıflar mutasyona uygun kod içermiyor olabilir. (Test sınıflarının kendi mutantları kasten gösterilmiyor.)',
-			}];
+			}, { kind: 'runHint' }];
 			if (hasNoChangedTargetsWarning(state)) {
 				nodes.push({ kind: 'scanAllHint' });
 			}

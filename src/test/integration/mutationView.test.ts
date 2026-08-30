@@ -112,9 +112,11 @@ suite('Mutation view (Faz 20)', () => {
 	 * hedef bulamadığında bile `mutation` alanını (boş `modules` ile) çıktıya
 	 * koyuyor - `state.mutation` bu yüzden burada "var" görünür ve
 	 * `!state.mutation` dalı hiç çalışmaz. "Tüm Modülü Tara" düğmesi tam
-	 * burada, gerçek bir açıklaması varken bile hiç görünmüyordu.
+	 * burada, gerçek bir açıklaması varken bile hiç görünmüyordu. Aynı
+	 * sebeple aktif dosya için çalıştırma düğmesi de (`runHint`) hiç
+	 * görünmüyordu - kullanıcının kendi isteğiyle eklendi.
 	 */
-	test('mutation present but empty (real MUTATION_NO_CHANGED_TARGETS shape) still offers the scan-all-module recovery action', () => {
+	test('mutation present but empty (real MUTATION_NO_CHANGED_TARGETS shape) still offers both recovery actions', () => {
 		setCoverageState(STATE);
 		setMutationState({
 			mutation: { engine: 'pitest', engineVersion: '1.15.8', modules: [] },
@@ -128,7 +130,8 @@ suite('Mutation view (Faz 20)', () => {
 		if (roots[1].kind === 'empty') {
 			assert.match(roots[1].message, /değişen production sınıfı yok/, 'the real reason, not the generic "no mutable code" guess');
 		}
-		assert.equal(roots[2]?.kind, 'scanAllHint', 'the recovery action must be offered, not silently dropped');
+		assert.equal(roots[2]?.kind, 'runHint', 'running for the active file is still a valid recovery, not just scanning everything');
+		assert.equal(roots[3]?.kind, 'scanAllHint', 'the module-wide recovery action must also be offered, not silently dropped');
 	});
 
 	/**
