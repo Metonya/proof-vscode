@@ -1,6 +1,19 @@
 # coverdict-vscode — devir belgesi ve ileri plan
 
-**Son güncelleme:** 2026-08-29, Faz 30 (§7.9): gson'a karşı yapılan ikinci
+**Son güncelleme:** 2026-08-31, Faz 32 (§7.10): "Raporu Dışa Aktar" (HTML) -
+CLI'a üçüncü bir okuyucu (`HtmlRenderer`, offline tek dosya, açık/koyu tema,
+katlanabilir+filtrelenebilir bölümler) ve ikinci bir komut (`render-html`,
+sadece render eder, yeniden analiz yapmaz) eklendi; VS Code'un export
+komutu artık hiç yeniden taramıyor, `verdict-current.json` +
+`pertest-current.json`/`mutation-current.json`'ı birleştirip doğrudan
+render ediyor - gerçek kullanıcı testi ilk sürümün boş bir yeniden-taramayla
+kenar çubuğundaki gerçek veriyi sessizce eziyor olduğunu ortaya çıkardı
+(D-73/D-74'ün bir kez düzelttiği hatanın aynısı). Ayrıntı: `coverdict`
+reposunun `docs/DECISIONS.md`'sinde D-75..D-79.
+
+---
+
+**Önceki güncelleme:** 2026-08-29, Faz 30 (§7.9): gson'a karşı yapılan ikinci
 tur gerçek dogfood'un çıkardığı dört sorunun (ön koşullar sessiz, rapor
 yoksa öneri yok, kolay tekrar-koş yok, çok-modülde tek bir "listeden seç"e
 zorlanma) hepsi tek bir bütçede çözüldü: her modül tek koşuda birden bağlanır
@@ -1179,7 +1192,7 @@ repodan repoya değişir") doğru çıktı ama çözümü "genel-amaçlı bir te
 komutu tahmin etmek" değil, **gson'ın dört sorununu tek tek gerçek koda
 karşı teşhis etmek** oldu - ayrıntı §7.9'da.
 
-**Fikir - insan-okur "test kanıtı" raporu (kullanıcı, 2026-08-29):**
+**Fikir - insan-okur "test kanıtı" raporu (kullanıcı, 2026-08-29) — KAPANDI (Faz 32, §7.10).**
 SonarQube/Cucumber tarzı, hangi testlerin çalıştığını ve sonuçlarını
 gösteren dışa aktarılabilir bir rapor - hem CLI'dan (`coverdict analyze
 --report-format html` gibi) hem VS Code'dan ("dışa aktar" komutu). D-15
@@ -1260,8 +1273,55 @@ bazlı `statuses=OPEN,CONFIRMED,REOPENED` sorgusu kullanıldı).
   tüm reactor'ü koşuyor; hız optimizasyonu, doğruluk sorunu değil.
 - **Ağaç görünümlerinde modül bazlı gruplama** - veri birleşiyor (Faz 30
   commit 1), görünümler düz kalıyor; istenmedi.
-- **İnsan-okur export raporu** - yukarıdaki "Fikir" paragrafı hâlâ geçerli,
-  ayrı bir tasarım turu gerektiriyor.
+- ~~**İnsan-okur export raporu**~~ - **KAPANDI (Faz 32, §7.10).**
+
+### 7.10 Faz 32 (2026-08-31) — "Raporu Dışa Aktar" (HTML) (**yapıldı**)
+
+§7.8'in "Fikir" paragrafının karşılığı: hem CLI'dan (`coverdict analyze
+--html-report <path>`) hem VS Code'dan (Çalıştır panelinin başlığındaki
+export ikonu, `coverdict.exportReport`) çalışan, tek dosyalık, offline
+HTML rapor. Tasarım ve kararların tam kaydı `coverdict` reposunun kendi
+`docs/DECISIONS.md`'sinde **D-75'ten D-79'a** - burada sadece özet ve bu
+eklentiyi doğrudan ilgilendiren kısım var.
+
+**CLI tarafı (D-75/D-76/D-77/D-79):** yeni `HtmlRenderer.java`,
+`VerdictJsonWriter`/`TextRenderer`'ın yanına üçüncü bir okuyucu olarak -
+aynı `VerdictDocument`, şema değişikliği yok. Kapsama, değişen dosyalar,
+bulgular, uyarılar, test bazlı kanıt, mutasyon (sınıf başına katlanabilir,
+filtrelenebilir mutant tablosu) ve dosya kapsama (Sonar tarzı klasör
+ağacı) - her bölüm bağımsız katlanabilir ve filtrelenebilir, açık/koyu
+tema manuel geçişli, tüm tablolar kendi kutusunda yatay kayıyor (sayfa
+değil). Başlık artık ham git-identity dökümü değil, ne/ne zaman/hangi
+ayarlarla özeti.
+
+**Gerçek kullanıcı testinin bulduğu mimari hata (D-78) - önemli ders:**
+İlk sürüm export'ta her zaman taze, diff-türetilmiş bir `analyze` koşusu
+başlatıyordu. Gerçek kullanımda bu iki şeyi kırdı: (1) taze koşu diff'te
+değişen sınıf bulamayınca boş dönüyordu ve bu boş sonuç kenar
+çubuğundaki **gerçek, taze görünen** per-test/mutasyon verisinin üzerine
+koşulsuz yazılıyordu - tam D-73/D-74'ün bir kez düzelttiği sessiz-üzerine-
+yazma hatasının aynısı, bu kez export komutunun kendi elinden; (2)
+kullanıcının kendi beklentisi zaten "en güncel taramayla gelmesi" idi,
+yeni ve dar kapsamlı bir analiz değil. Düzeltme: CLI'a ikinci bir komut
+eklendi (`coverdict render-html --in <verdict.json> --out <path>`, hiç
+yeniden analiz yapmaz, sadece render eder - `VerdictJsonReader` bunun
+için yazıldı). Eklenti artık export'ta `analyze`'ı hiç çağırmıyor;
+`verdict-current.json`'ı `pertest-current.json`/`mutation-current.json`
+varsa onlarla birleştirip doğrudan `render-html`'e veriyor - sıfır
+yeniden-tarama maliyeti, kenar çubuğu state'ine hiç dokunmuyor.
+
+**Yeni/değişen dosyalar:** `ui/commands.ts` (`registerExportReportCommand`,
+`registerOpenSettingsCommand`, `runExportReport` - artık `runAnalyzeCore`
+çağırmıyor), `extension.ts`, `package.json` (`coverdict.exportReport`
+$(export) ve `coverdict.openSettings` $(gear) ikonları, `coverdict.runView`
+başlık çubuğunda - listeye altıncı bir satır eklenmedi, Faz 18'in "az
+buton" tercihiyle çelişmesin diye).
+
+**Bilinçli olarak yapılmayan:** ekrandaki `CoverageState`/`PerTestState`/
+`MutationState`'i in-memory birleştirip export etmek (composite) - ikisi
+hiç zaman damgası taşımıyor (CLI'ın kendi JSON'u byte-deterministik kalmak
+için taşımaz), disk'teki `verdict-current.json` zaten aynı veriyi taşıyor
+ve doğrudan okumak daha güvenilir (bkz. D-78).
 
 ## 8. Faz 20 — mutasyon testi arayüzü (**yapıldı**)
 
