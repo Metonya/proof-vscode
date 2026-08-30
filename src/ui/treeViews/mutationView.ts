@@ -119,7 +119,7 @@ export class MutationTreeProvider implements vscode.TreeDataProvider<MutationNod
 		}
 		if (!state.mutation) {
 			const nodes: MutationNode[] = [{ kind: 'empty', message: noMutationEvidenceMessage() }, { kind: 'runHint' }];
-			if (state.warnings.some((w) => w.code === 'MUTATION_NO_CHANGED_TARGETS')) {
+			if (hasNoChangedTargetsWarning(state)) {
 				nodes.push({ kind: 'scanAllHint' });
 			}
 			return nodes;
@@ -131,12 +131,28 @@ export class MutationTreeProvider implements vscode.TreeDataProvider<MutationNod
 			.filter((c) => c.methods.length > 0);
 
 		if (classes.length === 0) {
-			return [header, {
+			if (this.survivorsOnly) {
+				return [header, {
+					kind: 'empty',
+					message: 'Hayatta kalan mutant yok - üretilen her mutantı en az bir test yakaladı. (Süzgeci kaldırmak için başlıktaki filtreye tıklayın.)',
+				}];
+			}
+			// Faz 31 düzeltmesi: CLI, MUTATION_NO_CHANGED_TARGETS'ta bile boş
+			// (ama null olmayan) bir mutation nesnesi döndürüyor - state.mutation
+			// bu yüzden burada "var" görünüyor ve yukarıdaki !state.mutation dalı
+			// hiç çalışmıyor, "Tüm Modülü Tara" düğmesi gerçek bir sebep varken
+			// bile hiç görünmüyordu (gson dogfood'unda yakalandı). Aynı uyarı
+			// kontrolü burada da yapılmalı.
+			const nodes: MutationNode[] = [header, {
 				kind: 'empty',
-				message: this.survivorsOnly
-					? 'Hayatta kalan mutant yok - üretilen her mutantı en az bir test yakaladı. (Süzgeci kaldırmak için başlıktaki filtreye tıklayın.)'
+				message: hasNoChangedTargetsWarning(state)
+					? noMutationEvidenceMessage()
 					: 'Bu koşuda hiçbir production metodu için mutant üretilmedi. Hedeflenen sınıflar mutasyona uygun kod içermiyor olabilir. (Test sınıflarının kendi mutantları kasten gösterilmiyor.)',
 			}];
+			if (hasNoChangedTargetsWarning(state)) {
+				nodes.push({ kind: 'scanAllHint' });
+			}
+			return nodes;
 		}
 		return [header, ...classes.map((c): MutationNode => ({ kind: 'class', className: c.className, methods: c.methods }))];
 	}
@@ -153,6 +169,11 @@ export class MutationTreeProvider implements vscode.TreeDataProvider<MutationNod
  * söyler ve her biri farklı bir çözüm ister; hepsini "sonuç yok" diye
  * göstermek hard rule 3a ihlali olurdu.
  */
+/** Faz 31 düzeltmesi: paylaşılan kontrol, hem `!state.mutation` hem `classes.length === 0` dallarında kullanılıyor - bkz. rootChildren'daki not. */
+function hasNoChangedTargetsWarning(state: NonNullable<ReturnType<typeof getMutationState>>): boolean {
+	return state.warnings.some((w) => w.code === 'MUTATION_NO_CHANGED_TARGETS');
+}
+
 function noMutationEvidenceMessage(): string {
 	const state = getMutationState();
 	// Faz 30: `state.warnings` is already the complete, exact warning list this

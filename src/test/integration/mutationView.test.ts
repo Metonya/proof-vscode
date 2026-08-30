@@ -108,6 +108,30 @@ suite('Mutation view (Faz 20)', () => {
 	});
 
 	/**
+	 * Faz 31 düzeltmesi, gerçek gson dogfood'unda yakalandı: CLI, diff hiç
+	 * hedef bulamadığında bile `mutation` alanını (boş `modules` ile) çıktıya
+	 * koyuyor - `state.mutation` bu yüzden burada "var" görünür ve
+	 * `!state.mutation` dalı hiç çalışmaz. "Tüm Modülü Tara" düğmesi tam
+	 * burada, gerçek bir açıklaması varken bile hiç görünmüyordu.
+	 */
+	test('mutation present but empty (real MUTATION_NO_CHANGED_TARGETS shape) still offers the scan-all-module recovery action', () => {
+		setCoverageState(STATE);
+		setMutationState({
+			mutation: { engine: 'pitest', engineVersion: '1.15.8', modules: [] },
+			targets: [], ranAt: Date.now(),
+			warnings: [{ code: 'MUTATION_NO_CHANGED_TARGETS', message: 'no changed production class', module: 'root' }],
+		});
+		const provider = new MutationTreeProvider();
+		const roots = provider.getChildren();
+		assert.equal(roots[0].kind, 'header', 'a real (if empty) mutation block still dates the run');
+		assert.equal(roots[1].kind, 'empty');
+		if (roots[1].kind === 'empty') {
+			assert.match(roots[1].message, /değişen production sınıfı yok/, 'the real reason, not the generic "no mutable code" guess');
+		}
+		assert.equal(roots[2]?.kind, 'scanAllHint', 'the recovery action must be offered, not silently dropped');
+	});
+
+	/**
 	 * Faz 22: kullanıcının bulduğu gerçek kafa karışıklığı - panel dosyadan
 	 * dosyaya geçince değişmiyordu, hangi koşuya bakıldığı belli değildi.
 	 * Şimdi kökler her zaman "Hedef: ... · ..." başlığıyla başlıyor.
