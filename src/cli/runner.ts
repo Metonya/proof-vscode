@@ -27,6 +27,8 @@ export interface RunOptions {
 	 * anything carrying user text.
 	 */
 	shell?: boolean;
+	/** Defaults to `process.env` (the extension host's own environment) when omitted. */
+	env?: NodeJS.ProcessEnv;
 	onStdoutLine?: (line: string) => void;
 	onStderrLine?: (line: string) => void;
 }
@@ -47,6 +49,7 @@ export function run(options: RunOptions): RunHandle {
 	const argv = options.jarPath === undefined ? options.args : ['-jar', options.jarPath, ...options.args];
 	const child = spawn(options.javaExecutable, argv, {
 		cwd: options.cwd,
+		env: options.env ?? process.env,
 		shell: options.shell ?? false,
 		// POSIX'te kendi süreç grubunu kurar, böylece iptal PIT'in çocuk
 		// JVM'lerini de kapsar (bkz. killTree). Windows'ta anlamsız ve
