@@ -11,7 +11,7 @@
  * literal captured text).
  */
 
-export type GradleFailureKind = 'taskNotFoundInProject';
+export type GradleFailureKind = 'taskNotFoundInProject' | 'androidSdkMissing';
 
 export interface GradleFailureInterpretation {
 	kind: GradleFailureKind;
@@ -34,16 +34,30 @@ export interface GradleFailureInterpretation {
 const TASK_NOT_FOUND_PATTERN = /task '([^']+)' not found in project '([^']+)'/i;
 
 export function interpretGradleFailure(output: string): GradleFailureInterpretation | undefined {
-	return interpretTaskNotFoundInProject(output);
+	return interpretTaskNotFoundInProject(output) ?? interpretAndroidSdkMissing(output);
 }
 
 /**
  * The failure mode module scoping introduces. An unscoped `gradlew test
  * jacocoTestReport` silently skips every project without those tasks; the
- * moment a run is scoped, a project that has no `test` at all (a
- * `java-platform` BOM, a docs-only module - junit-framework has both) or no
- * `jacoco` plugin fails the whole build instead. That is the honest
- * outcome, but only if the message says which module and what to do.
+ * moment a run is scoped, a project missing either one fails the whole
+ * build at task-selection time, before anything executes. That is the
+ * honest outcome, but only if the message says which module, why, and what
+ * to do about it.
+ *
+ * The two causes are different and both were measured on real repos, so
+ * they get different advice:
+ *
+ * - no `test` task: a `java-platform` BOM or a docs-only module
+ *   (junit-framework ships both) simply has no tests.
+ * - no coverage task: `jacocoTestReport` is the default task name of
+ *   Gradle's `jacoco` plugin, not a universal one. On Google's Now in
+ *   Android, `:core:common` (plain JVM, never applies `jacoco`) has no
+ *   coverage task at all, and `:core:data` (an Android library) has
+ *   variant-named ones instead - `createDemoDebugUnitTestCoverageReport`
+ *   and five siblings. Telling that user to apply the jacoco plugin would
+ *   be wrong twice over: their build already applies it, and AGP still
+ *   would not create a task by that name.
  */
 function interpretTaskNotFoundInProject(output: string): GradleFailureInterpretation | undefined {
 	const match = TASK_NOT_FOUND_PATTERN.exec(output);
@@ -52,11 +66,47 @@ function interpretTaskNotFoundInProject(output: string): GradleFailureInterpreta
 	}
 	const [, taskName, projectPath] = match;
 	const moduleName = projectPath.replace(/^:/, '') || 'the root project';
-	const cause = taskName === 'test'
-		? `\`${moduleName}\` has no tests to run (a BOM or docs-only module has no \`test\` task at all)`
-		: `\`${moduleName}\` does not apply the plugin that provides \`${taskName}\` (usually \`jacoco\`)`;
+	if (taskName === 'test') {
+		return {
+			kind: 'taskNotFoundInProject',
+			detail: `\`${moduleName}\` has no tests to run - a BOM or docs-only module has no \`test\` task at all. `
+				+ 'Uncheck it in the module picker on the next run.',
+		};
+	}
 	return {
 		kind: 'taskNotFoundInProject',
-		detail: `${cause}. Uncheck it in the module picker on the next run, or add that plugin to it.`,
+		detail: `\`${moduleName}\` has no \`${taskName}\` task. That name is the default of Gradle's \`jacoco\` `
+			+ 'plugin: an Android module never has it (AGP names coverage tasks per variant, e.g. '
+			+ '`createDemoDebugUnitTestCoverageReport`), and a plain JVM module only has it when it applies that '
+			+ 'plugin. Point `proof.gradleCoverageTask` at the task this build really has, or uncheck the module.',
+	};
+}
+
+/**
+ * Captured verbatim from a real run of
+ * `./gradlew :core:data:test :core:data:createDemoDebugUnitTestCoverageReport`
+ * on Now in Android, on a machine whose Android SDK had only
+ * `platform-tools` installed:
+ *
+ *   Could not determine the dependencies of task ':core:data:testDemoDebugUnitTest'.
+ *   > SDK location not found. Define a valid SDK location with an ANDROID_HOME
+ *     environment variable or by setting the sdk.dir path in your project's
+ *     local properties file at '...\local.properties'.
+ *
+ * Worth its own shape because the raw output buries it under hundreds of
+ * AGP configuration warnings, and because nothing about it is proof-java's
+ * doing - the build simply cannot run here at all.
+ */
+const ANDROID_SDK_MISSING_PATTERN = /SDK location not found/i;
+
+function interpretAndroidSdkMissing(output: string): GradleFailureInterpretation | undefined {
+	if (!ANDROID_SDK_MISSING_PATTERN.test(output)) {
+		return undefined;
+	}
+	return {
+		kind: 'androidSdkMissing',
+		detail: 'this Android build needs an Android SDK, and Gradle could not find one. Set `ANDROID_HOME`, or '
+			+ 'put `sdk.dir` into the `local.properties` file at the repo root. Nothing about this is specific to '
+			+ 'Proof - the build cannot run at all without an SDK.',
 	};
 }

@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { buildGradleTestArgs, isShellSafeModuleRoot, unsafeModuleRoots } from '../../../cli/gradleTestCommand';
+import { buildGradleTestArgs, DEFAULT_COVERAGE_TASK, isShellSafeModuleRoot, unsafeModuleRoots } from '../../../cli/gradleTestCommand';
 
 test('no scope at all keeps the historical whole-build argv', () => {
 	assert.deepEqual(buildGradleTestArgs({}), ['test', 'jacocoTestReport']);
@@ -62,4 +62,32 @@ test('unsafeModuleRoots names exactly the roots that caused scoping to be droppe
 	assert.deepEqual(unsafeModuleRoots(['core', 'my module', 'a&b']), ['my module', 'a&b']);
 	assert.deepEqual(unsafeModuleRoots(['core']), []);
 	assert.deepEqual(unsafeModuleRoots(undefined), []);
+});
+
+/**
+ * `jacocoTestReport` is the default task name of Gradle's `jacoco` plugin,
+ * not a universal one - measured on Google's Now in Android, neither its
+ * plain JVM modules nor its Android ones have a task by that name, and
+ * asking for one fails the whole build at selection time. Hence the
+ * `proof.gradleCoverageTask` setting.
+ */
+test('the coverage task defaults to jacocoTestReport when unset, blank, or whitespace', () => {
+	assert.equal(DEFAULT_COVERAGE_TASK, 'jacocoTestReport');
+	assert.deepEqual(buildGradleTestArgs({ moduleRoots: ['core'] }), [':core:test', ':core:jacocoTestReport']);
+	assert.deepEqual(buildGradleTestArgs({ moduleRoots: ['core'], coverageTask: '' }), [':core:test', ':core:jacocoTestReport']);
+	assert.deepEqual(buildGradleTestArgs({ moduleRoots: ['core'], coverageTask: '   ' }), [':core:test', ':core:jacocoTestReport']);
+});
+
+test('a configured coverage task replaces jacocoTestReport in a scoped run', () => {
+	assert.deepEqual(
+		buildGradleTestArgs({ moduleRoots: ['core/data'], coverageTask: 'createDemoDebugUnitTestCoverageReport' }),
+		[':core:data:test', ':core:data:createDemoDebugUnitTestCoverageReport'],
+	);
+});
+
+test('a configured coverage task is used by an unscoped run too', () => {
+	assert.deepEqual(
+		buildGradleTestArgs({ coverageTask: 'createDemoDebugUnitTestCoverageReport' }),
+		['test', 'createDemoDebugUnitTestCoverageReport'],
+	);
 });
