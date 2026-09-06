@@ -10,7 +10,7 @@ import { ExplorerBadgeProvider } from '../../ui/explorerBadges';
 // biçim (Windows'ta örn. sürücü harfi küçük). Burada da aynı yoldan
 // üretiliyor, aksi halde bir Uri.file() lookup'ıyla ham bir string literal
 // arasında yapay bir büyük/küçük harf uyuşmazlığı test edilmiş olurdu.
-const WORKSPACE_ROOT = vscode.Uri.file('C:/Users/Mert/Desktop/coverdict-playground').fsPath;
+const WORKSPACE_ROOT = vscode.Uri.file('C:/Users/Mert/Desktop/proof-java-playground').fsPath;
 
 /**
  * Faz 13 madde 8: NOTES.md'nin "rozetler sadece Calculator.java'da görünüyor"

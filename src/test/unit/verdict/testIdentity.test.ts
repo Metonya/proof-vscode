@@ -15,7 +15,7 @@ test('a JUnit5 UniqueId string is parsed into class and method, display uses the
 
 /**
  * Faz 14c: the real regression this exists for - a real `@ParameterizedTest`
- * invocation id from coverdict-playground's `CalculatorParameterizedTest`
+ * invocation id from proof-java-playground's `CalculatorParameterizedTest`
  * (captured from a live --per-test-target run, 2026-08-28). The original
  * parser only looked for `[method:]`, so this fell through to the `#`-
  * splitting fallback and found the `#1` inside `[test-template-invocation:

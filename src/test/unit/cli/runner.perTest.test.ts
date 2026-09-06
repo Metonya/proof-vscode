@@ -14,7 +14,7 @@ import { parseVerdict } from '../../../verdict/parse';
 /**
  * F3's own completion criterion (Plan.md Bölüm 7): "Gerçek --per-test-report
  * koşusu". Runs a real `java -jar proof-java.jar analyze --base <first
- * commit> --per-test-report` against coverdict-playground and proves the
+ * commit> --per-test-report` against proof-java-playground and proves the
  * whole F3 pipeline end to end: parseVerdict accepts the real perTest
  * block, testsForClass finds Calculator's real lines, and
  * parseTestIdentity handles the real (and unanticipated: class-name-
@@ -22,12 +22,30 @@ import { parseVerdict } from '../../../verdict/parse';
  *
  * Skips gracefully when the sibling repo/jar/classpath file are not
  * present - see runner.selfScan.test.ts for the same pattern and reasoning.
+ * Also skips (rather than failing) when the `java` on PATH is newer than
+ * the embedded mutation engine supports (22): --per-test-report itself
+ * refuses to collect evidence there (PER_TEST_JDK_UNSUPPORTED, exit 3) -
+ * a real, correct CLI behavior, not something this test should treat as a
+ * bug in the fixture or in the extension.
  */
-const PLAYGROUND_ROOT = path.resolve(__dirname, '../../../../../coverdict-playground');
+const PLAYGROUND_ROOT = path.resolve(__dirname, '../../../../../proof-java-playground');
 const JAR_PATH = path.resolve(__dirname, '../../../../../coverdict/proof-java-cli/target/proof-java.jar');
 const REPORT_PATH = path.join(PLAYGROUND_ROOT, 'target', 'site', 'jacoco', 'jacoco.xml');
 const CLASSPATH_PATH = path.join(PLAYGROUND_ROOT, 'target', 'proof-classpath.txt');
-const FIXTURES_PRESENT = fs.existsSync(JAR_PATH) && fs.existsSync(REPORT_PATH) && fs.existsSync(CLASSPATH_PATH) && fs.existsSync(PLAYGROUND_ROOT);
+
+function javaMajorVersionSupportsPerTest(): boolean {
+	try {
+		// `java -version` writes to stderr, not stdout - redirect it so execSync's stdout capture sees it.
+		const output = execSync('java -version 2>&1', { encoding: 'utf8' });
+		const match = /version "(\d+)/.exec(output);
+		return match ? Number(match[1]) <= 22 : true;
+	} catch {
+		return true;
+	}
+}
+
+const FIXTURES_PRESENT = fs.existsSync(JAR_PATH) && fs.existsSync(REPORT_PATH) && fs.existsSync(CLASSPATH_PATH)
+	&& fs.existsSync(PLAYGROUND_ROOT) && javaMajorVersionSupportsPerTest();
 
 test('a real --per-test-report run: perTest parses, testsForClass finds real lines, testIdentity handles the real id shape', { skip: !FIXTURES_PRESENT }, async () => {
 	const firstCommit = execSync('git rev-list --max-parents=0 HEAD', { cwd: PLAYGROUND_ROOT, encoding: 'utf8' }).trim();

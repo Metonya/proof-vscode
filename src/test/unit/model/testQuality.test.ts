@@ -6,7 +6,7 @@ import type { Finding } from '../../../verdict/types';
 
 /**
  * Real data captured from a live `--per-test-target` run against
- * coverdict-playground's `Calculator.java` (2026-08-28, session that added
+ * proof-java-playground's `Calculator.java` (2026-08-28, session that added
  * Faz 15) - not synthesized. Four lines, four different outcomes:
  *   - line 37 (`square`): one test, no oracle -> false green.
  *   - line 11 (`subtract`): same shape, different rule -> false green.

@@ -48,9 +48,11 @@ records of closed work — **this file wins on any conflict.**
 
 | Path | What | Why it exists |
 |---|---|---|
-| `C:\Users\Mert\Desktop\proof-java` | Java CLI (Maven, JDK 17). Built jar: `proof-java-cli/target/proof-java.jar` | The single source of truth. Every number and every finding comes from here. |
-| `C:\Users\Mert\Desktop\proof-vscode` | **This repo.** VS Code extension (TypeScript) | Renders the CLI's JSON output in the editor. Computes nothing on its own. |
-| `C:\Users\Mert\Desktop\coverdict-playground` | Small Java Maven project: 3 production + 10 test classes | The real data source. Every test file is a deliberate rule scenario. |
+| `C:\Users\Mert\Desktop\coverdict-ws\coverdict`* | Java CLI (Maven, JDK 17). Built jar: `proof-java-cli/target/proof-java.jar` | The single source of truth. Every number and every finding comes from here. |
+| `C:\Users\Mert\Desktop\coverdict-ws\coverdict-vscode`* | **This repo.** VS Code extension (TypeScript) | Renders the CLI's JSON output in the editor. Computes nothing on its own. |
+| `C:\Users\Mert\Desktop\coverdict-ws\proof-java-playground` | Small Java Maven project: 3 production + 10 test classes | The real data source. Every test file is a deliberate rule scenario. |
+
+\* Folder names on disk still lag the GitHub rename (`Metonya/coverdict` → `proof-java`, `Metonya/coverdict-vscode` → `proof-vscode`) - the remotes already point at the new URLs, only the local directory names are pending a manual `mv`/`Rename-Item` once nothing (an open VS Code window, a running process) still has them open.
 
 ### What proof-java is (in one paragraph)
 
@@ -463,7 +465,7 @@ for type-checking and compiling tests to `out/`.
 ### Run / debug
 
 **F5** in VS Code → "Run Extension" → opens an Extension Development Host
-window. Open `coverdict-playground` there and click the proof-java icon in
+window. Open `proof-java-playground` there and click the Proof icon in
 the Activity Bar.
 
 ### Test

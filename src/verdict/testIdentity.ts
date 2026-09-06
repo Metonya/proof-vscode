@@ -12,7 +12,7 @@
  *
  * Faz 14c: the original regex only recognized `[method:...]`, so every
  * `@ParameterizedTest` invocation (real, common shape - see
- * coverdict-playground's `CalculatorParameterizedTest`) fell through to the
+ * proof-java-playground's `CalculatorParameterizedTest`) fell through to the
  * `#`-splitting fallback below, which found the `#1` inside
  * `[test-template-invocation:#1]` and mis-parsed the entire UniqueId as one
  * giant "class name". `simpleClassName` is added so callers (the line->tests
