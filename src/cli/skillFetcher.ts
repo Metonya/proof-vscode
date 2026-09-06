@@ -1,4 +1,4 @@
-import * as https from 'node:https';
+import { httpsGetBuffer, httpsGetText } from './githubFetch';
 
 /**
  * Faz 34 (user request): "Install Skill" needs the *current* skill content,
@@ -63,33 +63,4 @@ export async function fetchSkillFiles(fetchText = httpsGetText, fetchBuffer = ht
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null;
-}
-
-/** Both GitHub hosts used here (`api.github.com`, `raw.githubusercontent.com`) require a User-Agent or refuse the request. */
-const USER_AGENT = 'proof-vscode';
-
-function httpsGetBuffer(url: string, redirectsLeft = 5): Promise<Buffer> {
-	return new Promise((resolve, reject) => {
-		https.get(url, { headers: { 'User-Agent': USER_AGENT } }, (res) => {
-			const status = res.statusCode ?? 0;
-			if (status >= 300 && status < 400 && res.headers.location && redirectsLeft > 0) {
-				res.resume();
-				resolve(httpsGetBuffer(new URL(res.headers.location, url).toString(), redirectsLeft - 1));
-				return;
-			}
-			if (status !== 200) {
-				res.resume();
-				reject(new Error(`HTTP ${status} for ${url}`));
-				return;
-			}
-			const chunks: Buffer[] = [];
-			res.on('data', (chunk: Buffer) => chunks.push(chunk));
-			res.on('end', () => resolve(Buffer.concat(chunks)));
-			res.on('error', reject);
-		}).on('error', reject);
-	});
-}
-
-async function httpsGetText(url: string): Promise<string> {
-	return (await httpsGetBuffer(url)).toString('utf8');
 }

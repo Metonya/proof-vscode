@@ -179,16 +179,8 @@ function resolveInternedTestIds(value: unknown): void {
 			continue;
 		}
 		const testIds = testModule.testIds;
-		for (const entry of [...(Array.isArray(testModule.entries) ? testModule.entries : []), ...(Array.isArray(testModule.ambient) ? testModule.ambient : [])]) {
-			if (!isRecord(entry) || !Array.isArray(entry.lines)) {
-				continue;
-			}
-			for (const line of entry.lines) {
-				if (!isRecord(line) || !Array.isArray(line.tests)) {
-					continue;
-				}
-				line.tests = line.tests.map((index: unknown) => (typeof index === 'number' ? testIds[index] : index));
-			}
+		for (const line of collectPerTestLines(testModule)) {
+			line.tests = (line.tests as unknown[]).map((index) => (typeof index === 'number' ? testIds[index] : index));
 		}
 		// Faz 34: without this, the module is left in a mixed state (a
 		// `testIds` array alongside now-resolved-to-strings `tests`) - a
@@ -200,6 +192,37 @@ function resolveInternedTestIds(value: unknown): void {
 		// numeric" the same fact everywhere in this file.
 		delete testModule.testIds;
 	}
+}
+
+/** Shared by `resolveInternedTestIds` and `reinternPerTestIds` (module -> entries+ambient -> lines, flattened) so neither has to carry the entry/line nesting itself. */
+function collectPerTestLines(testModule: Record<string, unknown>): Record<string, unknown>[] {
+	return [...(Array.isArray(testModule.entries) ? testModule.entries : []), ...(Array.isArray(testModule.ambient) ? testModule.ambient : [])]
+		.flatMap((entry) => (isRecord(entry) && Array.isArray(entry.lines) ? entry.lines : []))
+		.filter((line): line is Record<string, unknown> => isRecord(line) && Array.isArray(line.tests));
+}
+
+/** Shared by `resolveInternedMutationTestIds` and `reinternMutationTestIds` (module -> methods -> mutants, flattened). */
+function collectMutants(mutationModule: Record<string, unknown>): Record<string, unknown>[] {
+	if (!Array.isArray(mutationModule.methods)) {
+		return [];
+	}
+	return mutationModule.methods
+		.flatMap((method) => (isRecord(method) && Array.isArray(method.mutants) ? method.mutants : []))
+		.filter((mutant): mutant is Record<string, unknown> => isRecord(mutant) && Array.isArray(mutant.killingTests));
+}
+
+/** Shared by `reinternPerTestIds`/`reinternMutationTestIds` - a small dedup-and-index table, so both stop carrying their own identical copy of it. */
+function createTestIdInterner(): { testIds: string[]; indexOf: (id: string) => number } {
+	const testIds: string[] = [];
+	const indexOf = (id: string): number => {
+		const existing = testIds.indexOf(id);
+		if (existing !== -1) {
+			return existing;
+		}
+		testIds.push(id);
+		return testIds.length - 1;
+	};
+	return { testIds, indexOf };
 }
 
 /**
@@ -228,9 +251,7 @@ export function reinternPerTestIds(value: unknown): void {
 		if (!isRecord(testModule)) {
 			continue;
 		}
-		const lines = [...(Array.isArray(testModule.entries) ? testModule.entries : []), ...(Array.isArray(testModule.ambient) ? testModule.ambient : [])]
-			.flatMap((entry) => (isRecord(entry) && Array.isArray(entry.lines) ? entry.lines : []))
-			.filter((line): line is Record<string, unknown> => isRecord(line) && Array.isArray(line.tests));
+		const lines = collectPerTestLines(testModule);
 		// A stray leftover `testIds` field (an older extension build's
 		// snapshot, written before it deleted this on resolve) is not a
 		// reliable "already native" signal on its own - checking the
@@ -240,15 +261,7 @@ export function reinternPerTestIds(value: unknown): void {
 		if (!lines.some((line) => (line.tests as unknown[]).some((t) => typeof t === 'string'))) {
 			continue;
 		}
-		const testIds: string[] = [];
-		const indexOf = (id: string): number => {
-			const existing = testIds.indexOf(id);
-			if (existing !== -1) {
-				return existing;
-			}
-			testIds.push(id);
-			return testIds.length - 1;
-		};
+		const { testIds, indexOf } = createTestIdInterner();
 		for (const line of lines) {
 			line.tests = (line.tests as unknown[]).map((id) => (typeof id === 'string' ? indexOf(id) : id));
 		}
@@ -262,26 +275,16 @@ export function reinternMutationTestIds(value: unknown): void {
 		return;
 	}
 	for (const mutationModule of value.modules) {
-		if (!isRecord(mutationModule) || !Array.isArray(mutationModule.methods)) {
+		if (!isRecord(mutationModule)) {
 			continue;
 		}
-		const mutants = mutationModule.methods
-			.flatMap((method) => (isRecord(method) && Array.isArray(method.mutants) ? method.mutants : []))
-			.filter((mutant): mutant is Record<string, unknown> => isRecord(mutant) && Array.isArray(mutant.killingTests));
+		const mutants = collectMutants(mutationModule);
 		// Same reasoning as reinternPerTestIds: check the values, not a
 		// possibly-stale leftover testIds field.
 		if (!mutants.some((mutant) => (mutant.killingTests as unknown[]).some((t) => typeof t === 'string'))) {
 			continue;
 		}
-		const testIds: string[] = [];
-		const indexOf = (id: string): number => {
-			const existing = testIds.indexOf(id);
-			if (existing !== -1) {
-				return existing;
-			}
-			testIds.push(id);
-			return testIds.length - 1;
-		};
+		const { testIds, indexOf } = createTestIdInterner();
 		for (const mutant of mutants) {
 			mutant.killingTests = (mutant.killingTests as unknown[]).map((id) => (typeof id === 'string' ? indexOf(id) : id));
 		}
@@ -323,20 +326,12 @@ function resolveInternedMutationTestIds(value: unknown): void {
 		return;
 	}
 	for (const mutationModule of value.modules) {
-		if (!isRecord(mutationModule) || !Array.isArray(mutationModule.testIds) || !Array.isArray(mutationModule.methods)) {
+		if (!isRecord(mutationModule) || !Array.isArray(mutationModule.testIds)) {
 			continue;
 		}
 		const testIds = mutationModule.testIds;
-		for (const method of mutationModule.methods) {
-			if (!isRecord(method) || !Array.isArray(method.mutants)) {
-				continue;
-			}
-			for (const mutant of method.mutants) {
-				if (!isRecord(mutant) || !Array.isArray(mutant.killingTests)) {
-					continue;
-				}
-				mutant.killingTests = mutant.killingTests.map((index: unknown) => (typeof index === 'number' ? testIds[index] : index));
-			}
+		for (const mutant of collectMutants(mutationModule)) {
+			mutant.killingTests = (mutant.killingTests as unknown[]).map((index) => (typeof index === 'number' ? testIds[index] : index));
 		}
 		// Faz 34: same reasoning as resolveInternedTestIds's own delete above.
 		delete mutationModule.testIds;

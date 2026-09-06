@@ -32,7 +32,7 @@ import { publishFindings } from './diagnostics';
 import type { ExplorerBadgeProvider } from './explorerBadges';
 import { applyGutterCoverage, clearGutterCoverage, type GutterDecorationTypes } from './gutterRenderer';
 import { runTestsTask } from './mavenTestTask';
-import { offerToOpenSetting, resolveEvidenceClasspaths, resolveReportBinding, resolveRunTestsModuleScope, type ClasspathKind } from './preflight';
+import { offerToDownloadJar, offerToOpenSetting, resolveEvidenceClasspaths, resolveReportBinding, resolveRunTestsModuleScope, type ClasspathKind } from './preflight';
 import { showCoverageSummary, showNoFileCoverageWarning } from './statusBar';
 import type { CoverageTreeProvider } from './treeViews/coverageView';
 import type { LineTestsNode, LineTestsTreeProvider } from './treeViews/lineTestsView';
@@ -321,7 +321,7 @@ async function runExportReport(output: vscode.OutputChannel): Promise<void> {
 
 	const jarPath = locateJar(folder);
 	if (!jarPath) {
-		void offerToOpenSetting('Proof: proof-java.jar not found. Set the proof.jarPath setting, or build one at proof-java-cli/target/proof-java.jar.', 'proof.jarPath');
+		void offerToDownloadJar();
 		return;
 	}
 
@@ -1128,7 +1128,7 @@ async function runAnalyzeCore(
 ): Promise<VerdictDocument | undefined> {
 	const jarPath = locateJar(folder);
 	if (!jarPath) {
-		void offerToOpenSetting('Proof: proof-java.jar not found. Set the proof.jarPath setting, or build one at proof-java-cli/target/proof-java.jar.', 'proof.jarPath');
+		void offerToDownloadJar();
 		return undefined;
 	}
 

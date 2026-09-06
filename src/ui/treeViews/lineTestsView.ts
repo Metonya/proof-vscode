@@ -173,31 +173,10 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 			return this.allClassesRoot();
 		}
 		if (view.kind === 'noPerTestData') {
-			// Faz 21: bir test dosyasında "topla" düğmesi test sınıfının
-			// kendisini hedeflerdi - ters yön için gereken şey o değil,
-			// production sınıflarını hedefleyen bir koşu. Yanlış düğmeye
-			// yönlendirmektense ne yapılacağını söylüyoruz.
-			if (this.activeDocument && this.classifyActiveDocument(this.activeDocument) === 'test') {
-				return [{ kind: 'empty', message: 'This test class has no record of production lines it ran in this scan. The reverse direction only fills in from a run that targeted production classes: open a production file and use "Collect For This Class", or run Deep Scan.' }];
-			}
-			const nodes: LineTestsNode[] = [{ kind: 'empty', message: noPerTestDataMessage() }, { kind: 'collectHint' }];
-			if (hasNoChangedTargetsWarning()) {
-				nodes.push({ kind: 'scanAllHint' });
-			}
-			return nodes;
+			return this.noPerTestDataRoot();
 		}
-		const header = this.perTestHeaderNode();
 		if (view.kind === 'production') {
-			const findingsByTestMethod = indexFindingsByTestMethod(getCoverageState()?.findings ?? []);
-			const groups = groupConsecutiveLines(view.linesToTests, view.linesToMethod)
-				.filter((group) => !this.problemsOnly || hasProblem(group.tests, findingsByTestMethod));
-			if (groups.length === 0) {
-				return [{ kind: 'empty', message: this.problemsOnly ? 'No problem lines in this file - every covering test has an assertion. (Click the title-bar filter to remove this filter.)' : 'No line records for this class.' }];
-			}
-			return [
-				...(header ? [header] : []),
-				...groups.map((group): LineTestsNode => ({ kind: 'prodLine', startLine: group.startLine, endLine: group.endLine, tests: group.tests, methodName: group.methodName })),
-			];
+			return this.productionRoot(view);
 		}
 		// test file: group the reverse index's flat refs back into per-method nodes for this class
 		const methods = [...view.reverse.entries()]
@@ -205,7 +184,37 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 			.map(([key, refs]): LineTestsNode => ({ kind: 'testMethod', methodName: key.slice(view.className.length + 1, -2), refs }));
 		return methods.length === 0
 			? [{ kind: 'empty', message: 'No test method in this class ran the production code targeted in this run.' }]
-			: [...(header ? [header] : []), ...methods];
+			: [...this.headerOrEmpty(), ...methods];
+	}
+
+	/** Faz 21: bir test dosyasında "topla" düğmesi test sınıfının kendisini hedeflerdi - ters yön için gereken şey o değil, production sınıflarını hedefleyen bir koşu. Yanlış düğmeye yönlendirmektense ne yapılacağını söylüyoruz. */
+	private noPerTestDataRoot(): LineTestsNode[] {
+		if (this.activeDocument && this.classifyActiveDocument(this.activeDocument) === 'test') {
+			return [{ kind: 'empty', message: 'This test class has no record of production lines it ran in this scan. The reverse direction only fills in from a run that targeted production classes: open a production file and use "Collect For This Class", or run Deep Scan.' }];
+		}
+		const nodes: LineTestsNode[] = [{ kind: 'empty', message: noPerTestDataMessage() }, { kind: 'collectHint' }];
+		if (hasNoChangedTargetsWarning()) {
+			nodes.push({ kind: 'scanAllHint' });
+		}
+		return nodes;
+	}
+
+	private productionRoot(view: Extract<ReturnType<LineTestsTreeProvider['computeView']>, { kind: 'production' }>): LineTestsNode[] {
+		const findingsByTestMethod = indexFindingsByTestMethod(getCoverageState()?.findings ?? []);
+		const groups = groupConsecutiveLines(view.linesToTests, view.linesToMethod)
+			.filter((group) => !this.problemsOnly || hasProblem(group.tests, findingsByTestMethod));
+		if (groups.length === 0) {
+			return [{ kind: 'empty', message: this.problemsOnly ? 'No problem lines in this file - every covering test has an assertion. (Click the title-bar filter to remove this filter.)' : 'No line records for this class.' }];
+		}
+		return [
+			...this.headerOrEmpty(),
+			...groups.map((group): LineTestsNode => ({ kind: 'prodLine', startLine: group.startLine, endLine: group.endLine, tests: group.tests, methodName: group.methodName })),
+		];
+	}
+
+	private headerOrEmpty(): LineTestsNode[] {
+		const header = this.perTestHeaderNode();
+		return header ? [header] : [];
 	}
 
 	/** Faz 34 (user request): shared by every branch that renders real perTest evidence - `undefined` when there is no run to date-stamp yet. */

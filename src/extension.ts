@@ -29,6 +29,7 @@ import { createDiagnosticCollection } from './ui/diagnostics';
 import { ExplorerBadgeProvider } from './ui/explorerBadges';
 import { applyGutterCoverage, createGutterDecorationTypes } from './ui/gutterRenderer';
 import { registerHoverProvider } from './ui/hoverProvider';
+import { registerDownloadJarCommand } from './ui/jarDownloaderUi';
 import { registerInstallSkillCommand } from './ui/skillInstaller';
 import { createStatusBarItem } from './ui/statusBar';
 import { CoverageTreeProvider } from './ui/treeViews/coverageView';
@@ -97,6 +98,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		registerExportReportCommand(output),
 		registerOpenSettingsCommand(),
 		registerInstallSkillCommand(),
+		registerDownloadJarCommand(),
 		registerPerTestForFileCommand(output, sinks),
 		registerPerTestForModuleAllCommand(output, sinks),
 		registerToggleCoverageCommand(sinks),

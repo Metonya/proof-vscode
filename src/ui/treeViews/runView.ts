@@ -46,33 +46,14 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 		const scopeText = diffModeText(diffMode, config.get<string>('baseRef'));
 		const noVcs = diffMode === 'no-vcs';
 
-		const items = [
-			// Faz 30 (§7.8): the user's explicit ask for an "easy re-run
-			// button" - always available, without having to wait for a full
-			// analyze run just because the report is missing.
-			new RunItem(
-				'Run Tests (Maven + JaCoCo)',
-				reportFreshnessText(folder),
-				'proof.runTests',
-				'run-all',
-				'Runs the tests under JaCoCo via Maven (in a visible terminal) and refreshes the report. Adds the JaCoCo plugin from the command line if the pom doesn\'t declare one - never a permanent pom change. Quick Scan runs automatically when it finishes.',
-			),
-			new RunItem(
-				'Quick Scan (overall + new code)',
-				`coverage + bad test findings · new code: ${scopeText} · ${quickScanFreshnessText(folder)}`,
-				'proof.analyze',
-				'play',
-				`Takes seconds. Computes:\n· Overall coverage (whole repo)\n· New code coverage (${scopeText})\n· Test quality findings (tests with no or weak assertions)`,
-			),
-		];
-
-		// Faz 33 (user request): "no-vcs" used to disable this item entirely,
-		// pointing only at the single-class right-click. But the whole-module,
-		// diff-independent command (`perTestForModuleAll`) never needed a diff
-		// in the first place - it lists every production class directly - so
-		// there is no real reason to disable the row here; it just needs to
+		// Faz 33 (user request): "no-vcs" used to disable Deep Scan/Mutation
+		// Testing entirely, pointing only at the single-class right-click.
+		// But the whole-module, diff-independent commands
+		// (`perTestForModuleAll`/`mutationForModuleAll`) never needed a diff
+		// in the first place - they list every production class directly -
+		// so there is no real reason to disable the row; it just needs to
 		// run that command instead of the diff-scoped one.
-		items.push(noVcs
+		const deepScanItem = noVcs
 			? new RunItem(
 				'Deep Scan (whole module, no diff)',
 				`everything Quick Scan has + which test covers which line · ${deepScanFreshnessText(folder)}`,
@@ -89,15 +70,13 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 				'DEEP SCAN IS NOT MUTATION TESTING - mutation is its own separate item below.\n\n'
 				+ `Can take minutes (reruns the tests under the PIT engine, but only to record which test touches which line - it does not mutate the code).\n\nOn top of everything Quick Scan does:\n· Which tests execute each line ("Line → Tests" view)\n· "Falsely green" lines - covered, but none of the covering tests has a real assertion\n\nScope: classes changed within ${scopeText}. Use the button on the right to scan the whole module regardless of the diff instead.`,
 				'proof.runItem.deepScan',
-			));
+			);
 
 		// Faz 20: mutation is its own item. Never auto-triggered, and the
 		// module-wide run sits behind a confirmation dialog - a single
 		// class takes seconds, a large module can take over an hour.
-		// Faz 33: same no-vcs fix as Deep Scan above - `mutationForModuleAll`
-		// needs no diff either, so it replaces the diff-scoped command here
-		// instead of disabling the row.
-		items.push(noVcs
+		// Faz 33: same no-vcs fix as Deep Scan above.
+		const mutationItem = noVcs
 			? new RunItem(
 				'Mutation Testing (whole module, no diff)',
 				`deliberately break the code, find where no test notices · ${mutationFreshnessText()}`,
@@ -118,26 +97,52 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 				+ 'TAKES A WHILE: can exceed an hour on a large module, so this asks for confirmation. A single class is usually seconds - right-click that file → "Mutation Test This Class".\n\n'
 				+ `Scope: classes changed within ${scopeText}. Results appear in the "Mutation" view. Use the button on the right to scan the whole module regardless of the diff instead.`,
 				'proof.runItem.mutation',
-			));
+			);
 
-		items.push(new RunItem(
-			'Coverage View',
-			isGutterVisible() ? 'on - click to hide' : 'off - click to show',
-			'proof.toggleCoverage',
-			isGutterVisible() ? 'eye' : 'eye-closed',
-			'Toggles the editor line colors and Explorer badges together. Does not rerun the scan.',
-		));
-
-		// Faz 34 (user request): a one-time setup action, not a scan - kept
-		// separate from the run-a-scan rows above.
-		items.push(new RunItem(
-			'Install Skill for AI Agent',
-			'Claude Code, Windsurf, Antigravity, or the portable .agents/skills',
-			'proof.installSkill',
-			'cloud-download',
-			'Fetches the current proof-java skill from GitHub and installs it for the AI coding agent of your choice, at either workspace or user scope. Always pulls the latest version - nothing is bundled with this extension.',
-		));
-		return items;
+		return [
+			// Faz 30 (§7.8): the user's explicit ask for an "easy re-run
+			// button" - always available, without having to wait for a full
+			// analyze run just because the report is missing.
+			new RunItem(
+				'Run Tests (Maven + JaCoCo)',
+				reportFreshnessText(folder),
+				'proof.runTests',
+				'run-all',
+				'Runs the tests under JaCoCo via Maven (in a visible terminal) and refreshes the report. Adds the JaCoCo plugin from the command line if the pom doesn\'t declare one - never a permanent pom change. Quick Scan runs automatically when it finishes.',
+			),
+			new RunItem(
+				'Quick Scan (overall + new code)',
+				`coverage + bad test findings · new code: ${scopeText} · ${quickScanFreshnessText(folder)}`,
+				'proof.analyze',
+				'play',
+				`Takes seconds. Computes:\n· Overall coverage (whole repo)\n· New code coverage (${scopeText})\n· Test quality findings (tests with no or weak assertions)`,
+			),
+			deepScanItem,
+			mutationItem,
+			new RunItem(
+				'Coverage View',
+				isGutterVisible() ? 'on - click to hide' : 'off - click to show',
+				'proof.toggleCoverage',
+				isGutterVisible() ? 'eye' : 'eye-closed',
+				'Toggles the editor line colors and Explorer badges together. Does not rerun the scan.',
+			),
+			// Faz 34 (user request): one-time setup actions, not scans - kept
+			// separate from the run-a-scan rows above.
+			new RunItem(
+				'Download proof-java.jar',
+				'from the latest GitHub release, workspace or user scope',
+				'proof.downloadJar',
+				'cloud-download',
+				'Downloads proof-java.jar from proof-java\'s latest GitHub release and verifies it against the published SHA-256 checksum. Installs to either this workspace or a user-wide location every workspace on this machine can find - no other setting to change afterward.',
+			),
+			new RunItem(
+				'Install Skill for AI Agent',
+				'Claude Code, Windsurf, Antigravity, or the portable .agents/skills',
+				'proof.installSkill',
+				'cloud-download',
+				'Fetches the current proof-java skill from GitHub and installs it for the AI coding agent of your choice, at either workspace or user scope. Always pulls the latest version - nothing is bundled with this extension.',
+			),
+		];
 	}
 }
 

@@ -181,6 +181,11 @@
         "icon": "$(cloud-download)"
       },
       {
+        "command": "proof.downloadJar",
+        "title": "Proof: Download proof-java.jar",
+        "icon": "$(cloud-download)"
+      },
+      {
         "command": "proof.perTestForFile",
         "title": "Proof: Which Test Covers Which Line For This Class"
       },

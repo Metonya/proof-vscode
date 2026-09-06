@@ -385,3 +385,17 @@ export async function offerToOpenSetting(message: string, settingId: string): Pr
 		await vscode.commands.executeCommand('workbench.action.openSettings', settingId);
 	}
 }
+
+/** Faz 34: the specific "no jar at all" case both `runExportReport` and `runAnalyzeCore` hit - a direct download is one click closer to working than sending the user to a setting they still have to fill in by hand. */
+export async function offerToDownloadJar(): Promise<void> {
+	const choice = await vscode.window.showErrorMessage(
+		'Proof: proof-java.jar not found. Download the latest release, or set the proof.jarPath setting if you already have one.',
+		'Download proof-java.jar',
+		'Open Setting',
+	);
+	if (choice === 'Download proof-java.jar') {
+		await vscode.commands.executeCommand('proof.downloadJar');
+	} else if (choice === 'Open Setting') {
+		await vscode.commands.executeCommand('workbench.action.openSettings', 'proof.jarPath');
+	}
+}

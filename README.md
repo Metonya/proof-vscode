@@ -86,41 +86,33 @@ with live progress on a run.
 
 ## Requirements
 
-- A JDK to build/run `proof-java` (Java 17 recommended — see the CLI's own
-  support matrix).
 - A Maven project with a JaCoCo report (`mvn verify` produces one by
   default at `target/site/jacoco/jacoco.xml`).
-- `proof-java.jar`, built from the [`proof-java`](https://github.com/Metonya/proof-java)
-  repository (`mvn -pl proof-java-cli package`). Not yet published to
-  GitHub Releases — see that repo's own README for current status.
+- `proof-java.jar` — the CLI this extension runs. See
+  [`proof-java`](https://github.com/Metonya/proof-java) for what it does,
+  how it works, and its own Java version support matrix. The extension
+  can fetch the jar for you (see Usage below); you never need to clone or
+  build that repository yourself just to use this extension.
 
 ## Installation
 
-Not yet published to the VS Code Marketplace. For now:
-
-1. Build the extension from source and package it:
-   ```bash
-   git clone https://github.com/Metonya/proof-vscode
-   cd proof-vscode
-   npm install && npm run compile
-   npx @vscode/vsce package
-   ```
-2. In VS Code: Command Palette → **Extensions: Install from VSIX...** →
-   select the generated `.vsix`.
+Not yet published to the VS Code Marketplace. For now, build it from
+source — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Usage
 
-1. Build `proof-java.jar` in your `proof-java` checkout (see
-   Requirements above).
-2. Open your project in VS Code. The extension looks for the jar in this
-   order: the `proof.jarPath` setting → `<workspace>/proof-java-cli/target/proof-java.jar`
-   → `<workspace>/.proof-java/proof-java.jar`. If none of those resolve,
-   it prompts you to locate the jar.
-3. Open the **Proof** icon in the Activity Bar. Run **Quick Scan** for
-   coverage and oracle findings, **Deep Scan** to also collect per-test
-   line evidence, or right-click a file and choose **Mutation Test This
-   Class** for mutation results on just that class.
-4. Click through the Coverage / Test Quality / Line → Tests / Mutation
+1. Open your project in VS Code and open the **Proof** icon in the
+   Activity Bar. If `proof-java.jar` isn't already on your machine, run
+   **Proof: Download proof-java.jar** (Command Palette or the Run panel)
+   — it fetches the latest release from
+   [`proof-java`](https://github.com/Metonya/proof-java), verifies it
+   against the published checksum, and installs it somewhere the
+   extension already knows to look (no setting to configure). Already
+   have a jar elsewhere? Point `proof.jarPath` at it instead.
+2. Run **Quick Scan** for coverage and oracle findings, **Deep Scan** to
+   also collect per-test line evidence, or right-click a file and choose
+   **Mutation Test This Class** for mutation results on just that class.
+3. Click through the Coverage / Test Quality / Line → Tests / Mutation
    views, or just read the gutter and hover over a line.
 
 ## Configuration
