@@ -140,6 +140,31 @@ test('a malformed perTest block (a line with no tests array) is rejected', () =>
 	assert.equal(result.ok, false);
 });
 
+test('D-86: a mutation block with interned testIds/numeric killingTests indexes resolves back to plain test-id strings', () => {
+	const doc = minimalDocument() as Record<string, unknown>;
+	doc.mutation = {
+		engine: 'pitest',
+		engineVersion: '1.15.8',
+		modules: [{
+			id: 'root',
+			testIds: ['CalcTest#addsTwoNumbers()', 'CalcTest#subtractsTwoNumbers()'],
+			methods: [{
+				className: 'dev.proofjava.playground.Calculator',
+				methodName: 'add',
+				methodDescription: '(II)I',
+				firstLine: 6,
+				lastLine: 8,
+				mutants: [{ mutator: 'PrimitiveReturnsMutator', line: 7, status: 'KILLED', killingTests: [1, 0] }],
+			}],
+		}],
+	};
+	const result = parseVerdict(JSON.stringify(doc));
+	assert.equal(result.ok, true);
+	if (result.ok) {
+		assert.deepEqual(result.value.mutation?.modules[0].methods[0].mutants[0].killingTests, ['CalcTest#subtractsTwoNumbers()', 'CalcTest#addsTwoNumbers()']);
+	}
+});
+
 test('coverage.newCode as a real metricSet (a diff that ran fine) parses through', () => {
 	const freshMetric = { numeratorName: 'a', numerator: 1, denominatorName: 'b', denominator: 4, percent: 25 };
 	const doc = minimalDocument() as Record<string, unknown>;

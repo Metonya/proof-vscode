@@ -56,8 +56,11 @@ export function parseVerdict(raw: string): Result<VerdictDocument> {
 			return { ok: false, error: 'perTest is present but malformed' };
 		}
 	}
-	if ('mutation' in json && !isMutationBlock(json.mutation)) {
-		return { ok: false, error: 'mutation is present but malformed' };
+	if ('mutation' in json) {
+		resolveInternedMutationTestIds(json.mutation);
+		if (!isMutationBlock(json.mutation)) {
+			return { ok: false, error: 'mutation is present but malformed' };
+		}
 	}
 	return { ok: true, value: json };
 }
@@ -216,6 +219,30 @@ function isPerTestLine(value: unknown): value is PerTestLine {
 	return isRecord(value)
 		&& typeof value.line === 'number'
 		&& Array.isArray(value.tests) && value.tests.every((t) => typeof t === 'string');
+}
+
+/** D-86 (see `resolveInternedTestIds` above): the same test-id interning applies to `mutation.modules[].methods[].mutants[].killingTests`, resolved back here the same way so `Mutant.killingTests` stays `readonly string[]` for every consumer. */
+function resolveInternedMutationTestIds(value: unknown): void {
+	if (!isRecord(value) || !Array.isArray(value.modules)) {
+		return;
+	}
+	for (const mutationModule of value.modules) {
+		if (!isRecord(mutationModule) || !Array.isArray(mutationModule.testIds) || !Array.isArray(mutationModule.methods)) {
+			continue;
+		}
+		const testIds = mutationModule.testIds;
+		for (const method of mutationModule.methods) {
+			if (!isRecord(method) || !Array.isArray(method.mutants)) {
+				continue;
+			}
+			for (const mutant of method.mutants) {
+				if (!isRecord(mutant) || !Array.isArray(mutant.killingTests)) {
+					continue;
+				}
+				mutant.killingTests = mutant.killingTests.map((index: unknown) => (typeof index === 'number' ? testIds[index] : index));
+			}
+		}
+	}
 }
 
 /** Faz 25 (§7.5): `extension.ts`'in kendi `mutation-current.json`'ını doğrularken de kullanılıyor - CLI'ın `mutation` bloğuyla aynı şema, iki ayrı validator tutmamak için dışa açıldı. */
