@@ -1,9 +1,9 @@
 {
   "name": "proof-vscode",
-  "displayName": "proof-java",
-  "description": "proof-java CLI tarafından üretilen satır içi kapsama görünümü, satır bazlı test kanıtı ve mutasyon bulguları.",
+  "displayName": "Proof",
+  "description": "Runs the proof CLI (currently proof-java) and renders its verdict: inline coverage gutter, per-line test evidence, and mutation findings.",
   "version": "0.0.1",
-  "publisher": "proof-java",
+  "publisher": "proof",
   "private": true,
   "repository": {
     "type": "git",

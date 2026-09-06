@@ -11,8 +11,9 @@ real reason to distribute this.
 **Start here: [`docs/PLAN.md`](docs/PLAN.md)** - the single handoff document.
 It covers what the CLI contract is, how this extension is built and tested,
 which rules are never broken, what works today, and what is still open.
-[`docs/NOTES.md`](docs/NOTES.md) is the chronological log behind those
-decisions; `PLAN.md` wins where they disagree.
+[`docs/archive/PLAN-HISTORY.md`](docs/archive/PLAN-HISTORY.md) and
+[`docs/archive/NOTES-HISTORY.md`](docs/archive/NOTES-HISTORY.md) are the
+chronological logs behind those decisions; `PLAN.md` wins where they disagree.
 
 Faz 21 done (2026-08-28): the extension runs proof-java, renders Explorer
 coverage badges and an editor gutter through its own decoration types
