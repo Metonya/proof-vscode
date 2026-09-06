@@ -233,3 +233,34 @@ test('parseSettingsGradleProjectPaths: only real call sites with literal strings
 
 	assert.deepEqual(paths, [':a', ':b:c']);
 });
+
+/**
+ * Real text from Google's Now in Android settings file. These are
+ * `RepositoryContentDescriptor` methods inside `repositories { content { } }`
+ * - artifact filters, not projects. Reading them as projects put a path
+ * containing `*` into the module list, which killed the CLI outright on
+ * Windows and would have put nonsense rows in the module picker here.
+ */
+test('discoverModuleRootsFromSettingsGradle: repository content filters are not projects', () => {
+	const modules = discoverModuleRootsFromSettingsGradle([
+		'pluginManagement {',
+		'  repositories {',
+		'    google {',
+		'      content {',
+		'        includeGroupByRegex("com\\.android.*")',
+		'        includeModule("com.example", "lib")',
+		'        includeVersionByRegex("com.example", "lib", "1\\..*")',
+		'      }',
+		'    }',
+		'  }',
+		'}',
+		'include(":app")',
+	].join('\n'));
+
+	assert.deepEqual(modules, [{ id: 'app', root: 'app' }]);
+});
+
+test('discoverModuleRootsFromSettingsGradle: a value that cannot name a directory is skipped, not offered as a module', () => {
+	const modules = discoverModuleRootsFromSettingsGradle('include("glob*pattern")\ninclude(":real")\n');
+	assert.deepEqual(modules.map((m) => m.root), ['real']);
+});

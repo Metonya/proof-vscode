@@ -109,13 +109,24 @@ export function discoverModuleRootsFromPoms(repoRelativePomPaths: readonly strin
 
 /**
  * Matches `include` and any same-purpose wrapper function whose name starts
- * with it (`includeProject(...)`), excluding two real Gradle APIs that are
- * not subprojects of this build: `includeBuild` (a composite build - a
- * separate Gradle root with its own lifecycle) and `includeFlat` (a project
- * whose directory is a *sibling* of the root, i.e. `../name`, which a
- * repo-relative path cannot express at all). Both exclusions are
- * prefix-exact - the trailing `\b` keeps a user wrapper like
- * `includeFlattenedModules(...)` matched.
+ * with it (`includeProject(...)`), excluding real Gradle APIs that are not
+ * subprojects of this build:
+ *
+ * - `includeBuild` - a composite build, a separate Gradle root with its own
+ *   lifecycle.
+ * - `includeFlat` - a project whose directory is a *sibling* of the root
+ *   (`../name`), which a repo-relative path cannot express at all.
+ * - `includeGroup`/`includeModule`/`includeVersion` (and their `ByRegex` /
+ *   `AndSubgroups` variants) - `RepositoryContentDescriptor` methods used
+ *   inside `repositories { content { } }` to filter which artifacts a
+ *   repository may serve. Google's own Now in Android settings file has
+ *   `includeGroupByRegex("com\\.android.*")`, which this read as a project
+ *   until it did not.
+ *
+ * The first two exclusions are prefix-exact (the trailing `\b` keeps a user
+ * wrapper like `includeFlattenedModules(...)` matched); the content-filter
+ * names are matched more broadly, since every real variant continues the
+ * word.
  *
  * Deliberately identical to `GradleProjectScanner.java`'s own INCLUDE_KEYWORD
  * in the CLI: the two run on the same settings files and must agree about
@@ -123,7 +134,7 @@ export function discoverModuleRootsFromPoms(repoRelativePomPaths: readonly strin
  * repeated group over an unbounded string is the catastrophic-backtracking
  * shape both sides avoid).
  */
-const GRADLE_INCLUDE_KEYWORD = /\binclude(?!Build\b)(?!Flat\b)[A-Za-z]*\b/;
+const GRADLE_INCLUDE_KEYWORD = /\binclude(?!Build\b)(?!Flat\b)(?!Group)(?!Module)(?!Version)[A-Za-z]*\b/;
 const GRADLE_QUOTED_ARG = /['"]([^'"]+)['"]/g;
 
 /**
@@ -163,12 +174,24 @@ export function discoverModuleRootsFromSettingsGradle(settingsText: string, incl
 	const roots: string[] = includeRootProject ? ['.'] : [];
 	for (const gradlePath of parseSettingsGradleProjectPaths(settingsText)) {
 		const root = (gradlePath.startsWith(':') ? gradlePath.slice(1) : gradlePath).replaceAll(':', '/');
-		if (root.length === 0 || isEscapingRepoRoot(root) || roots.includes(root)) {
+		if (root.length === 0 || isEscapingRepoRoot(root) || !isPlausibleDirectoryPath(root) || roots.includes(root)) {
 			continue;
 		}
 		roots.push(root);
 	}
 	return assignIds(roots);
+}
+
+/**
+ * A quoted string on an `include`-ish line is not automatically a directory
+ * name: a glob or regex character means the line was something else (a
+ * dependency filter, a version pattern), and those characters are not even
+ * legal in a Windows path. The CLI's own scanner carries the identical
+ * check - there it stops an `InvalidPathException` from killing the whole
+ * `doctor` run, here it stops a nonsense row appearing in the module picker.
+ */
+function isPlausibleDirectoryPath(candidate: string): boolean {
+	return !/[*?"<>|]/.test(candidate) && ![...candidate].some((c) => c.charCodeAt(0) < 0x20);
 }
 
 /** Pure segment check, the TypeScript twin of the CLI's `RepoPaths.isEscapingRepoRoot` - an absolute path, or one that climbs above the repo root once `.`/`..` collapse, is never a module of this repo. */
