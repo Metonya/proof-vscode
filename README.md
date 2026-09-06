@@ -89,8 +89,10 @@ with live progress on a run.
 - A Maven or Gradle project with a JaCoCo report. Quick Scan finds either
   `target/site/jacoco/jacoco.xml` (Maven) or
   `build/reports/jacoco/test/jacocoTestReport.xml` (Gradle) automatically.
-  Gradle support is coverage-only today: the **Run Tests** button, Deep
-  Scan, and Mutation Testing still assume Maven. See
+  **Run Tests**, Deep Scan, and Mutation Testing all work for a plain-Java
+  Gradle project too, provided it has a committed Gradle Wrapper
+  (`gradlew`/`gradlew.bat`) - this extension only ever runs a project's
+  own pinned wrapper, never a bare `gradle` on PATH. See
   [`proof-java`](https://github.com/Metonya/proof-java)'s own README for
   the full build-tool support matrix (including Android/Kotlin gaps).
 - `proof-java.jar`: the CLI this extension runs. See
