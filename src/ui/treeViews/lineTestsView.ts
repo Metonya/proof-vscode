@@ -101,7 +101,7 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 				return prodTestItem(node);
 			case 'testMethod': {
 				const item = new vscode.TreeItem(`${node.methodName}()`, vscode.TreeItemCollapsibleState.Collapsed);
-				item.description = `${node.refs.length} production satırı`;
+				item.description = `${node.refs.length} production line(s)`;
 				item.iconPath = new vscode.ThemeIcon('symbol-method');
 				return item;
 			}
@@ -174,7 +174,7 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 			// production sınıflarını hedefleyen bir koşu. Yanlış düğmeye
 			// yönlendirmektense ne yapılacağını söylüyoruz.
 			if (this.activeDocument && this.classifyActiveDocument(this.activeDocument) === 'test') {
-				return [{ kind: 'empty', message: 'Bu test sınıfının bu koşuda çalıştırdığı production satırı kaydı yok. Ters yön ancak production sınıfları hedeflenmiş bir koşuda dolar: bir production dosyası açıp "Bu Sınıf İçin Topla" deyin ya da Derin Tarama çalıştırın.' }];
+				return [{ kind: 'empty', message: 'This test class has no record of production lines it ran in this scan. The reverse direction only fills in from a run that targeted production classes: open a production file and use "Collect For This Class", or run Deep Scan.' }];
 			}
 			const nodes: LineTestsNode[] = [{ kind: 'empty', message: noPerTestDataMessage() }, { kind: 'collectHint' }];
 			if (hasNoChangedTargetsWarning()) {
@@ -187,7 +187,7 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 			const groups = groupConsecutiveLines(view.linesToTests, view.linesToMethod)
 				.filter((group) => !this.problemsOnly || hasProblem(group.tests, findingsByTestMethod));
 			if (groups.length === 0) {
-				return [{ kind: 'empty', message: this.problemsOnly ? 'Bu dosyada sorunlu satır yok - cover eden her testin doğrulaması var. (Filtreyi kaldırmak için başlıktaki süzgece tıklayın.)' : 'Bu sınıf için satır kaydı yok.' }];
+				return [{ kind: 'empty', message: this.problemsOnly ? 'No problem lines in this file - every covering test has an assertion. (Click the title-bar filter to remove this filter.)' : 'No line records for this class.' }];
 			}
 			return groups.map((group): LineTestsNode => ({ kind: 'prodLine', startLine: group.startLine, endLine: group.endLine, tests: group.tests, methodName: group.methodName }));
 		}
@@ -196,7 +196,7 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 			.filter(([key]) => key.startsWith(`${view.className}#`))
 			.map(([key, refs]): LineTestsNode => ({ kind: 'testMethod', methodName: key.slice(view.className.length + 1, -2), refs }));
 		return methods.length === 0
-			? [{ kind: 'empty', message: 'Bu sınıfın hiçbir test metodu bu koşuda hedeflenen production kodunu çalıştırmadı.' }]
+			? [{ kind: 'empty', message: 'No test method in this class ran the production code targeted in this run.' }]
 			: methods;
 	}
 
@@ -224,8 +224,8 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 			return [{
 				kind: 'empty',
 				message: this.problemsOnly
-					? 'Sorunlu satır yok - cover eden her testin doğrulaması var. (Filtreyi kaldırmak için başlıktaki süzgece tıklayın.)'
-					: 'Bu koşuda hiçbir sınıf için satır kaydı yok.',
+					? 'No problem lines - every covering test has an assertion. (Click the title-bar filter to remove this filter.)'
+					: 'No line records for any class in this run.',
 			}];
 		}
 		return classes.map((c): LineTestsNode => ({ kind: 'class', className: c.className, linesToTests: c.linesToTests, linesToMethod: c.linesToMethod }));
@@ -321,27 +321,27 @@ function hasProblem(tests: readonly string[], findingsByTestMethod: ReturnType<t
 
 /** Faz 31: "ben değişiklik yapmadan tüm repoda tarama yapabilmeliyim" - diff hiç hedef bulamadığında sunulan kurtarma eylemi, `proof.perTestForModuleAll`. */
 function scanAllHintItem(): vscode.TreeItem {
-	const item = new vscode.TreeItem('Yine de Tüm Modülü Tara (diff\'siz)', vscode.TreeItemCollapsibleState.None);
+	const item = new vscode.TreeItem('Scan Whole Module Anyway (no diff)', vscode.TreeItemCollapsibleState.None);
 	item.iconPath = new vscode.ThemeIcon('play');
-	item.command = { command: 'proof.perTestForModuleAll', title: 'Tüm Modülü Tara' };
+	item.command = { command: 'proof.perTestForModuleAll', title: 'Scan Whole Module' };
 	// Faz 31: real gson dogfood - 80 classes in one run outran the CLI's
 	// default 120s per-test budget (PIT minion force-killed mid-collection).
 	// proof.perTestTimeout now exists specifically for this.
-	item.tooltip = 'Diff\'ten bağımsız, bu modüldeki her production sınıfını hedefler - modül büyükse (onlarca sınıf) proof.perTestTimeout ayarını (varsayılan 120s) artırmanız gerekebilir, aksi hâlde PER_TEST_COLLECTION_FAILED ile durabilir.';
+	item.tooltip = 'Targets every production class in this module regardless of the diff - for a large module (dozens of classes) you may need to raise proof.perTestTimeout (default 120s), or it can stop with PER_TEST_COLLECTION_FAILED.';
 	return item;
 }
 
 function collectHintItem(): vscode.TreeItem {
-	const item = new vscode.TreeItem('Bu Sınıf İçin Topla', vscode.TreeItemCollapsibleState.None);
+	const item = new vscode.TreeItem('Collect For This Class', vscode.TreeItemCollapsibleState.None);
 	item.iconPath = new vscode.ThemeIcon('play');
-	item.command = { command: 'proof.perTestForFile', title: 'Bu Sınıf İçin Topla' };
+	item.command = { command: 'proof.perTestForFile', title: 'Collect For This Class' };
 	return item;
 }
 
-/** Faz 31: "tüm sınıflar" kökündeki bir sınıf düğümü - `mutationView.ts`'in `classItem`'ıyla aynı üslup. */
+/** Faz 31: a class node under the "all classes" root - same style as `mutationView.ts`'s `classItem`. */
 function classItem(node: Extract<LineTestsNode, { kind: 'class' }>): vscode.TreeItem {
 	const item = new vscode.TreeItem(shortName(node.className), vscode.TreeItemCollapsibleState.Collapsed);
-	item.description = `${node.linesToTests.size} satır`;
+	item.description = `${node.linesToTests.size} line(s)`;
 	item.iconPath = new vscode.ThemeIcon('symbol-class');
 	item.tooltip = node.className;
 	item.contextValue = 'proof.lineTestsClass';
@@ -352,7 +352,7 @@ function prodLineItem(node: Extract<LineTestsNode, { kind: 'prodLine' }>): vscod
 	const findingsByTestMethod = indexFindingsByTestMethod(getCoverageState()?.findings ?? []);
 	const quality = lineQuality(node.tests, findingsByTestMethod);
 	const weak = quality.byVerdict.noOracle + quality.byVerdict.weak;
-	const baseLabel = node.startLine === node.endLine ? `Satır ${node.startLine}` : `Satır ${node.startLine}-${node.endLine}`;
+	const baseLabel = node.startLine === node.endLine ? `Line ${node.startLine}` : `Line ${node.startLine}-${node.endLine}`;
 	// Faz 24 (§7.6 madde 4): gerçek `methodName` bilgisi biliniyorsa etikete
 	// eklenir - JaCoCo/PIT bir sınıfın tek satırlık `<init>()`ını (parametresiz
 	// constructor kodu yoksa) sınıf bildirim satırına yazar, o satır da her
@@ -362,14 +362,14 @@ function prodLineItem(node: Extract<LineTestsNode, { kind: 'prodLine' }>): vscod
 	// gerçek veri.
 	const label = node.methodName ? `${baseLabel} · ${node.methodName}()` : baseLabel;
 	const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Collapsed);
-	item.description = weak > 0 ? `${node.tests.length} test (${weak} oracle'sız/zayıf)` : `${node.tests.length} test`;
+	item.description = weak > 0 ? `${node.tests.length} test(s) (${weak} oracleless/weak)` : `${node.tests.length} test(s)`;
 	item.iconPath = new vscode.ThemeIcon(quality.isFalseGreen ? 'warning' : 'circle-filled', quality.isFalseGreen ? new vscode.ThemeColor('editorWarning.foreground') : undefined);
 	const tooltipParts: string[] = [];
 	if (node.methodName === '<init>' && node.startLine === node.endLine) {
-		tooltipParts.push('Bu satır constructor\'a (`<init>()`) ait - nesne oluşturan her test bu satırı da kapsar, yüksek test sayısı bundan kaynaklanıyor olabilir.');
+		tooltipParts.push('This line belongs to the constructor (`<init>()`) - every test that creates an instance also covers this line, which may explain the high test count.');
 	}
 	if (quality.isFalseGreen) {
-		tooltipParts.push('Bu satırı kapsayan hiçbir testin oracle\'ı yok - kapsama yeşil ama satır gerçekte doğrulanmıyor.');
+		tooltipParts.push('None of the tests covering this line has an oracle - it\'s covered (green), but not actually verified.');
 	}
 	if (tooltipParts.length > 0) {
 		item.tooltip = new vscode.MarkdownString(tooltipParts.join('\n\n'));
@@ -398,7 +398,7 @@ async function prodTestItem(node: Extract<LineTestsNode, { kind: 'prodTest' }>):
 	if (contradiction) {
 		tooltipParts.push(
 			'---\n\n'
-			+ `**Mutasyon kanıtı bunu çürütüyor:** statik analiz bu testi çözemedi, ama bu test gerçekten \`${contradiction.className}#${contradiction.methodName}${contradiction.methodDescription}\`'in bir mutantını (satır ${contradiction.mutantLine}) öldürdü - davranışı gerçekten gözlüyor. Sağ tık → "Mutasyon Ağacında Göster".`,
+			+ `**Mutation evidence contradicts this:** static analysis couldn't resolve this test, but it genuinely killed a mutant of \`${contradiction.className}#${contradiction.methodName}${contradiction.methodDescription}\` (line ${contradiction.mutantLine}) - it does observe behavior. Right-click → "Show in Mutation Tree".`,
 		);
 	}
 	if (tooltipParts.length > 0) {
@@ -417,7 +417,7 @@ async function prodTestItem(node: Extract<LineTestsNode, { kind: 'prodTest' }>):
 			const uri = vscode.Uri.file(toAbsolutePath(state.workspaceRoot, path));
 			const startLine = node.finding?.startLine ?? 1;
 			const selection = new vscode.Range(startLine - 1, 0, startLine - 1, 0);
-			item.command = { command: 'vscode.open', title: 'Test Dosyasını Aç', arguments: [uri, { selection }] };
+			item.command = { command: 'vscode.open', title: 'Open Test File', arguments: [uri, { selection }] };
 		}
 	}
 	item.contextValue = contradiction ? 'proof.prodTest.contradiction' : 'proof.prodTest';
@@ -438,7 +438,7 @@ function testLineItem(node: Extract<LineTestsNode, { kind: 'testLine' }>): vscod
 	if (state && path) {
 		const uri = vscode.Uri.file(toAbsolutePath(state.workspaceRoot, path));
 		const selection = new vscode.Range(node.ref.line - 1, 0, node.ref.line - 1, 0);
-		item.command = { command: 'vscode.open', title: 'Dosyayı Aç', arguments: [uri, { selection }] };
+		item.command = { command: 'vscode.open', title: 'Open File', arguments: [uri, { selection }] };
 	}
 	return item;
 }
@@ -489,13 +489,13 @@ function noPerTestDataMessage(): string {
 
 	const truncated = warningFor('PER_TEST_TRUNCATED');
 	if (truncated) {
-		return `Bu modül için test bazlı kanıt düşürüldü: ${truncated.message} Gösterilenler eksik olabilir - "bu satırı hiçbir test kapsamıyor" anlamına gelmez.`;
+		return `Per-test evidence for this module was truncated: ${truncated.message} What's shown may be incomplete - it does not mean "no test covers this line".`;
 	}
 	if (warningFor('PER_TEST_NO_CHANGED_TARGETS')) {
-		return 'Bu koşuda hiçbir sınıf değişmemiş, bu yüzden test bazlı kanıt boş - bu bir hata değil: L2 sadece diff\'te değişen production sınıflarını hedefler. '
-			+ 'Bu dosyada gerçek bir değişiklik yapıp tekrar tarayın, proof.diffMode\'u "base" yapıp proof.baseRef\'e bu sınıfın değiştiği bir commit/branch girin, ya da aşağıdaki düğmeyle diff\'ten bağımsız tüm modülü tarayın.';
+		return 'No class changed in this run, so per-test evidence is empty - this isn\'t an error: L2 only targets production classes that changed in the diff. '
+			+ 'Make a real change to this file and scan again, set proof.diffMode to "base" with proof.baseRef pointing at a commit/branch where this class changed, or use the button below to scan the whole module regardless of the diff.';
 	}
-	return 'Bu sınıf için test bazlı kanıt yok.';
+	return 'No per-test evidence for this class.';
 }
 
 /** Faz 31: `PER_TEST_NO_CHANGED_TARGETS` tam olarak buysa `'scanAllHint'` düğümü ekleniyor - başka bir `noPerTestData` sebebinde (kanıt kesildi, hiç kanıt yok) diff'siz tüm modül taraması bir çözüm değil. */

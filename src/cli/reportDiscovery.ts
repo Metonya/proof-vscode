@@ -179,6 +179,6 @@ export function isProjectRoot(presentMarkers: readonly string[]): boolean {
  * way to prefer one independent repo over another.
  */
 export function describeSiblingProjects(projectDirNames: readonly string[]): string {
-	return `proof-java: bu klasör kendisi tek bir proje değil - içinde ${projectDirNames.length} farklı proje bulundu: ${projectDirNames.join(', ')}. Analiz etmek istediğiniz projeyi VS Code'da ayrı bir workspace kökü olarak açın (File > Open Folder).`;
+	return `Proof: this folder is not itself a single project - found ${projectDirNames.length} different project(s) inside it: ${projectDirNames.join(', ')}. Open the project you want to analyze as a separate workspace root in VS Code (File > Open Folder).`;
 }
 

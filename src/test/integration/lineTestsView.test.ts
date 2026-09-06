@@ -230,7 +230,7 @@ suite('Line tests view (Faz 15c)', () => {
 			assert.equal(roots[0].methodName, '<init>');
 		}
 		const item = await provider.getTreeItem(roots[0]);
-		assert.match(String(item.label), /<init>\(\)/, 'the label must name the method the line belongs to, not just "Satır 4"');
+		assert.match(String(item.label), /<init>\(\)/, 'the label must name the method the line belongs to, not just "Line 4"');
 		assert.ok(item.tooltip, 'a constructor-attributed line must explain why its test count looks high');
 		assert.match(String((item.tooltip as { value?: string })?.value ?? item.tooltip), /constructor/i);
 	});
@@ -312,19 +312,19 @@ suite('Line tests view (Faz 15c)', () => {
 		const provider = new LineTestsTreeProvider();
 		provider.setActiveDocument(document);
 
-		assert.equal(provider.getChildren().length, 2, 'filtre kapalıyken iki satır da görünür');
-		assert.equal(provider.isProblemsOnly(), false, 'varsayılan: hiçbir şey gizlenmez');
+		assert.equal(provider.getChildren().length, 2, 'both lines are visible while the filter is off');
+		assert.equal(provider.isProblemsOnly(), false, 'default: nothing is hidden');
 
 		assert.equal(provider.toggleProblemsOnly(), true);
 		const filtered = provider.getChildren();
-		assert.equal(filtered.length, 1, 'doğrulaması olan testin kapsadığı satır gizlenir');
+		assert.equal(filtered.length, 1, 'the line covered by the test with an assertion is hidden');
 		assert.equal(filtered[0].kind, 'prodLine');
 		if (filtered[0].kind === 'prodLine') {
 			assert.equal(filtered[0].startLine, 37);
 		}
 
 		provider.toggleProblemsOnly();
-		assert.equal(provider.getChildren().length, 2, 'tekrar açınca hepsi geri gelir');
+		assert.equal(provider.getChildren().length, 2, 'everything comes back when toggled off again');
 	});
 
 	test('test file (reverse direction): test-method node -> production-line leaf', async () => {
@@ -399,7 +399,7 @@ suite('Line tests view (Faz 15c)', () => {
 		provider.setActiveDocument(document);
 
 		const roots = provider.getChildren();
-		assert.ok(roots.every((n) => n.kind !== 'prodLine'), 'a test file must never render production-direction "Satır N" nodes');
+		assert.ok(roots.every((n) => n.kind !== 'prodLine'), 'a test file must never render production-direction "Line N" nodes');
 		assert.equal(roots.length, 1);
 		assert.equal(roots[0].kind, 'testMethod');
 		if (roots[0].kind === 'testMethod') {
@@ -497,7 +497,7 @@ suite('Line tests view (Faz 15c)', () => {
 		const item = await provider.getTreeItem(prodTest);
 		assert.equal(item.contextValue, 'proof.prodTest.contradiction');
 		const tooltip = String((item.tooltip as vscode.MarkdownString).value);
-		assert.match(tooltip, /Mutasyon kanıtı bunu çürütüyor/);
+		assert.match(tooltip, /Mutation evidence contradicts this/);
 		assert.match(tooltip, /add\(II\)I/);
 	});
 

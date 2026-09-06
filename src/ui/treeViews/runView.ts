@@ -37,7 +37,7 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 	getChildren(): RunItem[] {
 		const folder = vscode.workspace.workspaceFolders?.[0];
 		if (!folder) {
-			return [new RunItem('Önce bir klasör açın', undefined, undefined, 'warning')];
+			return [new RunItem('Open a folder first', undefined, undefined, 'warning')];
 		}
 
 		const config = vscode.workspace.getConfiguration('proof', folder);
@@ -45,95 +45,95 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 		const scopeText = diffModeText(diffMode, config.get<string>('baseRef'));
 
 		const items = [
-			// Faz 30 (§7.8): kullanıcının açıkça istediği "kolay tekrar koşma
-			// düğmesi" - her zaman erişilebilir, rapor eksikken de dolu bir
-			// analiz koşusu beklemek zorunda kalmadan.
+			// Faz 30 (§7.8): the user's explicit ask for an "easy re-run
+			// button" - always available, without having to wait for a full
+			// analyze run just because the report is missing.
 			new RunItem(
-				'Testleri Çalıştır',
+				'Run Tests',
 				reportFreshnessText(folder),
 				'proof.runTests',
 				'run-all',
-				'Maven ile testleri JaCoCo altında çalıştırır (görünür bir terminalde) ve raporu tazeler. Pom\'da JaCoCo eklentisi yoksa proof-java komut satırından ekler, kalıcı bir pom değişikliği yapmaz. Bitince Hızlı Tarama otomatik çalışır.',
+				'Runs the tests under JaCoCo via Maven (in a visible terminal) and refreshes the report. Adds the JaCoCo plugin from the command line if the pom doesn\'t declare one - never a permanent pom change. Quick Scan runs automatically when it finishes.',
 			),
 			new RunItem(
-				'Hızlı Tarama',
-				`coverage + kötü test bulguları · yeni kod: ${scopeText}`,
+				'Quick Scan',
+				`coverage + bad test findings · new code: ${scopeText}`,
 				'proof.analyze',
 				'play',
-				`Saniyeler sürer. Şunları hesaplar:\n· Genel coverage (tüm repo)\n· Yeni kod coverage (${scopeText})\n· Test kalitesi bulguları (doğrulaması olmayan/zayıf testler)`,
+				`Takes seconds. Computes:\n· Overall coverage (whole repo)\n· New code coverage (${scopeText})\n· Test quality findings (tests with no or weak assertions)`,
 			),
 		];
 
 		if (diffMode === 'no-vcs') {
 			items.push(new RunItem(
-				'Derin Tarama',
-				'no-vcs modunda kullanılamaz - bir diff gerektirir',
+				'Deep Scan',
+				'unavailable in no-vcs mode - requires a diff',
 				undefined,
 				'circle-slash',
-				'Derin tarama, hangi testin hangi satırı çalıştırdığını yalnızca diff\'te değişen sınıflar için toplayabilir; "no-vcs" modunda değişen dosya kavramı olmadığı için hedefleyecek sınıf yok.\n\nTek bir sınıf için diff\'siz toplamak isterseniz: o dosyada sağ tık → "Bu Sınıf İçin Hangi Test Hangi Satırı Kapsıyor".',
+				'Deep Scan can only collect which test runs which line for classes that changed in a diff; in "no-vcs" mode there\'s no concept of a changed file, so there\'s nothing to target.\n\nTo collect this for a single class without a diff: right-click that file → "Which Test Covers Which Line For This Class".',
 			));
 		} else {
 			items.push(new RunItem(
-				'Derin Tarama',
-				'hızlı taramanın her şeyi + hangi test hangi satırı cover ediyor',
+				'Deep Scan',
+				'everything Quick Scan has + which test covers which line',
 				'proof.analyzePerTest',
 				'beaker',
-				'DERİN TARAMA MUTASYON TESTİ DEĞİLDİR - mutasyon ayrı bir madde (aşağıda).\n\n'
-				+ `Dakikalar sürebilir (testleri PIT motoru altında yeniden çalıştırır, ama sadece hangi testin hangi satıra dokunduğunu kaydetmek için - kodu mutasyona uğratmaz).\n\nHızlı taramanın her şeyine ek olarak:\n· Her satırı hangi testlerin çalıştırdığı ("Satır → Testler" görünümü)\n· "Yalancı yeşil" satırlar - covered ama cover eden hiçbir testin doğrulaması yok\n\nKapsam: ${scopeText} içinde değişen sınıflar.`,
+				'DEEP SCAN IS NOT MUTATION TESTING - mutation is its own separate item below.\n\n'
+				+ `Can take minutes (reruns the tests under the PIT engine, but only to record which test touches which line - it does not mutate the code).\n\nOn top of everything Quick Scan does:\n· Which tests execute each line ("Line → Tests" view)\n· "Falsely green" lines - covered, but none of the covering tests has a real assertion\n\nScope: classes changed within ${scopeText}.`,
 			));
 		}
 
-		// Faz 20: mutasyon ayrı bir madde. Asla otomatik tetiklenmiyor ve
-		// modül geneli koşu bir onay diyaloğunun arkasında - tek sınıf
-		// saniyeler sürerken büyük bir modül bir saati aşabiliyor.
+		// Faz 20: mutation is its own item. Never auto-triggered, and the
+		// module-wide run sits behind a confirmation dialog - a single
+		// class takes seconds, a large module can take over an hour.
 		items.push(diffMode === 'no-vcs'
 			? new RunItem(
-				'Mutasyon Testi',
-				'modül geneli no-vcs modunda kullanılamaz - tek sınıf için sağ tık',
+				'Mutation Testing',
+				'module-wide is unavailable in no-vcs mode - right-click for a single class',
 				undefined,
 				'circle-slash',
-				'Modül geneli mutasyon, hedeflerini diff\'te değişen production sınıflarından türetir; "no-vcs" modunda değişen dosya kavramı olmadığı için hedef yok.\n\nTek bir sınıf için bu modda da çalışır: o dosyada sağ tık → "Bu Sınıf İçin Mutasyon Testi".',
+				'Module-wide mutation derives its targets from production classes that changed in a diff; in "no-vcs" mode there\'s no concept of a changed file, so there\'s no target.\n\nThis still works for a single class in this mode: right-click that file → "Mutation Test This Class".',
 			)
 			: new RunItem(
-				'Mutasyon Testi',
-				'kodu kasten boz, hiçbir testin fark etmediği yerleri bul',
+				'Mutation Testing',
+				'deliberately break the code, find where no test notices',
 				'proof.mutationForModule',
 				'zap',
-				'GERÇEK MUTASYON TESTİ (Derin Tarama\'dan farklı).\n\n'
-				+ 'Kodun küçük varyantlarını ("mutant") üretip testleri tekrar koşar. Bir mutant hayatta kaldıysa kodu bozduk ve hiçbir test fark etmedi - o davranışı doğrulayan bir assertion eksik demektir.\n\n'
-				+ 'UZUN SÜRER: büyük bir modülde bir saati aşabilir, onay isteyecek. Tek bir sınıf genelde saniyeler sürer - o dosyada sağ tık → "Bu Sınıf İçin Mutasyon Testi".\n\n'
-				+ `Kapsam: ${scopeText} içinde değişen sınıflar. Sonuçlar "Mutasyon" görünümünde.`,
+				'REAL MUTATION TESTING (different from Deep Scan).\n\n'
+				+ 'Generates small variants ("mutants") of the code and reruns the tests. If a mutant survives, we broke the code and no test noticed - meaning an assertion verifying that behavior is missing.\n\n'
+				+ 'TAKES A WHILE: can exceed an hour on a large module, so this asks for confirmation. A single class is usually seconds - right-click that file → "Mutation Test This Class".\n\n'
+				+ `Scope: classes changed within ${scopeText}. Results appear in the "Mutation" view.`,
 			),
 			new RunItem(
-				'Coverage Görünümü',
-				isGutterVisible() ? 'açık - gizlemek için tıklayın' : 'kapalı - göstermek için tıklayın',
+				'Coverage View',
+				isGutterVisible() ? 'on - click to hide' : 'off - click to show',
 				'proof.toggleCoverage',
 				isGutterVisible() ? 'eye' : 'eye-closed',
-				'Editördeki satır renklerini ve Dosya Gezgini rozetlerini birlikte açar/kapatır. Yeniden tarama yapmaz.',
+				'Toggles the editor line colors and Explorer badges together. Does not rerun the scan.',
 			));
 		return items;
 	}
 }
 
-/** Best-effort: the configured report's own mtime, the same "is this stale?" signal `--file-coverage`-driven staleness already relies on elsewhere. A missing report is not an error here, just "henüz yok" (hard rule 3a: absence gets its own state, not a guess). */
+/** Best-effort: the configured report's own mtime, the same "is this stale?" signal `--file-coverage`-driven staleness already relies on elsewhere. A missing report is not an error here, just its own "not yet" state (hard rule 3a: absence gets its own state, not a guess). */
 function reportFreshnessText(folder: vscode.WorkspaceFolder): string {
 	const reportPath = vscode.workspace.getConfiguration('proof', folder).get<string>('reportPath') || 'target/site/jacoco/jacoco.xml';
 	try {
 		const stat = fs.statSync(path.join(folder.uri.fsPath, reportPath));
-		return `rapor: ${formatRelativeTime(stat.mtimeMs, Date.now())}`;
+		return `report: ${formatRelativeTime(stat.mtimeMs, Date.now())}`;
 	} catch {
-		return 'rapor: henüz yok';
+		return 'report: not yet generated';
 	}
 }
 
 function diffModeText(diffMode: string, baseRef: string | undefined): string {
 	if (diffMode === 'base') {
-		return `${baseRef?.trim() || '(baseRef ayarlanmamış)'} ile fark`;
+		return `diff against ${baseRef?.trim() || '(baseRef not set)'}`;
 	}
 	if (diffMode === 'no-vcs') {
-		return 'hesaplanmıyor (no-vcs)';
+		return 'not computed (no-vcs)';
 	}
-	return 'commit bekleyen değişiklikler';
+	return 'uncommitted changes';
 }
 
 class RunItem extends vscode.TreeItem {

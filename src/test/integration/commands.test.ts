@@ -15,8 +15,8 @@ import type { MetricSet } from '../../verdict/types';
  */
 suite('describeNode (Faz 31 - "Kopyala" coverage)', () => {
 	test('empty: the long explanation message itself, the exact real report', () => {
-		const text = describeNode({ kind: 'empty', message: "Bu koşuda hiçbir sınıf değişmemiş, bu yüzden test bazlı kanıt boş - bu bir hata değil: L2 sadece diff'te değişen production sınıflarını hedefler." });
-		assert.equal(text, "Bu koşuda hiçbir sınıf değişmemiş, bu yüzden test bazlı kanıt boş - bu bir hata değil: L2 sadece diff'te değişen production sınıflarını hedefler.");
+		const text = describeNode({ kind: 'empty', message: "No class changed in this run, so per-test evidence is empty - this is not an error: L2 only targets changed production classes in the diff." });
+		assert.equal(text, "No class changed in this run, so per-test evidence is empty - this is not an error: L2 only targets changed production classes in the diff.");
 	});
 
 	test('empty: a node with no message copies nothing, never an empty string masquerading as content', () => {
@@ -24,7 +24,7 @@ suite('describeNode (Faz 31 - "Kopyala" coverage)', () => {
 	});
 
 	test('header (mutation view target line)', () => {
-		assert.equal(describeNode({ kind: 'header', text: 'Hedef: Calculator · az önce' }), 'Hedef: Calculator · az önce');
+		assert.equal(describeNode({ kind: 'header', text: 'Target: Calculator · just now' }), 'Target: Calculator · just now');
 	});
 
 	test('class (both tree views\' class node)', () => {
@@ -71,16 +71,16 @@ suite('describeNode (Faz 31 - "Kopyala" coverage)', () => {
 	 * could ever match it.
 	 */
 	test('a plain TreeItem-shaped node (no `kind`, e.g. runView.ts\'s RunItem) uses its own real label/description', () => {
-		assert.equal(describeNode({ label: 'Testleri Çalıştır', description: 'rapor: henüz yok' }), 'Testleri Çalıştır - rapor: henüz yok');
-		assert.equal(describeNode({ label: 'Coverage Görünümü', description: 'açık - gizlemek için tıklayın' }), 'Coverage Görünümü - açık - gizlemek için tıklayın');
+		assert.equal(describeNode({ label: 'Run Tests', description: 'report: not yet' }), 'Run Tests - report: not yet');
+		assert.equal(describeNode({ label: 'Coverage View', description: 'open - click to hide' }), 'Coverage View - open - click to hide');
 	});
 
 	test('a plain TreeItem-shaped node with no description copies just the label', () => {
-		assert.equal(describeNode({ label: 'Hızlı Tarama' }), 'Hızlı Tarama');
+		assert.equal(describeNode({ label: 'Quick Scan' }), 'Quick Scan');
 	});
 
 	test('a plain TreeItem-shaped node with a boolean description (VS Code\'s "always show" flag, not real text) copies just the label', () => {
-		assert.equal(describeNode({ label: 'Hızlı Tarama', description: true }), 'Hızlı Tarama');
+		assert.equal(describeNode({ label: 'Quick Scan', description: true }), 'Quick Scan');
 	});
 });
 

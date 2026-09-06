@@ -72,7 +72,7 @@ export function createGutterDecorationTypes(colorblindMode = false): GutterDecor
 			overviewRulerColor: new vscode.ThemeColor('charts.gray'),
 			overviewRulerLane: vscode.OverviewRulerLane.Left,
 			after: {
-				contentText: '  proof-java: coverage dışı bırakılmış',
+				contentText: '  Proof: excluded from coverage',
 				color: new vscode.ThemeColor('descriptionForeground'),
 				fontStyle: 'italic',
 				margin: '0 0 0 1em',
@@ -86,7 +86,7 @@ export function createGutterDecorationTypes(colorblindMode = false): GutterDecor
 			overviewRulerColor: new vscode.ThemeColor('charts.yellow'),
 			overviewRulerLane: vscode.OverviewRulerLane.Left,
 			after: {
-				contentText: '  proof-java: bu dosya son taramadan sonra değişti - coverage bayat, tekrar tarayın',
+				contentText: '  Proof: this file changed since the last scan - coverage is stale, scan again',
 				color: new vscode.ThemeColor('editorWarning.foreground'),
 				fontStyle: 'italic',
 				margin: '0 0 0 1em',

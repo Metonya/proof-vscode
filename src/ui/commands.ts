@@ -92,7 +92,7 @@ async function writeJsonSnapshot(context: vscode.ExtensionContext, output: vscod
 		const outUri = vscode.Uri.joinPath(storageRoot, fileName);
 		await fs.promises.writeFile(outUri.fsPath, JSON.stringify(data), 'utf8');
 	} catch (e) {
-		output.appendLine(`proof-java: ${failureNoun} kalıcı depolamaya yazılamadı (pencere yenilenince kaybolur): ${(e as Error).message}`);
+		output.appendLine(`Proof: could not write ${failureNoun} to persistent storage (will be lost on window reload): ${(e as Error).message}`);
 	}
 }
 
@@ -133,7 +133,7 @@ export function registerRunTestsCommand(context: vscode.ExtensionContext, output
 	return vscode.commands.registerCommand('proof.runTests', async () => {
 		const folder = vscode.workspace.workspaceFolders?.[0];
 		if (!folder) {
-			vscode.window.showErrorMessage('proof-java: önce bir klasör açın.');
+			vscode.window.showErrorMessage('Proof: open a folder first.');
 			return;
 		}
 		// Faz 31: prefer this window's own in-memory scan (exact, no prompt) -
@@ -169,8 +169,8 @@ export function registerRunTestsCommand(context: vscode.ExtensionContext, output
 			await runAnalyze(context, output, sinks);
 		} else if (result && !result.success) {
 			const interpretation = interpretMavenFailure(result.capturedOutput);
-			const reasonSuffix = interpretation ? ` Sebep: ${interpretation.detail}` : ' Ayrıntı için terminaldeki çıktıya bakın.';
-			vscode.window.showErrorMessage(`proof-java: Maven başarısız oldu.${reasonSuffix}`);
+			const reasonSuffix = interpretation ? ` Reason: ${interpretation.detail}` : ' See the terminal output for detail.';
+			vscode.window.showErrorMessage(`Proof: Maven failed.${reasonSuffix}`);
 		}
 		sinks.runView.refresh();
 	});
@@ -220,7 +220,7 @@ export function registerMutationCommands(context: vscode.ExtensionContext, outpu
 		vscode.commands.registerCommand('proof.mutationForModuleAll', () => runMutationForModuleAll(context, output, sinks)),
 		vscode.commands.registerCommand('proof.mutationView.toggleSurvivorsOnly', () => {
 			const on = sinks.mutationView.toggleSurvivorsOnly();
-			vscode.window.setStatusBarMessage(on ? 'proof-java: sadece hayatta kalan mutantlar' : 'proof-java: bütün mutantlar', 2000);
+			vscode.window.setStatusBarMessage(on ? 'Proof: survived mutants only' : 'Proof: all mutants', 2000);
 		}),
 	];
 }
@@ -266,18 +266,18 @@ async function readJsonSnapshotIfPresent(storageRoot: vscode.Uri, fileName: stri
 async function runExportReport(context: vscode.ExtensionContext, output: vscode.OutputChannel): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
-		vscode.window.showErrorMessage('proof-java: önce bir klasör açın.');
+		vscode.window.showErrorMessage('Proof: open a folder first.');
 		return;
 	}
 	const storageRoot = context.storageUri;
 	if (!storageRoot) {
-		vscode.window.showErrorMessage('proof-java: bu pencerede workspace depolaması yok (bir klasör yerine tek dosya mı açık?) - rapor dışa aktarılamaz.');
+		vscode.window.showErrorMessage('Proof: this window has no workspace storage (is a single file open instead of a folder?) - the report can\'t be exported.');
 		return;
 	}
 
 	const verdict = await readJsonSnapshotIfPresent(storageRoot, 'verdict-current.json');
 	if (!verdict) {
-		vscode.window.showErrorMessage('proof-java: henüz bir tarama yok - önce "proof-java: Hızlı Tarama" (veya Derin Tarama/Mutasyon Testi) çalıştırın.');
+		vscode.window.showErrorMessage('Proof: no scan yet - run "Proof: Quick Scan" first (or Deep Scan/Mutation Testing).');
 		return;
 	}
 
@@ -296,15 +296,15 @@ async function runExportReport(context: vscode.ExtensionContext, output: vscode.
 
 	const jarPath = locateJar(folder);
 	if (!jarPath) {
-		void offerToOpenSetting('proof-java: proof-java.jar bulunamadı. proof.jarPath ayarını yapın veya proof-java-cli/target/proof-java.jar konumunda bir tane derleyin.', 'proof.jarPath');
+		void offerToOpenSetting('Proof: proof-java.jar not found. Set the proof.jarPath setting, or build one at proof-java-cli/target/proof-java.jar.', 'proof.jarPath');
 		return;
 	}
 
 	const target = await vscode.window.showSaveDialog({
 		defaultUri: vscode.Uri.joinPath(folder.uri, 'proof-report.html'),
 		filters: { HTML: ['html'] },
-		saveLabel: 'Dışa Aktar',
-		title: 'proof-java: Raporu Dışa Aktar',
+		saveLabel: 'Export',
+		title: 'Proof: Export Report',
 	});
 	if (!target) {
 		return;
@@ -315,15 +315,15 @@ async function runExportReport(context: vscode.ExtensionContext, output: vscode.
 
 	const javaExecutable = vscode.workspace.getConfiguration('proof', folder).get<string>('javaExecutable') || 'java';
 	const args = ['render-html', '--in', composedUri.fsPath, '--out', target.fsPath];
-	output.appendLine(`proof-java: java -jar ${jarPath} ${args.join(' ')}`);
+	output.appendLine(`Proof: java -jar ${jarPath} ${args.join(' ')}`);
 
 	const result = await vscode.window.withProgress(
-		{ location: vscode.ProgressLocation.Notification, title: 'proof-java: rapor dışa aktarılıyor' },
+		{ location: vscode.ProgressLocation.Notification, title: 'Proof: exporting report' },
 		async () => {
 			try {
 				return await run({ javaExecutable, jarPath, args, env: resolveWorkspaceEnv(folder) }).result;
 			} catch (e) {
-				vscode.window.showErrorMessage(`proof-java: "${javaExecutable}" çalıştırılamadı: ${(e as Error).message}`);
+				vscode.window.showErrorMessage(`Proof: couldn't run "${javaExecutable}": ${(e as Error).message}`);
 				return undefined;
 			}
 		},
@@ -333,12 +333,12 @@ async function runExportReport(context: vscode.ExtensionContext, output: vscode.
 	}
 	output.appendLine(result.stdout);
 	if (result.exitCode !== 0) {
-		vscode.window.showErrorMessage(`proof-java: rapor oluşturulamadı (çıkış kodu ${result.exitCode}). ${result.stderr.trim()}`);
+		vscode.window.showErrorMessage(`Proof: report could not be generated (exit code ${result.exitCode}). ${result.stderr.trim()}`);
 		return;
 	}
 
-	const choice = await vscode.window.showInformationMessage(`proof-java: rapor dışa aktarıldı: ${target.fsPath}`, 'Aç');
-	if (choice === 'Aç') {
+	const choice = await vscode.window.showInformationMessage(`Proof: report exported: ${target.fsPath}`, 'Open');
+	if (choice === 'Open') {
 		void vscode.env.openExternal(target);
 	}
 }
@@ -363,7 +363,7 @@ export function registerQualityMutationBridgeCommands(sinks: CoverageSinks): vsc
 			}
 			const target = findMutationBridgeTarget(parsed.className, parsed.methodName, parsed.methodDescription);
 			if (!target) {
-				vscode.window.showInformationMessage("proof-java: bu metot için güncel mutasyon verisi yok - önce bu sınıf için Mutasyon Testi çalıştırın.");
+				vscode.window.showInformationMessage("Proof: no current mutation data for this method - run Mutation Testing for this class first.");
 				return;
 			}
 			void sinks.mutationTreeView.reveal(target, { select: true, focus: true, expand: true });
@@ -375,7 +375,7 @@ export function registerQualityMutationBridgeCommands(sinks: CoverageSinks): vsc
 			}
 			const target = findQualityBridgeTarget(productionMethodKey(n.className, n.method.methodName, n.method.methodDescription));
 			if (!target) {
-				vscode.window.showInformationMessage("proof-java: bu metot için Test Kalitesi'nde bir PSEUDO_TESTED_METHOD bulgusu yok.");
+				vscode.window.showInformationMessage("Proof: no PSEUDO_TESTED_METHOD finding for this method in Test Quality.");
 				return;
 			}
 			void sinks.qualityTreeView.reveal(target, { select: true, focus: true, expand: true });
@@ -396,12 +396,12 @@ export function registerQualityMutationBridgeCommands(sinks: CoverageSinks): vsc
 				? findKillContribution(mutationState.mutation, identity.className, identity.methodName)
 				: undefined;
 			if (!contribution) {
-				vscode.window.showInformationMessage('proof-java: bu test için mutasyon kanıtı yok - önce Mutasyon Testi çalıştırın.');
+				vscode.window.showInformationMessage('Proof: no mutation evidence for this test - run Mutation Testing first.');
 				return;
 			}
 			const target = findMutationBridgeTarget(contribution.className, contribution.methodName, contribution.methodDescription);
 			if (!target) {
-				vscode.window.showInformationMessage("proof-java: mutasyon verisi güncel değil - bu sınıf için Mutasyon Testi'ni tekrar çalıştırın.");
+				vscode.window.showInformationMessage("Proof: mutation data isn't current - re-run Mutation Testing for this class.");
 				return;
 			}
 			void sinks.mutationTreeView.reveal(target, { select: true, focus: true, expand: true });
@@ -420,7 +420,7 @@ export function registerQualityMutationBridgeCommands(sinks: CoverageSinks): vsc
 			const state = getCoverageState();
 			const filePath = state?.fileCoverage ? buildProductionClassIndex(state.fileCoverage, productionSourceRoots(state.modules)).byClassName.get(n.className) : undefined;
 			if (!state || !filePath) {
-				vscode.window.showInformationMessage('proof-java: bu sınıfın dosyası bilinmiyor - önce fileCoverage üreten bir tarama çalıştırın.');
+				vscode.window.showInformationMessage('Proof: this class\'s file is unknown - run a scan that produces fileCoverage first.');
 				return;
 			}
 			const uri = vscode.Uri.file(toAbsolutePath(state.workspaceRoot, filePath));
@@ -432,7 +432,7 @@ export function registerQualityMutationBridgeCommands(sinks: CoverageSinks): vsc
 			sinks.lineTestsView.setActiveDocument(editor.document);
 			const target = sinks.lineTestsView.nodeForLine(n.mutant.line);
 			if (!target) {
-				vscode.window.showInformationMessage("proof-java: bu satır için test bazlı kanıt yok - Derin Tarama ile toplayın.");
+				vscode.window.showInformationMessage("Proof: no per-test evidence for this line - collect it with Deep Scan.");
 				return;
 			}
 			void sinks.lineTestsTreeView.reveal(target, { select: true, focus: true, expand: true });
@@ -453,7 +453,7 @@ export function registerCopyCommands(sinks: CoverageSinks): vscode.Disposable[] 
 			const text = describeNode(node);
 			if (text) {
 				void vscode.env.clipboard.writeText(text);
-				vscode.window.setStatusBarMessage('proof-java: panoya kopyalandı', 2000);
+				vscode.window.setStatusBarMessage('Proof: copied to clipboard', 2000);
 			}
 		}),
 		// Faz 19: iki ayrı gruplama butonu yerine tek bir geçiş - tıkla,
@@ -462,18 +462,18 @@ export function registerCopyCommands(sinks: CoverageSinks): vscode.Disposable[] 
 		vscode.commands.registerCommand('proof.qualityView.toggleGrouping', () => {
 			const next = sinks.qualityView.getGrouping() === 'rule' ? 'file' : 'rule';
 			sinks.qualityView.setGrouping(next);
-			vscode.window.setStatusBarMessage(`proof-java: Test Kalitesi ${next === 'rule' ? 'kurala' : 'dosyaya'} göre gruplandı`, 2000);
+			vscode.window.setStatusBarMessage(`Proof: Test Quality grouped by ${next === 'rule' ? 'rule' : 'file'}`, 2000);
 		}),
 		vscode.commands.registerCommand('proof.lineTestsView.toggleProblemsOnly', () => {
 			const on = sinks.lineTestsView.toggleProblemsOnly();
-			vscode.window.setStatusBarMessage(on ? 'proof-java: sadece sorunlu satırlar' : 'proof-java: bütün satırlar', 2000);
+			vscode.window.setStatusBarMessage(on ? 'Proof: problem lines only' : 'Proof: all lines', 2000);
 		}),
 		vscode.commands.registerCommand('proof.qualityView.filter', async () => {
 			const filter = await vscode.window.showInputBox({
-				title: 'Test Kalitesi bulgularını filtrele',
-				prompt: 'Kural adı, dosya yolu, test metodu veya mesaj içinde arar. Filtreyi kaldırmak için boş bırakın.',
+				title: 'Filter Test Quality findings',
+				prompt: 'Searches the rule name, file path, test method, or message. Leave empty to clear the filter.',
 				value: sinks.qualityView.getFilter(),
-				placeHolder: 'örn. doğrulama, Calculator, TAUTOLOGICAL',
+				placeHolder: 'e.g. assertion, Calculator, TAUTOLOGICAL',
 			});
 			if (filter !== undefined) {
 				sinks.qualityView.setFilter(filter);
@@ -561,7 +561,7 @@ function describeTestOrMutationTreeNode(n: DescribableNode): string | undefined 
 /** `lineTestsView.ts`-only node kinds. */
 function describeLineTestsNode(n: DescribableNode): string | undefined {
 	if (n.kind === 'prodLine' && n.startLine !== undefined) {
-		return n.startLine === n.endLine ? `Satır ${n.startLine}` : `Satır ${n.startLine}-${n.endLine}`;
+		return n.startLine === n.endLine ? `Line ${n.startLine}` : `Line ${n.startLine}-${n.endLine}`;
 	}
 	if (n.kind === 'testMethod' && n.methodName) {
 		return `${n.methodName}()`;
@@ -640,7 +640,7 @@ export function publishAnalysis(sinks: CoverageSinks, workspaceRoot: string, res
 function toggleCoverage(sinks: CoverageSinks): void {
 	const state = getCoverageState();
 	if (!state?.fileCoverage) {
-		vscode.window.showInformationMessage('proof-java: henüz coverage verisi yok - önce "proof-java: Analiz Et" komutunu çalıştırın.');
+		vscode.window.showInformationMessage('Proof: no coverage data yet - run the "Proof: Analyze" command first.');
 		return;
 	}
 
@@ -660,7 +660,7 @@ function toggleCoverage(sinks: CoverageSinks): void {
 async function runAnalyze(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
-		vscode.window.showErrorMessage('proof-java: önce bir klasör açın.');
+		vscode.window.showErrorMessage('Proof: open a folder first.');
 		return;
 	}
 	const diffMode = readDiffMode(folder);
@@ -683,7 +683,7 @@ async function runAnalyze(context: vscode.ExtensionContext, output: vscode.Outpu
 async function runAnalyzePerTest(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
-		vscode.window.showErrorMessage('proof-java: önce bir klasör açın.');
+		vscode.window.showErrorMessage('Proof: open a folder first.');
 		return;
 	}
 	const diffMode = readDiffMode(folder);
@@ -692,8 +692,8 @@ async function runAnalyzePerTest(context: vscode.ExtensionContext, output: vscod
 	}
 	if (diffMode.kind === 'no-vcs') {
 		vscode.window.showErrorMessage(
-			'proof-java: L2 kanıtı sadece değişen dosyaları hedefleyebilir; no-vcs\'te "değişen dosya" diye bir kavram yok, bu yüzden test bazlı analiz çalışmaz. '
-			+ 'proof.diffMode ayarını "uncommitted" veya "base" yapın.',
+			'Proof: L2 evidence can only target changed files; there is no "changed file" concept in no-vcs, so per-test analysis does not work. '
+			+ 'Set proof.diffMode to "uncommitted" or "base".',
 		);
 		return;
 	}
@@ -713,9 +713,9 @@ async function runAnalyzePerTest(context: vscode.ExtensionContext, output: vscod
 		// Hızlı Tarama ya da Mutasyon Testi bu bloğu taşımayan bir
 		// verdict-current.json yazınca bu dosya etkilenmeden kalır.
 		const snapshot: PerTestSnapshot = { perTest: parsed.perTest, warnings: parsed.warnings };
-		await writeJsonSnapshot(context, output, PERTEST_STORAGE_FILE, snapshot, 'test bazlı kanıt');
+		await writeJsonSnapshot(context, output, PERTEST_STORAGE_FILE, snapshot, 'per-test evidence');
 	} else {
-		vscode.window.showWarningMessage('proof-java: bu koşuda test bazlı (per-test) kanıt yok - PER_TEST_* uyarıları için çıktı kanalını kontrol edin.');
+		vscode.window.showWarningMessage('Proof: no per-test evidence for this run - check the output channel for PER_TEST_* warnings.');
 	}
 	revealLineTestsView(sinks);
 }
@@ -732,12 +732,12 @@ async function runAnalyzePerTest(context: vscode.ExtensionContext, output: vscod
 async function runPerTestForFile(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
-		vscode.window.showErrorMessage('proof-java: önce bir klasör açın.');
+		vscode.window.showErrorMessage('Proof: open a folder first.');
 		return;
 	}
 	const editor = vscode.window.activeTextEditor;
 	if (editor?.document.languageId !== 'java') {
-		vscode.window.showErrorMessage('proof-java: bu sınıf için test bazlı kanıt toplamak üzere bir Java dosyası açın.');
+		vscode.window.showErrorMessage('Proof: open a Java file to collect per-test evidence for its class.');
 		return;
 	}
 	const diffMode = readDiffMode(folder);
@@ -749,7 +749,7 @@ async function runPerTestForFile(context: vscode.ExtensionContext, output: vscod
 	const className = detectClassName(editor.document.getText(), fileName);
 	const parsed = await runAnalyzeCore(context, output, folder, diffMode, {
 		perTest: { targets: [{ filePath: editor.document.fileName, fqcn: className }], timeoutSeconds: readPerTestTimeout(folder) },
-		progressTitle: `proof-java: ${className.split('.').pop()} için test kanıtı`,
+		progressTitle: `Proof: test evidence for ${className.split('.').pop()}`,
 	});
 	if (!parsed) {
 		return;
@@ -759,9 +759,9 @@ async function runPerTestForFile(context: vscode.ExtensionContext, output: vscod
 	setPerTestState({ perTest: parsed.perTest, warnings: parsed.warnings });
 	if (parsed.perTest) {
 		const snapshot: PerTestSnapshot = { perTest: parsed.perTest, warnings: parsed.warnings };
-		await writeJsonSnapshot(context, output, PERTEST_STORAGE_FILE, snapshot, 'test bazlı kanıt');
+		await writeJsonSnapshot(context, output, PERTEST_STORAGE_FILE, snapshot, 'per-test evidence');
 	} else {
-		vscode.window.showWarningMessage(`proof-java: ${className} için test bazlı kanıt yok - PER_TEST_* uyarıları için çıktı kanalını kontrol edin.`);
+		vscode.window.showWarningMessage(`Proof: no per-test evidence for ${className} - check the output channel for PER_TEST_* warnings.`);
 	}
 	revealLineTestsView(sinks);
 }
@@ -776,12 +776,12 @@ async function runPerTestForFile(context: vscode.ExtensionContext, output: vscod
 async function runMutationForFile(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
-		vscode.window.showErrorMessage('proof-java: önce bir klasör açın.');
+		vscode.window.showErrorMessage('Proof: open a folder first.');
 		return;
 	}
 	const editor = vscode.window.activeTextEditor;
 	if (editor?.document.languageId !== 'java') {
-		vscode.window.showErrorMessage('proof-java: mutasyon testi çalıştırmak için bir Java dosyası açın.');
+		vscode.window.showErrorMessage('Proof: open a Java file to run mutation testing.');
 		return;
 	}
 	const className = detectClassName(editor.document.getText(), path.basename(editor.document.fileName, '.java'));
@@ -797,23 +797,23 @@ async function runMutationForFile(context: vscode.ExtensionContext, output: vsco
 async function runMutationForModule(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
-		vscode.window.showErrorMessage('proof-java: önce bir klasör açın.');
+		vscode.window.showErrorMessage('Proof: open a folder first.');
 		return;
 	}
 	const timeout = readMutationTimeout(folder);
 	const choice = await vscode.window.showWarningMessage(
-		'Mutasyon testi tüm modül için çalıştırılacak.',
+		'Mutation testing will run for the entire module.',
 		{
 			modal: true,
-			detail: `Bu koşu uzun sürebilir - büyük bir modülde bir saati aşabilir. ${timeout} saniyelik ayar (proof.mutationTimeout) toplam bir bütçe değil, bir "boşta kalma" süresi: bir sınıf tamamlanmadan bu kadar süre geçerse koşu durdurulur, sınıflar tamamlanmaya devam ettiği sürece süre ne olursa olsun devam eder. Durursa sonuç yine de kısmi olarak gösterilir.\n\nTek bir sınıf için genelde saniyeler yeterlidir: o dosyada sağ tık → "Bu Sınıf İçin Mutasyon Testi".`,
+			detail: `This run can take a while - potentially over an hour for a large module. The ${timeout}-second setting (proof.mutationTimeout) is not a total budget, it is an "idle" timeout: if this much time passes without a class finishing, the run is stopped; as long as classes keep finishing, it continues regardless of elapsed time. If it stops, results are still shown as partial.\n\nFor a single class, seconds are usually enough: right-click that file -> "Mutation Testing For This Class".`,
 		},
-		'Devam Et',
+		'Continue',
 	);
-	if (choice !== 'Devam Et') {
+	if (choice !== 'Continue') {
 		return;
 	}
-	// Hedef verilmiyor: CLI diff'teki değişen production sınıflarını hedefler.
-	await runMutation(context, output, sinks, folder, [], 'proof-java: mutasyon testi (modül)');
+	// No target given: the CLI targets the changed production classes in the diff.
+	await runMutation(context, output, sinks, folder, [], 'Proof: mutation testing (module)');
 }
 
 /**
@@ -845,17 +845,17 @@ export function allProductionTargets(state: NonNullable<ReturnType<typeof getCov
 async function runAnalyzePerTestAll(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
-		vscode.window.showErrorMessage('proof-java: önce bir klasör açın.');
+		vscode.window.showErrorMessage('Proof: open a folder first.');
 		return;
 	}
 	const state = getCoverageState();
 	if (!state?.fileCoverage) {
-		vscode.window.showErrorMessage('proof-java: önce Hızlı Tara çalıştırın - tüm modülü diff\'siz taramak için production dosya listesi gerekiyor.');
+		vscode.window.showErrorMessage('Proof: run Quick Scan first - scanning the whole module without a diff needs the production file list.');
 		return;
 	}
 	const targets = allProductionTargets(state);
 	if (targets.length === 0) {
-		vscode.window.showErrorMessage('proof-java: bu modülde hedeflenebilecek bir production sınıfı bulunamadı.');
+		vscode.window.showErrorMessage('Proof: no targetable production class found in this module.');
 		return;
 	}
 	const diffMode = readDiffMode(folder);
@@ -865,7 +865,7 @@ async function runAnalyzePerTestAll(context: vscode.ExtensionContext, output: vs
 
 	const parsed = await runAnalyzeCore(context, output, folder, diffMode, {
 		perTest: { targets, timeoutSeconds: readPerTestTimeout(folder) },
-		progressTitle: `proof-java: tüm modül için derin tarama (${targets.length} sınıf)`,
+		progressTitle: `Proof: deep scan for the whole module (${targets.length} classes)`,
 	});
 	if (!parsed) {
 		return;
@@ -875,9 +875,9 @@ async function runAnalyzePerTestAll(context: vscode.ExtensionContext, output: vs
 	setPerTestState({ perTest: parsed.perTest, warnings: parsed.warnings });
 	if (parsed.perTest) {
 		const snapshot: PerTestSnapshot = { perTest: parsed.perTest, warnings: parsed.warnings };
-		await writeJsonSnapshot(context, output, PERTEST_STORAGE_FILE, snapshot, 'test bazlı kanıt');
+		await writeJsonSnapshot(context, output, PERTEST_STORAGE_FILE, snapshot, 'per-test evidence');
 	} else {
-		vscode.window.showWarningMessage('proof-java: bu koşuda test bazlı (per-test) kanıt yok - PER_TEST_* uyarıları için çıktı kanalını kontrol edin.');
+		vscode.window.showWarningMessage('Proof: no per-test evidence for this run - check the output channel for PER_TEST_* warnings.');
 	}
 	revealLineTestsView(sinks);
 }
@@ -886,33 +886,33 @@ async function runAnalyzePerTestAll(context: vscode.ExtensionContext, output: vs
 async function runMutationForModuleAll(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
-		vscode.window.showErrorMessage('proof-java: önce bir klasör açın.');
+		vscode.window.showErrorMessage('Proof: open a folder first.');
 		return;
 	}
 	const state = getCoverageState();
 	if (!state?.fileCoverage) {
-		vscode.window.showErrorMessage('proof-java: önce Hızlı Tara çalıştırın - tüm modülü diff\'siz taramak için production dosya listesi gerekiyor.');
+		vscode.window.showErrorMessage('Proof: run Quick Scan first - scanning the whole module without a diff needs the production file list.');
 		return;
 	}
 	const targets = allProductionTargets(state);
 	if (targets.length === 0) {
-		vscode.window.showErrorMessage('proof-java: bu modülde hedeflenebilecek bir production sınıfı bulunamadı.');
+		vscode.window.showErrorMessage('Proof: no targetable production class found in this module.');
 		return;
 	}
 
 	const timeout = readMutationTimeout(folder);
 	const choice = await vscode.window.showWarningMessage(
-		`Mutasyon testi TÜM modül için çalıştırılacak (${targets.length} sınıf, diff'ten bağımsız).`,
+		`Mutation testing will run for the ENTIRE module (${targets.length} classes, independent of the diff).`,
 		{
 			modal: true,
-			detail: `Bu koşu diff-tabanlı "modül geneli" koşudan bile daha uzun sürebilir - değişmemiş sınıflar da dahil. Sınıf başına zaman bütçesi ${timeout} saniye (proof.mutationTimeout); aşılırsa koşu durdurulur ve sonuç kısmi kalır.`,
+			detail: `This run can take even longer than the diff-based "whole module" run - unchanged classes are included too. Per-class time budget is ${timeout} seconds (proof.mutationTimeout); if exceeded, the run is stopped and results stay partial.`,
 		},
-		'Devam Et',
+		'Continue',
 	);
-	if (choice !== 'Devam Et') {
+	if (choice !== 'Continue') {
 		return;
 	}
-	await runMutation(context, output, sinks, folder, targets, `proof-java: mutasyon testi (tüm modül, ${targets.length} sınıf)`);
+	await runMutation(context, output, sinks, folder, targets, `Proof: mutation testing (whole module, ${targets.length} classes)`);
 }
 
 /** İki mutasyon girişinin ortak gövdesi. `targets` boşsa CLI diff'ten hedef türetir (bu durumda bir diff modu şart). */
@@ -929,7 +929,7 @@ async function runMutation(
 		return;
 	}
 	if (targets.length === 0 && diffMode.kind === 'no-vcs') {
-		vscode.window.showErrorMessage('proof-java: modül geneli mutasyon bir diff gerektirir - proof.diffMode "no-vcs" iken hedeflenecek değişen sınıf yok. Tek bir sınıf için o dosyada sağ tık → "Bu Sınıf İçin Mutasyon Testi".');
+		vscode.window.showErrorMessage('Proof: whole-module mutation requires a diff - there is no changed class to target while proof.diffMode is "no-vcs". For a single class, right-click that file -> "Mutation Testing For This Class".');
 		return;
 	}
 
@@ -977,7 +977,7 @@ function readDiffMode(folder: vscode.WorkspaceFolder): DiffMode | undefined {
 	if (kind === 'base') {
 		const ref = config.get<string>('baseRef')?.trim();
 		if (!ref) {
-			void offerToOpenSetting('proof-java: proof.diffMode "base" ayarlı ama proof.baseRef boş.', 'proof.baseRef');
+			void offerToOpenSetting('Proof: proof.diffMode is set to "base" but proof.baseRef is empty.', 'proof.baseRef');
 			return undefined;
 		}
 		return { kind: 'base', ref };
@@ -1056,7 +1056,7 @@ async function resolveEvidenceArg(
 	}
 	const targets = resolveTargets(folder, allModules, evidenceInput.targets);
 	if (evidenceInput.targets && evidenceInput.targets.length > 0 && targets.length === 0) {
-		vscode.window.showErrorMessage('proof-java: hedef sınıfın hangi modüle ait olduğu belirlenemedi - dosya bağlı modüllerden hiçbirinin kökü altında değil.');
+		vscode.window.showErrorMessage('Proof: could not determine which module the target class belongs to - the file is not under the root of any bound module.');
 		return undefined;
 	}
 	return { classpaths, targets: targets.length > 0 ? targets : undefined };
@@ -1071,7 +1071,7 @@ async function runAnalyzeCore(
 ): Promise<VerdictDocument | undefined> {
 	const jarPath = locateJar(folder);
 	if (!jarPath) {
-		void offerToOpenSetting('proof-java: proof-java.jar bulunamadı. proof.jarPath ayarını yapın veya proof-java-cli/target/proof-java.jar konumunda bir tane derleyin.', 'proof.jarPath');
+		void offerToOpenSetting('Proof: proof-java.jar not found. Set the proof.jarPath setting, or build one at proof-java-cli/target/proof-java.jar.', 'proof.jarPath');
 		return undefined;
 	}
 
@@ -1108,7 +1108,7 @@ async function runAnalyzeCore(
 
 	const storageRoot = context.storageUri;
 	if (!storageRoot) {
-		vscode.window.showErrorMessage('proof-java: bu pencerede workspace depolaması yok (bir klasör yerine tek dosya mı açık?) - sonuç kaydedilemez.');
+		vscode.window.showErrorMessage('Proof: this window has no workspace storage (single file open instead of a folder?) - the result cannot be saved.');
 		return undefined;
 	}
 	await vscode.workspace.fs.createDirectory(storageRoot);
@@ -1127,7 +1127,7 @@ async function runAnalyzeCore(
 		mutation: mutationArg,
 	});
 
-	output.appendLine(`proof-java: java -jar ${jarPath} ${args.join(' ')}`);
+	output.appendLine(`Proof: java -jar ${jarPath} ${args.join(' ')}`);
 
 	return vscode.window.withProgress(
 		{ location: vscode.ProgressLocation.Notification, title: evidence.progressTitle ?? 'proof-java: analiz ediliyor', cancellable: true },
@@ -1172,7 +1172,7 @@ async function runAnalyzeCore(
 			try {
 				result = await handle.result;
 			} catch (e) {
-				vscode.window.showErrorMessage(`proof-java: "${javaExecutable}" çalıştırılamadı: ${(e as Error).message}`);
+				vscode.window.showErrorMessage(`Proof: couldn't run "${javaExecutable}": ${(e as Error).message}`);
 				return undefined;
 			}
 			output.appendLine(result.stdout);
@@ -1184,7 +1184,7 @@ async function runAnalyzeCore(
 			// exit 3 (incomplete) still writes a real document - read it rather
 			// than treating it as a failure (hard rule 3a, mirrored from the CLI).
 			if (result.exitCode !== 0 && result.exitCode !== 3) {
-				vscode.window.showErrorMessage(`proof-java: analiz başarısız oldu (çıkış kodu ${result.exitCode}).`);
+				vscode.window.showErrorMessage(`Proof: analysis failed (exit code ${result.exitCode}).`);
 				return undefined;
 			}
 
@@ -1192,13 +1192,13 @@ async function runAnalyzeCore(
 			try {
 				raw = await fs.promises.readFile(outUri.fsPath, 'utf8');
 			} catch (e) {
-				vscode.window.showErrorMessage(`proof-java: verdict dosyası okunamadı: ${(e as Error).message}`);
+				vscode.window.showErrorMessage(`Proof: could not read the verdict file: ${(e as Error).message}`);
 				return undefined;
 			}
 
 			const parsed = parseVerdict(raw);
 			if (!parsed.ok) {
-				vscode.window.showErrorMessage(`proof-java: verdict dosyası ayrıştırılamadı: ${parsed.error}`);
+				vscode.window.showErrorMessage(`Proof: could not parse the verdict file: ${parsed.error}`);
 				return undefined;
 			}
 
@@ -1208,7 +1208,7 @@ async function runAnalyzeCore(
 			// açmak sadece dikkat dağıtıyordu. `analysis.status` "incomplete"
 			// ise gerçekten bir şey söylenmesi gerekir; o hâlâ uyarılıyor.
 			if (parsed.value.analysis.status === 'incomplete') {
-				vscode.window.showWarningMessage('proof-java: analiz eksik tamamlandı - Coverage görünümündeki "Uyarılar" bölümüne bakın.');
+				vscode.window.showWarningMessage('Proof: analysis completed incompletely - see the "Warnings" section in the Coverage view.');
 			}
 
 			return parsed.value;

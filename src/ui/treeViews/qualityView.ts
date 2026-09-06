@@ -45,9 +45,9 @@ export class QualityTreeProvider implements vscode.TreeDataProvider<QualityNode>
 		return this.grouping;
 	}
 
-	/** Boş dize filtreyi kaldırır. Kural kodu, Türkçe başlık, dosya yolu ve bulgu mesajı üzerinde arar. */
+	/** An empty string clears the filter. Searches the rule code, title, file path, and finding message. */
 	setFilter(filter: string): void {
-		this.filter = filter.trim().toLocaleLowerCase('tr');
+		this.filter = filter.trim().toLowerCase();
 		this.changeEmitter.fire();
 	}
 
@@ -96,14 +96,14 @@ export class QualityTreeProvider implements vscode.TreeDataProvider<QualityNode>
 
 	private rootChildren(allFindings: readonly Finding[] | undefined): QualityNode[] {
 		if (!allFindings) {
-			return [{ kind: 'empty', message: 'Önce bir analiz çalıştırın.' }];
+			return [{ kind: 'empty', message: 'Run an analysis first.' }];
 		}
 		if (allFindings.length === 0) {
-			return [{ kind: 'empty', message: 'Bulgu yok.' }];
+			return [{ kind: 'empty', message: 'No findings.' }];
 		}
 		const findings = allFindings.filter((f) => this.matchesFilter(f));
 		if (findings.length === 0) {
-			return [{ kind: 'empty', message: `"${this.filter}" ile eşleşen bulgu yok (${allFindings.length} bulgu filtrelendi).` }];
+			return [{ kind: 'empty', message: `No findings match "${this.filter}" (${allFindings.length} finding(s) filtered out).` }];
 		}
 		return this.grouping === 'rule' ? groupByRule(findings) : groupByFile(findings);
 	}
@@ -115,7 +115,7 @@ export class QualityTreeProvider implements vscode.TreeDataProvider<QualityNode>
 		const info = ruleInfo(finding.rule);
 		const haystack = [finding.rule, info.title, finding.path, finding.message, finding.testMethod ?? '', finding.productionMethod ?? '']
 			.join(' ')
-			.toLocaleLowerCase('tr');
+			.toLowerCase();
 		return haystack.includes(this.filter);
 	}
 }
@@ -151,10 +151,10 @@ function groupByFile(findings: readonly Finding[]): QualityNode[] {
 function ruleItem(node: Extract<QualityNode, { kind: 'rule' }>): vscode.TreeItem {
 	const info = ruleInfo(node.rule);
 	const item = new vscode.TreeItem(info.title, vscode.TreeItemCollapsibleState.Expanded);
-	item.description = `${node.findings.length} bulgu · ${info.code}`;
+	item.description = `${node.findings.length} finding(s) · ${info.code}`;
 	item.iconPath = new vscode.ThemeIcon(node.findings.some((f) => f.severity === 'WARNING') ? 'warning' : 'info');
 	item.tooltip = new vscode.MarkdownString(
-		`**${info.title}** \`${info.code}\`\n\n${info.summary}\n\n**Ne yapmalı:** ${info.action}\n\n[Kural dokümanı](${ruleDocsUrl(node.rule)})`,
+		`**${info.title}** \`${info.code}\`\n\n${info.summary}\n\n**What to do:** ${info.action}\n\n[Rule doc](${ruleDocsUrl(node.rule)})`,
 	);
 	item.contextValue = 'proof.qualityRule';
 	return item;
@@ -163,7 +163,7 @@ function ruleItem(node: Extract<QualityNode, { kind: 'rule' }>): vscode.TreeItem
 function fileItem(node: Extract<QualityNode, { kind: 'file' }>): vscode.TreeItem {
 	const fileName = node.path.split('/').pop() ?? node.path;
 	const item = new vscode.TreeItem(fileName, vscode.TreeItemCollapsibleState.Expanded);
-	item.description = `${node.findings.length} bulgu`;
+	item.description = `${node.findings.length} finding(s)`;
 	item.resourceUri = resourceUriFor(node.path);
 	item.iconPath = vscode.ThemeIcon.File;
 	item.tooltip = node.path;
@@ -180,9 +180,9 @@ function findingItem(finding: Finding): vscode.TreeItem {
 	// Faz 24 (§7.6 madde 5): mutasyon ağacındaki "HAYATTA KALDI" ile aynı
 	// olgu - sağ tık menüsü bunu "Mutasyon Ağacında Göster" ile bağlar.
 	const isPseudoTested = finding.rule === 'PSEUDO_TESTED_METHOD';
-	const bridgeNote = isPseudoTested ? '\n\n---\n\nBu, mutasyon ağacındaki "HAYATTA KALDI" ile aynı olgu - sağ tık → "Mutasyon Ağacında Göster".' : '';
+	const bridgeNote = isPseudoTested ? '\n\n---\n\nSame fact as "SURVIVED" in the mutation tree - right-click → "Show in Mutation Tree".' : '';
 	item.tooltip = new vscode.MarkdownString(
-		`**${info.title}** \`${info.code}\` · güven: ${finding.confidence}\n\n${finding.message}\n\n**Ne yapmalı:** ${finding.suggestedAction}\n\n[Kural dokümanı](${ruleDocsUrl(finding.rule)})${bridgeNote}`,
+		`**${info.title}** \`${info.code}\` · confidence: ${finding.confidence}\n\n${finding.message}\n\n**What to do:** ${finding.suggestedAction}\n\n[Rule doc](${ruleDocsUrl(finding.rule)})${bridgeNote}`,
 	);
 	item.id = `proof.qualityFinding:${finding.fingerprint}`;
 	item.contextValue = isPseudoTested ? 'proof.qualityFinding.pseudoTested' : 'proof.qualityFinding';
@@ -191,7 +191,7 @@ function findingItem(finding: Finding): vscode.TreeItem {
 	if (state) {
 		const uri = vscode.Uri.file(toAbsolutePath(state.workspaceRoot, finding.path));
 		const selection = new vscode.Range(finding.startLine - 1, 0, finding.startLine - 1, 0);
-		item.command = { command: 'vscode.open', title: 'Dosyayı Aç', arguments: [uri, { selection }] };
+		item.command = { command: 'vscode.open', title: 'Open File', arguments: [uri, { selection }] };
 	}
 	return item;
 }

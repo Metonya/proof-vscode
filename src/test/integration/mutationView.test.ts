@@ -102,7 +102,7 @@ suite('Mutation view (Faz 20)', () => {
 		assert.equal(roots.length, 2, 'no header when there is no result to date-stamp');
 		assert.equal(roots[0].kind, 'empty');
 		if (roots[0].kind === 'empty') {
-			assert.match(roots[0].message, /bütçe/i);
+			assert.match(roots[0].message, /budget/i);
 			assert.match(roots[0].message, /mutationTimeout/, 'must name the setting that fixes it');
 		}
 	});
@@ -128,7 +128,7 @@ suite('Mutation view (Faz 20)', () => {
 		assert.equal(roots[0].kind, 'header', 'a real (if empty) mutation block still dates the run');
 		assert.equal(roots[1].kind, 'empty');
 		if (roots[1].kind === 'empty') {
-			assert.match(roots[1].message, /değişen production sınıfı yok/, 'the real reason, not the generic "no mutable code" guess');
+			assert.match(roots[1].message, /No production class changed/, 'the real reason, not the generic "no mutable code" guess');
 		}
 		assert.equal(roots[2]?.kind, 'runHint', 'running for the active file is still a valid recovery, not just scanning everything');
 		assert.equal(roots[3]?.kind, 'scanAllHint', 'the module-wide recovery action must also be offered, not silently dropped');
@@ -139,7 +139,7 @@ suite('Mutation view (Faz 20)', () => {
 	 * dosyaya geçince değişmiyordu, hangi koşuya bakıldığı belli değildi.
 	 * Şimdi kökler her zaman "Hedef: ... · ..." başlığıyla başlıyor.
 	 */
-	test('a fresh run shows a header naming the target and "az önce"', async () => {
+	test('a fresh run shows a header naming the target and "just now"', async () => {
 		setCoverageState(STATE);
 		setMutationState({ mutation: MUTATION, warnings: [], targets: ['dev.proofjava.playground.Calculator'], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
@@ -147,8 +147,8 @@ suite('Mutation view (Faz 20)', () => {
 		const roots = provider.getChildren();
 		assert.equal(roots[0].kind, 'header');
 		const headerItem = await provider.getTreeItem(roots[0]);
-		assert.match(String(headerItem.label), /Hedef: Calculator/);
-		assert.match(String(headerItem.label), /az önce/);
+		assert.match(String(headerItem.label), /Target: Calculator/);
+		assert.match(String(headerItem.label), /just now/);
 	});
 
 	/**
@@ -179,8 +179,8 @@ suite('Mutation view (Faz 20)', () => {
 
 		const header = provider.getChildren()[0];
 		const item = await provider.getTreeItem(header);
-		assert.match(String(item.label), /kaydedilmiş sonuç/);
-		assert.match(String(item.label), /diff'teki değişen sınıflar/, 'empty targets = module-wide, diff-derived');
+		assert.match(String(item.label), /saved result/);
+		assert.match(String(item.label), /changed classes in the diff/, 'empty targets = module-wide, diff-derived');
 	});
 
 	test('class -> method -> mutant -> killing test, with test classes filtered out', async () => {
@@ -194,7 +194,7 @@ suite('Mutation view (Faz 20)', () => {
 		const classItem = await provider.getTreeItem(classes[0]);
 		// 1 killed, 1 survived, 1 indeterminate -> 50%, and the indeterminate must stay visible.
 		assert.match(String(classItem.description), /50%/);
-		assert.match(String(classItem.description), /1 belirsiz/, 'an indeterminate mutant must never be hidden or folded into the score');
+		assert.match(String(classItem.description), /1 inconclusive/, 'an indeterminate mutant must never be hidden or folded into the score');
 
 		const methods = provider.getChildren(classes[0]);
 		assert.deepEqual(methods.map((m) => (m.kind === 'method' ? m.method.methodName : '')), ['divide', 'square', 'negate']);
@@ -205,7 +205,7 @@ suite('Mutation view (Faz 20)', () => {
 		const mutantItem = await provider.getTreeItem(mutants[0]);
 		assert.match(String(mutantItem.label), /PrimitiveReturns/, 'PIT\'s fully-qualified mutator name must be shortened for the label');
 		assert.ok(!String(mutantItem.label).includes('org.pitest'), 'the full class name belongs in the tooltip, not the label');
-		assert.match(String(mutantItem.description), /HAYATTA KALDI/);
+		assert.match(String(mutantItem.description), /SURVIVED/);
 
 		const killed = methods.find((m) => m.kind === 'method' && m.method.methodName === 'divide')!;
 		const killingTests = provider.getChildren(provider.getChildren(killed)[0]);
@@ -223,15 +223,15 @@ suite('Mutation view (Faz 20)', () => {
 		const methods = provider.getChildren(classNodes(provider)[0]);
 		const negate = methods.find((m) => m.kind === 'method' && m.method.methodName === 'negate')!;
 		const item = await provider.getTreeItem(provider.getChildren(negate)[0]);
-		assert.match(String(item.description), /belirsiz/);
+		assert.match(String(item.description), /inconclusive/);
 		assert.match(String(item.description), /NO_COVERAGE/, 'the raw status stays visible - "indeterminate" alone does not say why');
 
 		// The method's own score has no denominator at all.
 		const negateItem = await provider.getTreeItem(negate);
-		assert.match(String(negateItem.description), /skor yok/);
-		// Faz 24 (§7.6 madde 7): every mutant here is NO_COVERAGE (real negate() shape) - say why plainly, not just "belirsiz".
-		assert.match(String(negateItem.description), /hiçbir test bu metoda uğramıyor/);
-		assert.match(String((negateItem.tooltip as vscode.MarkdownString).value), /hiçbir test bu metoda hiç uğramıyor/);
+		assert.match(String(negateItem.description), /no score/);
+		// Faz 24 (§7.6 madde 7): every mutant here is NO_COVERAGE (real negate() shape) - say why plainly, not just "unclear".
+		assert.match(String(negateItem.description), /no test reaches this method/);
+		assert.match(String((negateItem.tooltip as vscode.MarkdownString).value), /no test ever reaches this method/);
 	});
 
 	/** Faz 24 (§7.6 madde 7): the mixed real describe() shape (NO_COVERAGE + SURVIVED) must NOT claim "no test reaches it" - a SURVIVED mutant proves a test did reach it. */
@@ -256,7 +256,7 @@ suite('Mutation view (Faz 20)', () => {
 
 		const describe = provider.getChildren(classNodes(provider)[0]).find((m) => m.kind === 'method' && m.method.methodName === 'describe')!;
 		const describeItem = await provider.getTreeItem(describe);
-		assert.doesNotMatch(String(describeItem.description), /hiçbir test bu metoda uğramıyor/);
+		assert.doesNotMatch(String(describeItem.description), /no test reaches this method/);
 	});
 
 	test('survivors-only filter keeps the methods worth looking at and can be turned back off', () => {
@@ -364,7 +364,7 @@ suite('Mutation view (Faz 20)', () => {
 		const killingTest = provider.getChildren(provider.getChildren(divide)[0])[0];
 		const item = await provider.getTreeItem(killingTest);
 		assert.equal(item.contextValue, 'proof.killingTest.contradiction');
-		assert.match(String((item.tooltip as vscode.MarkdownString).value), /belirsiz/);
+		assert.match(String((item.tooltip as vscode.MarkdownString).value), /inconclusive/);
 	});
 
 	test('a killing test with no matching finding at all gets the plain leaf, no fabricated note', async () => {
@@ -438,7 +438,7 @@ suite('Mutation view (Faz 20)', () => {
 		const mutant = provider.getChildren(square)[0];
 		const item = await provider.getTreeItem(mutant);
 		assert.equal(item.contextValue, 'proof.mutant.hasLineEvidence');
-		assert.match(String((item.tooltip as vscode.MarkdownString).value), /Satır → Testler'de Göster/);
+		assert.match(String((item.tooltip as vscode.MarkdownString).value), /Show in Line → Tests/);
 	});
 
 	test('a mutant whose line has no perTest record at all gets the plain contextValue, no fabricated bridge', async () => {

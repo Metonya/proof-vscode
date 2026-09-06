@@ -73,12 +73,12 @@ async function productionHover(workspaceRoot: string, modules: CoverageState['mo
 	md.isTrusted = true;
 
 	if (quality.isFalseGreen) {
-		md.appendMarkdown('**⚠ proof-java: bu satırı kapsayan hiçbir testin oracle\'ı yok** - kapsama yeşil ama satır gerçekte doğrulanmıyor.\n\n---\n\n');
+		md.appendMarkdown('**⚠ Proof: none of the tests covering this line has an oracle** - it\'s covered (green), but not actually verified.\n\n---\n\n');
 	}
 
 	const weakCount = quality.byVerdict.noOracle + quality.byVerdict.weak;
-	md.appendMarkdown(`**proof-java — satır ${lineNumber}**\n\n`);
-	md.appendMarkdown(`${quality.tests.length} test çalıştırıyor` + (weakCount > 0 ? ` · ${weakCount}'inin oracle'ı yok/zayıf` : '') + '\n\n');
+	md.appendMarkdown(`**Proof — line ${lineNumber}**\n\n`);
+	md.appendMarkdown(`${quality.tests.length} test(s) cover this` + (weakCount > 0 ? ` · ${weakCount} with no/weak oracle` : '') + '\n\n');
 
 	// Resolve each test's own file only once per class (most lines share a
 	// handful of test classes) - Promise.all so N tests do not serialize N
@@ -124,8 +124,8 @@ async function testMethodHover(document: vscode.TextDocument, position: vscode.P
 
 	const md = new vscode.MarkdownString(undefined, true);
 	md.isTrusted = true;
-	md.appendMarkdown(`**proof-java — ${methodName}()**\n\n`);
-	md.appendMarkdown('Bu test şu production satırlarını çalıştırıyor (yalnızca bu koşuda hedeflenen sınıflar):\n\n');
+	md.appendMarkdown(`**Proof — ${methodName}()**\n\n`);
+	md.appendMarkdown('This test executes the following production lines (only classes targeted in this run):\n\n');
 
 	const productionClassIndex = buildProductionClassIndexFor();
 	const byClass = groupByClass(reverse);

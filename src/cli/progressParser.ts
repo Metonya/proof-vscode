@@ -89,14 +89,14 @@ export function progressMessage(event: ProgressEvent, showModule = false): strin
 	switch (event.phase) {
 		case 'start':
 			return prefix + (event.budgetSeconds === undefined
-				? `${event.total} sınıf taranacak`
-				: `${event.total} sınıf taranacak · bütçe ${event.budgetSeconds}s`);
+				? `${event.total} class(es) to scan`
+				: `${event.total} class(es) to scan · budget ${event.budgetSeconds}s`);
 		case 'heartbeat':
 			return prefix + (event.done !== undefined && event.total !== undefined
-				? `${event.done}/${event.total} sınıf · ${event.elapsed}`
-				: `kanıt toplanıyor · ${event.elapsed}`);
+				? `${event.done}/${event.total} class(es) · ${event.elapsed}`
+				: `collecting evidence · ${event.elapsed}`);
 		case 'done':
-			return `${prefix}bitti`;
+			return `${prefix}done`;
 		case 'failed':
 			return prefix + event.message;
 	}

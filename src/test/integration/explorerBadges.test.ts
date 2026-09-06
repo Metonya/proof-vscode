@@ -67,18 +67,18 @@ suite('Explorer badges (Faz 9 / Faz 13 madde 8)', () => {
 		provider.update(WORKSPACE_ROOT, FILE_COVERAGE, 'sonar-compatible');
 
 		const calculator = provider.provideFileDecoration(vscode.Uri.file(path.join(WORKSPACE_ROOT, 'src/main/java/dev/proofjava/playground/Calculator.java')));
-		assert.ok(calculator, 'Calculator.java (gerçek veri, %80) rozet almalı');
+		assert.ok(calculator, 'Calculator.java (real data, 80%) should get a badge');
 		assert.equal(calculator!.badge, '80');
 
 		const notifying = provider.provideFileDecoration(vscode.Uri.file(path.join(WORKSPACE_ROOT, 'src/main/java/dev/proofjava/playground/NotifyingCalculator.java')));
-		assert.ok(notifying, 'NotifyingCalculator.java (gerçek veri, %100) rozet almalı');
-		assert.equal(notifying!.badge, '✓', '%100 iki karaktere sığmaz ("100"), VS Code onu reddedip dekorasyonu tamamen düşürür - Faz 18');
+		assert.ok(notifying, 'NotifyingCalculator.java (real data, 100%) should get a badge');
+		assert.equal(notifying!.badge, '✓', '100% doesn\'t fit in two characters ("100"), VS Code rejects it and drops the decoration entirely - Faz 18');
 
 		const notifier = provider.provideFileDecoration(vscode.Uri.file(path.join(WORKSPACE_ROOT, 'src/main/java/dev/proofjava/playground/Notifier.java')));
-		assert.equal(notifier, undefined, 'Notifier.java saf arayüz - 0 çalıştırılabilir satır, veri yok, rozet olmamalı (hard rule 3a)');
+		assert.equal(notifier, undefined, 'Notifier.java is a pure interface - 0 executable lines, no data, must get no badge (hard rule 3a)');
 
 		const folder = provider.provideFileDecoration(vscode.Uri.file(path.join(WORKSPACE_ROOT, 'src/main/java/dev/proofjava/playground')));
-		assert.ok(folder, 'klasör rozeti, veri taşıyan iki dosyanın rollup\'ından gelmeli');
+		assert.ok(folder, 'folder badge must come from the rollup of the two files carrying data');
 		assert.equal(folder!.badge, '85');
 
 		provider.dispose();
@@ -123,9 +123,9 @@ suite('Explorer badges (Faz 9 / Faz 13 madde 8)', () => {
 		provider.update(WORKSPACE_ROOT, { ...FILE_COVERAGE, excluded: ['src/main/java/dev/proofjava/playground/Generated.java'] }, 'sonar-compatible');
 
 		const excluded = provider.provideFileDecoration(vscode.Uri.file(path.join(WORKSPACE_ROOT, 'src/main/java/dev/proofjava/playground/Generated.java')));
-		assert.ok(excluded, 'kapsama dışı bırakılmış dosya da işaretlenmeli');
+		assert.ok(excluded, 'a file excluded from coverage must also be marked');
 		assert.equal(excluded!.badge, '–');
-		assert.match(String(excluded!.tooltip), /coverage dışı/);
+		assert.match(String(excluded!.tooltip), /excluded from coverage/);
 
 		provider.dispose();
 	});

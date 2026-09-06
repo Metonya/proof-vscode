@@ -58,15 +58,15 @@ test('tanınmayan satır undefined döner, uydurulmuş bir olay değil', () => {
 
 test('progressMessage geçen süreyi her zaman yazar - 30sn heartbeat yüzünden yüzde donmuş görünmemeli', () => {
 	const heartbeat = parseProgressLine("proof-java: mutation: module 'root' - 2/3 class(es), 6m12s elapsed")!;
-	assert.equal(progressMessage(heartbeat), '2/3 sınıf · 6m12s');
+	assert.equal(progressMessage(heartbeat), '2/3 class(es) · 6m12s');
 
 	const plain = parseProgressLine("proof-java: per-test: module 'root' - collecting coverage, 48s elapsed")!;
-	assert.equal(progressMessage(plain), 'kanıt toplanıyor · 48s');
+	assert.equal(progressMessage(plain), 'collecting evidence · 48s');
 });
 
 test('progressMessage başlangıçta bütçeyi de söyler', () => {
 	const start = parseProgressLine("proof-java: mutation: module 'root' - 3 target class(es), budget 300s")!;
-	assert.equal(progressMessage(start), '3 sınıf taranacak · bütçe 300s');
+	assert.equal(progressMessage(start), '3 class(es) to scan · budget 300s');
 });
 
 test('incrementFor mutlak yüzde değil fark verir', () => {
@@ -116,17 +116,17 @@ test('incrementFor: moduleCount defaults to 1 (single-module run, unchanged from
 
 test('progressMessage: showModule prefixes the module id, off by default', () => {
 	const heartbeat = parseProgressLine("proof-java: mutation: module 'gson' - 2/3 class(es), 6m12s elapsed")!;
-	assert.equal(progressMessage(heartbeat), '2/3 sınıf · 6m12s');
-	assert.equal(progressMessage(heartbeat, true), "gson · 2/3 sınıf · 6m12s");
-	assert.equal(progressMessage(heartbeat, false), '2/3 sınıf · 6m12s');
+	assert.equal(progressMessage(heartbeat), '2/3 class(es) · 6m12s');
+	assert.equal(progressMessage(heartbeat, true), "gson · 2/3 class(es) · 6m12s");
+	assert.equal(progressMessage(heartbeat, false), '2/3 class(es) · 6m12s');
 });
 
 test('progressMessage: showModule prefixes start/done/failed too', () => {
 	const start = parseProgressLine("proof-java: mutation: module 'gson' - 3 target class(es), budget 300s")!;
-	assert.equal(progressMessage(start, true), "gson · 3 sınıf taranacak · bütçe 300s");
+	assert.equal(progressMessage(start, true), "gson · 3 class(es) to scan · budget 300s");
 
 	const done = parseProgressLine("proof-java: mutation: module 'gson' - done, 5 method(s) with mutants")!;
-	assert.equal(progressMessage(done, true), 'gson · bitti');
+	assert.equal(progressMessage(done, true), 'gson · done');
 
 	const failed = parseProgressLine("proof-java: mutation: module 'gson' - FAILED, budget of 300s exhausted after 2/3 class(es) completed")!;
 	assert.equal(progressMessage(failed, true), "gson · FAILED, budget of 300s exhausted after 2/3 class(es) completed");

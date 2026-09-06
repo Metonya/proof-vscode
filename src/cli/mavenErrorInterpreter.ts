@@ -1,9 +1,9 @@
 /**
  * Pure: recognizes a small, closed set of Maven failure shapes from raw
- * subprocess output and turns them into an honest, actionable Turkish
- * sentence - never a guess. An unrecognized failure returns `undefined`
- * and the caller falls back to "ayrıntı için Output → proof-java kanalına
- * bakın" with the raw text already logged - hard rule 3a: an unrecognized
+ * subprocess output and turns them into an honest, actionable sentence -
+ * never a guess. An unrecognized failure returns `undefined` and the
+ * caller falls back to "see the Output → proof-java channel for detail"
+ * with the raw text already logged - hard rule 3a: an unrecognized
  * cause is never invented.
  *
  * Every shape here was verified against a real failure this session
@@ -15,7 +15,7 @@ export type MavenFailureKind = 'unresolvedReactorSibling' | 'noPluginPrefix' | '
 
 export interface MavenFailureInterpretation {
 	kind: MavenFailureKind;
-	/** Ready-to-show Turkish sentence explaining the cause. */
+	/** Ready-to-show sentence explaining the cause. */
 	detail: string;
 }
 
@@ -52,7 +52,7 @@ function interpretUnresolvedReactorSibling(output: string): MavenFailureInterpre
 	}
 	return {
 		kind: 'unresolvedReactorSibling',
-		detail: `Maven, aynı repo içindeki \`${match[1]}\` modülünü yerel depoda bulamadı - bu modül henüz kurulmamış. Kardeş modüllerin classpath'i, önce bir kez \`mvn install -DskipTests\` çalıştırılmadan üretilemez.`,
+		detail: `Maven couldn't find the \`${match[1]}\` module (from the same repo) in the local repository - that module hasn't been installed yet. A sibling module's classpath can't be generated without running \`mvn install -DskipTests\` once first.`,
 	};
 }
 
@@ -64,7 +64,7 @@ function interpretNoPluginPrefix(output: string): MavenFailureInterpretation | u
 	}
 	return {
 		kind: 'noPluginPrefix',
-		detail: `Bu projenin pom'unda JaCoCo eklentisi tanımlı değil, kısa "${match[1]}:..." biçimi çalışmıyor. proof-java kendi komutlarında her zaman tam koordinatı (org.jacoco:jacoco-maven-plugin:<sürüm>:...) kullanır.`,
+		detail: `This project's pom doesn't declare the JaCoCo plugin, so the short "${match[1]}:..." form doesn't work. proof-java's own commands always use the full coordinate (org.jacoco:jacoco-maven-plugin:<version>:...).`,
 	};
 }
 
@@ -76,7 +76,7 @@ function interpretEnforcerJdk(output: string): MavenFailureInterpretation | unde
 	}
 	return {
 		kind: 'enforcerJdk',
-		detail: `Maven'ın kendi mesajı: "${match[0].trim()}". proof.javaExecutable / JAVA_HOME'un işaret ettiği JDK'yı bu projenin beklediği aralığa göre ayarlayın.`,
+		detail: `Maven's own message: "${match[0].trim()}". Point proof.javaExecutable / JAVA_HOME at a JDK within the range this project expects.`,
 	};
 }
 
@@ -100,6 +100,6 @@ function interpretUnresolvedJpmsModule(output: string): MavenFailureInterpretati
 	}
 	return {
 		kind: 'unresolvedJpmsModule',
-		detail: `Bir modülün \`module-info.java\`'sı \`${match[1]}\` modülünü modül yolunda bulamıyor - modül tanımlayıcıları genellikle yalnızca \`package\` aşamasında JAR'a eklenir, \`test\`/\`verify\` fazında henüz yok. Bu modülü kapsam dışı bırakmak (tekrar tarayıp yalnızca ihtiyacınız olan modülü seçin) ya da tam \`mvn install\`/\`package\` çalıştırmak gerekir.`,
+		detail: `A module's \`module-info.java\` can't find the \`${match[1]}\` module on the module path - module descriptors are usually only added to the JAR at the \`package\` phase, not yet present at \`test\`/\`verify\`. Either scope this module out (re-scan and select only the module you need), or run a full \`mvn install\`/\`package\`.`,
 	};
 }

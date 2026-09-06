@@ -191,7 +191,7 @@ suite('extension.restoreLastCoverageFrom (Faz 23/25 - pencere yenileme)', () => 
 		const header = mutationSnapshots.at(-1)![0];
 		assert.equal(header?.kind, 'header');
 		if (header?.kind === 'header') {
-			assert.match(header.text, /dakika önce/);
+			assert.match(header.text, /minute\(s\) ago/);
 		}
 	});
 
@@ -219,7 +219,7 @@ suite('extension.restoreLastCoverageFrom (Faz 23/25 - pencere yenileme)', () => 
 		assert.equal(header?.kind, 'header');
 		if (header?.kind === 'header') {
 			assert.match(header.text, /Calculator/, 'the real target name must survive, not just the timestamp');
-			assert.match(header.text, /5 dakika önce/);
+			assert.match(header.text, /5 minute\(s\) ago/);
 		}
 	});
 
@@ -295,7 +295,7 @@ suite('extension.restoreLastCoverageFrom (Faz 23/25 - pencere yenileme)', () => 
 		await restoreLastCoverageFrom(storageDir, workspaceRoot, sinks);
 
 		assert.ok(lineTestsSnapshots.length > 0, 'perTest must restore independently of verdict-current.json having no perTest block');
-		assert.equal(lineTestsSnapshots.at(-1)![0]?.kind, 'prodLine', 'must show the restored per-test data, not "Bu sınıf için test bazlı kanıt yok"');
+		assert.equal(lineTestsSnapshots.at(-1)![0]?.kind, 'prodLine', 'must show the restored per-test data, not the no-per-test-evidence message');
 	});
 
 	test('a missing pertest-current.json (never ran Derin Tarama) falls back to verdict-current.json\'s own perTest block, unchanged behavior', async () => {

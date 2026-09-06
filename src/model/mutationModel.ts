@@ -140,12 +140,12 @@ export function classesOf(
  */
 export function targetSummary(targets: readonly string[]): string {
 	if (targets.length === 0) {
-		return "diff'teki değişen sınıflar";
+		return 'changed classes in the diff';
 	}
 	if (targets.length === 1) {
 		return shortClassName(targets[0]);
 	}
-	return `${targets.length} sınıf`;
+	return `${targets.length} class(es)`;
 }
 
 function shortClassName(fqcn: string): string {
@@ -163,18 +163,18 @@ function shortClassName(fqcn: string): string {
 export function formatRelativeTime(fromMs: number, nowMs: number): string {
 	const diffSeconds = Math.max(0, Math.round((nowMs - fromMs) / 1000));
 	if (diffSeconds < 60) {
-		return 'az önce';
+		return 'just now';
 	}
 	const minutes = Math.round(diffSeconds / 60);
 	if (minutes < 60) {
-		return `${minutes} dakika önce`;
+		return `${minutes} minute(s) ago`;
 	}
 	const hours = Math.round(minutes / 60);
 	if (hours < 24) {
-		return `${hours} saat önce`;
+		return `${hours} hour(s) ago`;
 	}
 	const days = Math.round(hours / 24);
-	return `${days} gün önce`;
+	return `${days} day(s) ago`;
 }
 
 export function methodLabel(method: MutatedMethod, siblings: readonly MutatedMethod[]): string {

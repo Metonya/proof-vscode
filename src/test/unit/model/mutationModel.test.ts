@@ -126,29 +126,29 @@ test('targetSummary: tek hedef sınıfın kısa adını gösterir', () => {
 });
 
 test('targetSummary: birden çok hedefte sayı gösterir, tek tek listelemez', () => {
-	assert.equal(targetSummary(['a.B', 'a.C', 'a.D']), '3 sınıf');
+	assert.equal(targetSummary(['a.B', 'a.C', 'a.D']), '3 class(es)');
 });
 
 test('targetSummary: hedef boşsa (modül geneli, diff\'ten türetilmiş) bunu söyler', () => {
-	assert.equal(targetSummary([]), "diff'teki değişen sınıflar");
+	assert.equal(targetSummary([]), "changed classes in the diff");
 });
 
 /** Faz 22: "ne kadar önce" - CLI zaman damgası taşımadığı için bu tamamen eklentinin kendi saatiyle hesaplanır. */
 test('formatRelativeTime: bir dakikadan az "az önce"', () => {
 	const now = Date.parse('2026-08-28T12:00:00Z');
-	assert.equal(formatRelativeTime(now - 30_000, now), 'az önce');
+	assert.equal(formatRelativeTime(now - 30_000, now), 'just now');
 });
 
 test('formatRelativeTime: dakika, saat, gün eşikleri', () => {
 	const now = Date.parse('2026-08-28T12:00:00Z');
-	assert.equal(formatRelativeTime(now - 5 * 60_000, now), '5 dakika önce');
-	assert.equal(formatRelativeTime(now - 90 * 60_000, now), '2 saat önce', '90 dakika en yakın saate yuvarlanır');
-	assert.equal(formatRelativeTime(now - 50 * 3600_000, now), '2 gün önce');
+	assert.equal(formatRelativeTime(now - 5 * 60_000, now), '5 minute(s) ago');
+	assert.equal(formatRelativeTime(now - 90 * 60_000, now), '2 hour(s) ago', '90 minutes rounds to the nearest hour');
+	assert.equal(formatRelativeTime(now - 50 * 3600_000, now), '2 day(s) ago');
 });
 
 test('formatRelativeTime: gelecekteki bir zaman (saat kayması) negatif süreye düşmez', () => {
 	const now = Date.parse('2026-08-28T12:00:00Z');
-	assert.equal(formatRelativeTime(now + 10_000, now), 'az önce');
+	assert.equal(formatRelativeTime(now + 10_000, now), 'just now');
 });
 
 /**

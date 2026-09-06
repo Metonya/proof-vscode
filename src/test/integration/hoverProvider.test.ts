@@ -148,7 +148,7 @@ suite('Hover provider (Faz 15b)', () => {
 			);
 			assert.ok(hovers && hovers.length > 0, 'expected the reverse-direction hover on a test method');
 			const text = hovers.map((h) => h.contents.map((c) => (typeof c === 'string' ? c : (c as vscode.MarkdownString).value)).join('\n')).join('\n');
-			assert.match(text, /production satırlarını/, 'must be the reverse hover, which names the production lines this test runs');
+			assert.match(text, /production lines/, 'must be the reverse hover, which names the production lines this test runs');
 			assert.match(text, /Calculator\.java/);
 		} finally {
 			disposable.dispose();
