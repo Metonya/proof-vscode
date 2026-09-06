@@ -50,8 +50,11 @@ export function parseVerdict(raw: string): Result<VerdictDocument> {
 	if ('fileCoverage' in json && !isFileCoverageBlock(json.fileCoverage)) {
 		return { ok: false, error: 'fileCoverage is present but malformed' };
 	}
-	if ('perTest' in json && !isPerTestBlock(json.perTest)) {
-		return { ok: false, error: 'perTest is present but malformed' };
+	if ('perTest' in json) {
+		resolveInternedTestIds(json.perTest);
+		if (!isPerTestBlock(json.perTest)) {
+			return { ok: false, error: 'perTest is present but malformed' };
+		}
 	}
 	if ('mutation' in json && !isMutationBlock(json.mutation)) {
 		return { ok: false, error: 'mutation is present but malformed' };
@@ -145,6 +148,46 @@ function isFileCoverageEntry(value: unknown): value is FileCoverageEntry {
 
 function isLineTuple(value: unknown): value is LineTuple {
 	return Array.isArray(value) && value.length === 5 && value.every((n) => typeof n === 'number');
+}
+
+/**
+ * D-86 (proof-java, 2026-09-05): a real gson run produced a 312 MB verdict
+ * document because the same long PIT test id was written out once per line
+ * it touched. The fix moved each module's test ids into a sorted `testIds`
+ * array and replaced each line's `tests: string[]` with `tests: number[]`
+ * indexes into it - a breaking wire-format change taken before proof-java's
+ * v0.1 (no published consumers to break at the time). This extension is
+ * one now: resolves the indexes back into raw strings in place, mirroring
+ * proof-java's own `VerdictJsonReader` (D-86: "every other reader see[s]
+ * what they saw before"), so every downstream consumer here
+ * (`model/lineIndex.ts`, `ui/hoverProvider.ts`, `ui/treeViews/lineTestsView.ts`,
+ * `model/falseGreenIndex.ts`) keeps reading plain `tests: string[]`
+ * unchanged. A module with no `testIds` array (an older proof-java build,
+ * pre-D-86) is left untouched - its `tests` are presumably already strings,
+ * and `isPerTestBlock` below is what actually catches a truly malformed
+ * shape either way.
+ */
+function resolveInternedTestIds(value: unknown): void {
+	if (!isRecord(value) || !Array.isArray(value.modules)) {
+		return;
+	}
+	for (const testModule of value.modules) {
+		if (!isRecord(testModule) || !Array.isArray(testModule.testIds)) {
+			continue;
+		}
+		const testIds = testModule.testIds;
+		for (const entry of [...(Array.isArray(testModule.entries) ? testModule.entries : []), ...(Array.isArray(testModule.ambient) ? testModule.ambient : [])]) {
+			if (!isRecord(entry) || !Array.isArray(entry.lines)) {
+				continue;
+			}
+			for (const line of entry.lines) {
+				if (!isRecord(line) || !Array.isArray(line.tests)) {
+					continue;
+				}
+				line.tests = line.tests.map((index: unknown) => (typeof index === 'number' ? testIds[index] : index));
+			}
+		}
+	}
 }
 
 /** Faz 28 (§7.5b): `extension.ts`'in kendi `pertest-current.json`'ını doğrularken de kullanılıyor - `isMutationBlock`'un aynı gerekçesi. */

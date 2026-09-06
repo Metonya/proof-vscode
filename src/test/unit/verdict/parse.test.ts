@@ -101,6 +101,26 @@ test('a well-formed perTest block parses through, entries and ambient both', () 
 	}
 });
 
+test('D-86: a perTest block with interned testIds/numeric indexes resolves back to plain test-id strings', () => {
+	const doc = minimalDocument() as Record<string, unknown>;
+	doc.perTest = {
+		engine: 'pitest',
+		engineVersion: '1.15.8',
+		modules: [{
+			id: 'root',
+			testIds: ['CalcTest#addsTwoNumbers()', 'CalcTest#subtractsTwoNumbers()'],
+			entries: [{ className: 'dev.proofjava.playground.Calculator', methodName: 'add', lines: [{ line: 7, tests: [0, 1] }] }],
+			ambient: [{ className: 'dev.proofjava.playground.Calculator', methodName: '<clinit>', lines: [{ line: 3, tests: [0] }] }],
+		}],
+	};
+	const result = parseVerdict(JSON.stringify(doc));
+	assert.equal(result.ok, true);
+	if (result.ok) {
+		assert.deepEqual(result.value.perTest?.modules[0].entries[0].lines[0].tests, ['CalcTest#addsTwoNumbers()', 'CalcTest#subtractsTwoNumbers()']);
+		assert.deepEqual(result.value.perTest?.modules[0].ambient[0].lines[0].tests, ['CalcTest#addsTwoNumbers()']);
+	}
+});
+
 test('a document with no perTest at all parses with it left undefined', () => {
 	const result = parseVerdict(JSON.stringify(minimalDocument()));
 	assert.equal(result.ok, true);
