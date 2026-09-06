@@ -146,7 +146,7 @@ function runTestsItem(folder: vscode.WorkspaceFolder): RunItem {
 	const buildTool = detectRunTestsBuildTool(folder);
 	const label = buildTool === 'gradle' ? 'Run Tests (Gradle + JaCoCo)' : 'Run Tests (Maven + JaCoCo)';
 	const tooltip = buildTool === 'gradle'
-		? 'Runs "gradlew test jacocoTestReport" (in a visible terminal) and refreshes the report - only ever the workspace\'s own committed wrapper, never a bare \'gradle\' on PATH. Quick Scan runs automatically when it finishes.'
+		? 'Runs the tests under JaCoCo via Gradle (in a visible terminal) and refreshes the report - only ever the workspace\'s own committed wrapper, never a bare \'gradle\' on PATH. A multi-project build asks which project(s) to run first. Quick Scan runs automatically when it finishes.'
 		: 'Runs the tests under JaCoCo via Maven (in a visible terminal) and refreshes the report. Adds the JaCoCo plugin from the command line if the pom doesn\'t declare one - never a permanent pom change. Quick Scan runs automatically when it finishes.';
 	return new RunItem(label, reportFreshnessText(folder), 'proof.runTests', 'run-all', tooltip);
 }

@@ -6,7 +6,8 @@ import type { ModuleReportBinding } from '../cli/argsBuilder';
 import { type DoctorResult, runDoctor } from '../cli/doctorRunner';
 import { interpretMavenFailure } from '../cli/mavenErrorInterpreter';
 import { parseDoctorProgressLine } from '../cli/progressParser';
-import { bindModules, describeSiblingProjects, discoverModuleRootsFromPoms, isProjectRoot, moduleForPath, PROJECT_ROOT_MARKER_FILES, toRepoRelativePosix } from '../cli/reportDiscovery';
+import { interpretGradleFailure } from '../cli/gradleErrorInterpreter';
+import { bindModules, describeSiblingProjects, discoverModuleRootsFromPoms, discoverModuleRootsFromSettingsGradle, isProjectRoot, moduleForPath, PROJECT_ROOT_MARKER_FILES, toRepoRelativePosix } from '../cli/reportDiscovery';
 import { resolveGradleWrapper, runGradleTestsTask } from './gradleTestTask';
 import { runMavenInstallTask, runTestsTask } from './mavenTestTask';
 import { resolveWorkspaceEnv } from './workspaceEnv';
@@ -83,10 +84,83 @@ interface RunTestsModuleQuickPickItem extends vscode.QuickPickItem {
 	moduleRoot: string;
 }
 
-/** A real, checkable fact (not a relevance guess) shown next to a module in the picker - `undefined` when the module has an ordinary `src/main/java`. */
+function moduleDir(workspaceRoot: string, moduleRoot: string): string {
+	return moduleRoot === '.' ? workspaceRoot : path.join(workspaceRoot, moduleRoot);
+}
+
+/** A real, checkable fact (not a relevance guess) shown next to a module in the picker - `undefined` when the module has ordinary main sources. Kotlin counts: a Gradle module's production code is often `src/main/kotlin`, and claiming it has no sources would be simply wrong. */
 function describeMissingMainSource(workspaceRoot: string, moduleRoot: string): string | undefined {
-	const dir = moduleRoot === '.' ? workspaceRoot : path.join(workspaceRoot, moduleRoot);
-	return fs.existsSync(path.join(dir, 'src/main/java')) ? undefined : 'no src/main/java';
+	const dir = moduleDir(workspaceRoot, moduleRoot);
+	const hasMain = fs.existsSync(path.join(dir, 'src/main/java')) || fs.existsSync(path.join(dir, 'src/main/kotlin'));
+	return hasMain ? undefined : 'no src/main/java';
+}
+
+/** Whether a module has test sources of its own - the fact that decides, on the Gradle side, whether it even has a `test` task to scope to. */
+function hasTestSources(workspaceRoot: string, moduleRoot: string): boolean {
+	const dir = moduleDir(workspaceRoot, moduleRoot);
+	return fs.existsSync(path.join(dir, 'src/test/java')) || fs.existsSync(path.join(dir, 'src/test/kotlin'));
+}
+
+/** Gradle picker rows lead with the decisive fact (why a row is unchecked), falling back to the Maven-side main-source hint when the module does have tests. */
+function describeGradleModuleGap(workspaceRoot: string, moduleRoot: string): string | undefined {
+	return hasTestSources(workspaceRoot, moduleRoot)
+		? describeMissingMainSource(workspaceRoot, moduleRoot)
+		: 'no test sources - nothing to run here';
+}
+
+/**
+ * Whether the open editor is a JVM source file whose *directory* can name a
+ * module. It never parses the file - only its location matters.
+ *
+ * Both signals are needed, and finding that out took a real Extension Host
+ * run: VS Code ships Java's own language contribution (so a `.java` file
+ * reliably has `languageId === 'java'`), but no Kotlin one - without a
+ * third-party Kotlin extension installed a `.kt` file arrives as
+ * `plaintext`, and a languageId-only check silently stopped scoping for
+ * exactly the Kotlin-heavy Gradle repos this is for. Build scripts
+ * (`.gradle.kts`) are deliberately excluded: editing a build file is not a
+ * statement about which module's tests you want.
+ */
+function isJvmSourceDocument(document: vscode.TextDocument | undefined): document is vscode.TextDocument {
+	if (document === undefined) {
+		return false;
+	}
+	return document.languageId === 'java' || document.languageId === 'kotlin' || /\.(?:java|kt)$/i.test(document.fileName);
+}
+
+/** `settings.gradle.kts` wins over `settings.gradle`, the same priority `GradleProjectScanner.java` applies. `undefined` means neither exists - a single-project Gradle build, which has nothing to scope. */
+function readGradleSettings(workspaceRoot: string): string | undefined {
+	for (const name of ['settings.gradle.kts', 'settings.gradle']) {
+		const file = path.join(workspaceRoot, name);
+		if (fs.existsSync(file)) {
+			try {
+				return fs.readFileSync(file, 'utf8');
+			} catch {
+				return undefined; // best-effort, exactly like the CLI's own scanner
+			}
+		}
+	}
+	return undefined;
+}
+
+/**
+ * Every module the Run Tests scope decision can choose between, for either
+ * build tool. Maven: a blind `pom.xml` glob (see `resolveRunTestsModuleScope`
+ * for why this does not call `doctor`). Gradle: the same `include(...)`
+ * parse the CLI's own `GradleProjectScanner` performs, plus the root project
+ * when it has test sources of its own - Gradle never `include(...)`s its own
+ * root, so without that check a repo whose tests live at the root would
+ * never run them once scoping is on.
+ */
+async function discoverRunTestsModules(folder: vscode.WorkspaceFolder, buildTool: 'maven' | 'gradle' | undefined): Promise<readonly { id: string; root: string }[]> {
+	if (buildTool === 'gradle') {
+		const settingsText = readGradleSettings(folder.uri.fsPath);
+		return settingsText === undefined
+			? []
+			: discoverModuleRootsFromSettingsGradle(settingsText, hasTestSources(folder.uri.fsPath, '.'));
+	}
+	const pomUris = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, '**/pom.xml'), '**/node_modules/**', 50);
+	return discoverModuleRootsFromPoms(pomUris.map((uri) => toRepoRelativePosix(uri.fsPath, folder.uri.fsPath)));
 }
 
 /**
@@ -111,18 +185,19 @@ function describeMissingMainSource(workspaceRoot: string, moduleRoot: string): s
  * from "run everything" (empty `moduleRoots` inside a defined result).
  */
 export async function resolveRunTestsModuleScope(folder: vscode.WorkspaceFolder): Promise<{ moduleRoots: readonly string[] | undefined } | undefined> {
-	const pomUris = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, '**/pom.xml'), '**/node_modules/**', 50);
-	if (pomUris.length <= 1) {
+	const buildTool = detectRunTestsBuildTool(folder);
+	const isGradle = buildTool === 'gradle';
+	const modules = await discoverRunTestsModules(folder, buildTool);
+	if (modules.length <= 1) {
 		return { moduleRoots: undefined };
 	}
-	const modules = discoverModuleRootsFromPoms(pomUris.map((uri) => toRepoRelativePosix(uri.fsPath, folder.uri.fsPath)));
 
 	// A real, non-guessed signal: the file the user is actually looking at,
 	// mapped to its containing module via the same longest-prefix logic
 	// `--*-target` resolution already uses. Silent, no prompt - this is not
 	// picking among options, it is reading a fact already in front of the user.
 	const activeDocument = vscode.window.activeTextEditor?.document;
-	if (activeDocument?.languageId === 'java') {
+	if (isJvmSourceDocument(activeDocument)) {
 		const relative = toRepoRelativePosix(activeDocument.fileName, folder.uri.fsPath);
 		const matchedId = moduleForPath(relative, modules);
 		const matched = modules.find((m) => m.id === matchedId);
@@ -131,23 +206,33 @@ export async function resolveRunTestsModuleScope(folder: vscode.WorkspaceFolder)
 		}
 	}
 
-	// No usable active-file signal - ask, defaulting to everything checked
-	// (today's whole-reactor behavior, unchanged if the user just confirms).
-	// This is not the QuickPick pattern the user rejected earlier (that one
-	// picked *which report to trust* among reports that all equally
-	// belonged to the same run); this is *which modules to actually build*,
-	// a real action decision where different modules can have genuinely
-	// conflicting toolchain requirements.
+	// No usable active-file signal - ask. Maven defaults to everything
+	// checked (today's whole-reactor behavior, unchanged if the user just
+	// confirms). This is not the QuickPick pattern the user rejected earlier
+	// (that one picked *which report to trust* among reports that all
+	// equally belonged to the same run); this is *which modules to actually
+	// build*, a real action decision where different modules can have
+	// genuinely conflicting toolchain requirements.
+	//
+	// Gradle differs on one point, and it is a correctness point rather than
+	// a taste one: a scoped Gradle run asks for `:module:test` explicitly, so
+	// a project that has no `test` task at all (junit-framework ships both a
+	// `java-platform` BOM and docs-only modules) fails the whole build
+	// instead of being skipped. Modules with no test sources therefore start
+	// unchecked - still visible, still checkable, with the deciding fact
+	// spelled out next to them.
 	const items: RunTestsModuleQuickPickItem[] = modules.map((m) => ({
 		label: m.root === '.' ? '. (workspace root)' : m.root,
-		picked: true,
-		description: describeMissingMainSource(folder.uri.fsPath, m.root),
+		picked: isGradle ? hasTestSources(folder.uri.fsPath, m.root) : true,
+		description: isGradle ? describeGradleModuleGap(folder.uri.fsPath, m.root) : describeMissingMainSource(folder.uri.fsPath, m.root),
 		moduleRoot: m.root,
 	}));
 	const picked = await vscode.window.showQuickPick(items, {
 		canPickMany: true,
 		title: 'Proof: which module(s) should the tests run in?',
-		placeHolder: `${modules.length} module(s) found - all selected by default, uncheck any you don't need`,
+		placeHolder: isGradle
+			? `${modules.length} project(s) found - those with no test sources start unchecked`
+			: `${modules.length} module(s) found - all selected by default, uncheck any you don't need`,
 	});
 	if (!picked || picked.length === 0) {
 		return undefined;
@@ -174,18 +259,21 @@ async function offerToRunTestsNow(folder: vscode.WorkspaceFolder, output: vscode
 		return false;
 	}
 
-	if (buildTool === 'gradle') {
-		const gradleResult = await runGradleTestsTask(folder, output);
-		if (gradleResult && !gradleResult.success) {
-			vscode.window.showErrorMessage('Proof: Gradle failed. See the terminal output for detail. Scan not started.');
-		}
-		return gradleResult?.success === true;
-	}
-
 	const scope = await resolveRunTestsModuleScope(folder);
 	if (!scope) {
 		return false;
 	}
+
+	if (buildTool === 'gradle') {
+		const gradleResult = await runGradleTestsTask(folder, output, scope.moduleRoots);
+		if (gradleResult && !gradleResult.success) {
+			const interpretation = interpretGradleFailure(gradleResult.capturedOutput);
+			const reasonSuffix = interpretation ? ` Reason: ${interpretation.detail}` : ' See the terminal output for detail.';
+			vscode.window.showErrorMessage(`Proof: Gradle failed.${reasonSuffix} Scan not started.`);
+		}
+		return gradleResult?.success === true;
+	}
+
 	const result = await runTestsTask(folder, output, scope.moduleRoots);
 	if (result && !result.success) {
 		const interpretation = interpretMavenFailure(result.capturedOutput);

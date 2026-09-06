@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 
+import { buildGradleTestArgs, unsafeModuleRoots } from '../cli/gradleTestCommand';
 import { run } from '../cli/runner';
 import { resolveWorkspaceEnv } from './workspaceEnv';
 
@@ -89,13 +90,28 @@ async function runVisibleGradleTask(folder: vscode.WorkspaceFolder, output: vsco
  * `undefined` means the task never ran at all (no wrapper committed) -
  * distinct from `false` (the task ran and Gradle itself failed or was
  * cancelled), same contract `mavenTestTask.ts#runTestsTask` uses.
+ *
+ * `moduleRoots` is the scope decided by `ui/preflight.ts`'s
+ * `resolveRunTestsModuleScope`, exactly as on the Maven side; `undefined`
+ * runs the whole build.
  */
-export async function runGradleTestsTask(folder: vscode.WorkspaceFolder, output: vscode.OutputChannel): Promise<GradleTaskResult | undefined> {
+export async function runGradleTestsTask(folder: vscode.WorkspaceFolder, output: vscode.OutputChannel, moduleRoots?: readonly string[]): Promise<GradleTaskResult | undefined> {
 	const wrapper = resolveGradleWrapper(folder);
 	if (!wrapper) {
 		vscode.window.showErrorMessage('Proof: no Gradle wrapper (gradlew) found at the workspace root - proof-java only ever runs '
 			+ 'a project\'s own committed wrapper, never a bare \'gradle\' on PATH.');
 		return undefined;
 	}
-	return runVisibleGradleTask(folder, output, wrapper, 'runTests', 'Run Tests (Gradle + JaCoCo)', ['test', 'jacocoTestReport']);
+
+	// A module root that cannot be passed as a shell-safe argument drops
+	// scoping for the whole run (see `cli/gradleTestCommand.ts`) - say so,
+	// rather than letting the user believe the narrower run they picked is
+	// the one that happened.
+	const unsafe = unsafeModuleRoots(moduleRoots);
+	if (unsafe.length > 0) {
+		vscode.window.showWarningMessage(`Proof: running the whole Gradle build - ${unsafe.join(', ')} cannot be passed as a task path safely.`);
+	}
+
+	const args = buildGradleTestArgs({ moduleRoots });
+	return runVisibleGradleTask(folder, output, wrapper, 'runTests', 'Run Tests (Gradle + JaCoCo)', args);
 }

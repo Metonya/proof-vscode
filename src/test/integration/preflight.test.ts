@@ -238,3 +238,157 @@ suite('resolveEvidenceClasspaths looks in the right build-output directory (Faz 
 		assert.deepEqual(classpaths, [{ moduleId: 'root', path: 'target/proof-per-test-classpath.txt' }]);
 	});
 });
+
+/**
+ * Faz "Gradle support" G3: `resolveRunTestsModuleScope` used to be a pom.xml
+ * glob only, so a multi-module Gradle repo got no scoping at all - clicking
+ * Run Tests on junit-framework (22 modules) built the whole thing. It now
+ * discovers Gradle projects from settings.gradle(.kts) with the same
+ * `include(...)` rules the CLI's own GradleProjectScanner applies.
+ */
+suite('resolveRunTestsModuleScope on Gradle (Faz "Gradle support" G3)', () => {
+	function wrapperName(): string {
+		return process.platform === 'win32' ? 'gradlew.bat' : 'gradlew';
+	}
+
+	function makeGradleRepo(prefix: string, settings: string, moduleDirsWithTests: readonly string[], rootHasTests = false): string {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+		fs.writeFileSync(path.join(root, wrapperName()), '', 'utf8');
+		fs.writeFileSync(path.join(root, 'settings.gradle.kts'), settings, 'utf8');
+		if (rootHasTests) {
+			fs.mkdirSync(path.join(root, 'src', 'test', 'java'), { recursive: true });
+		}
+		for (const dir of moduleDirsWithTests) {
+			fs.mkdirSync(path.join(root, ...dir.split('/'), 'src', 'test', 'java'), { recursive: true });
+		}
+		return root;
+	}
+
+	type PickerItem = vscode.QuickPickItem & { moduleRoot: string };
+
+	async function withStubbedQuickPick<T>(stub: (items: readonly PickerItem[]) => Promise<unknown>, body: () => Promise<T>): Promise<T> {
+		const original = vscode.window.showQuickPick;
+		// @ts-expect-error - monkey-patching for the duration of this test, restored in finally
+		vscode.window.showQuickPick = stub;
+		try {
+			return await body();
+		} finally {
+			vscode.window.showQuickPick = original;
+		}
+	}
+
+	test('a single-project Gradle build (no settings file) never prompts and never scopes', async () => {
+		await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-gradle-single-'));
+		fs.writeFileSync(path.join(root, wrapperName()), '', 'utf8');
+		fs.writeFileSync(path.join(root, 'build.gradle.kts'), 'plugins { java }\n', 'utf8');
+
+		const scope = await resolveRunTestsModuleScope(makeWorkspaceFolder(root));
+
+		assert.deepEqual(scope, { moduleRoots: undefined });
+	});
+
+	test('every included project is offered, and confirming them all means an unscoped (lenient) run', async () => {
+		await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+		const root = makeGradleRepo('proof-gradle-multi-', 'include(":core", ":extras")\n', ['core', 'extras']);
+
+		let capturedItems: readonly PickerItem[] | undefined;
+		const scope = await withStubbedQuickPick(async (items) => {
+			capturedItems = items;
+			return items;
+		}, () => resolveRunTestsModuleScope(makeWorkspaceFolder(root)));
+
+		assert.deepEqual(capturedItems?.map((i) => i.moduleRoot), ['core', 'extras']);
+		assert.deepEqual(scope, { moduleRoots: undefined });
+	});
+
+	test('unchecking one project scopes the run to what stayed checked', async () => {
+		await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+		const root = makeGradleRepo('proof-gradle-subset-', 'include(":core", ":extras")\n', ['core', 'extras']);
+
+		const scope = await withStubbedQuickPick(
+			async (items) => items.filter((i) => i.moduleRoot !== 'extras'),
+			() => resolveRunTestsModuleScope(makeWorkspaceFolder(root)),
+		);
+
+		assert.deepEqual(scope, { moduleRoots: ['core'] });
+	});
+
+	test('dismissing the picker means "do not run", never a silent whole-build run', async () => {
+		await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+		const root = makeGradleRepo('proof-gradle-cancel-', 'include(":core", ":extras")\n', ['core', 'extras']);
+
+		const scope = await withStubbedQuickPick(async () => undefined, () => resolveRunTestsModuleScope(makeWorkspaceFolder(root)));
+
+		assert.equal(scope, undefined);
+	});
+
+	/**
+	 * The junit-framework trap: a scoped run asks for `:module:test`
+	 * explicitly, so a project with no test sources (a java-platform BOM, a
+	 * docs module) fails the whole build instead of being skipped. Those
+	 * rows start unchecked, with the deciding fact shown next to them.
+	 */
+	test('a project with no test sources starts unchecked, and says why', async () => {
+		await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+		const root = makeGradleRepo('proof-gradle-notests-', 'include(":core", ":bom")\n', ['core']);
+
+		let capturedItems: readonly PickerItem[] | undefined;
+		await withStubbedQuickPick(async (items) => {
+			capturedItems = items;
+			return items.filter((i) => i.picked);
+		}, () => resolveRunTestsModuleScope(makeWorkspaceFolder(root)));
+
+		const bom = capturedItems?.find((i) => i.moduleRoot === 'bom');
+		const core = capturedItems?.find((i) => i.moduleRoot === 'core');
+		assert.equal(core?.picked, true);
+		assert.equal(bom?.picked, false);
+		assert.ok(bom?.description?.includes('no test sources'), bom?.description);
+	});
+
+	/** Gradle never `include(...)`s its own root project, so a repo whose tests live at the root would otherwise never run them once scoping is on. */
+	test('the root project is offered when it has test sources of its own', async () => {
+		await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+		const root = makeGradleRepo('proof-gradle-roottests-', 'include(":core")\n', ['core'], true);
+
+		let capturedItems: readonly PickerItem[] | undefined;
+		await withStubbedQuickPick(async (items) => {
+			capturedItems = items;
+			return items;
+		}, () => resolveRunTestsModuleScope(makeWorkspaceFolder(root)));
+
+		assert.deepEqual(capturedItems?.map((i) => i.moduleRoot), ['.', 'core']);
+	});
+
+	test('a root project with no tests of its own is not offered at all', async () => {
+		await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+		const root = makeGradleRepo('proof-gradle-norootests-', 'include(":core", ":extras")\n', ['core', 'extras']);
+
+		let capturedItems: readonly PickerItem[] | undefined;
+		await withStubbedQuickPick(async (items) => {
+			capturedItems = items;
+			return items;
+		}, () => resolveRunTestsModuleScope(makeWorkspaceFolder(root)));
+
+		assert.ok(!capturedItems?.some((i) => i.moduleRoot === '.'), 'the root project has no tests, so there is nothing to run in it');
+	});
+
+	/** An open Kotlin file is a real, non-guessed signal exactly like an open Java file - this reads which directory it sits in, it never parses the file. */
+	test('an open Kotlin file scopes silently to its own module, with no picker', async () => {
+		await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+		const root = makeGradleRepo('proof-gradle-kotlin-', 'include(":core", ":extras")\n', ['core', 'extras']);
+		const kotlinFile = path.join(root, 'core', 'src', 'test', 'kotlin', 'CoreTest.kt');
+		fs.mkdirSync(path.dirname(kotlinFile), { recursive: true });
+		fs.writeFileSync(kotlinFile, 'class CoreTest\n', 'utf8');
+		const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(kotlinFile));
+		await vscode.window.showTextDocument(doc);
+
+		const scope = await withStubbedQuickPick(
+			async () => assert.fail('an unambiguous active-file signal must not prompt'),
+			() => resolveRunTestsModuleScope(makeWorkspaceFolder(root)),
+		);
+
+		assert.deepEqual(scope, { moduleRoots: ['core'] });
+		await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+	});
+});

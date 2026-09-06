@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { bindModules, describeModuleForPom, describeModuleForReport, describeSiblingProjects, discoverModuleRootsFromPoms, isProjectRoot, moduleForPath, toRepoRelativePosix } from '../../../cli/reportDiscovery';
+import { bindModules, describeModuleForPom, describeModuleForReport, describeSiblingProjects, discoverModuleRootsFromPoms, discoverModuleRootsFromSettingsGradle, isProjectRoot, moduleForPath, parseSettingsGradleProjectPaths, toRepoRelativePosix } from '../../../cli/reportDiscovery';
 
 test('a report at the workspace root needs no module binding', () => {
 	const module = describeModuleForReport('target/site/jacoco/jacoco.xml');
@@ -150,4 +150,86 @@ test('moduleForPath: a nested module\'s own root outranks its parent\'s (longest
 test('moduleForPath: a path under no bound module\'s root is undefined, not a guess', () => {
 	const modules = [{ id: 'gson', root: 'gson' }];
 	assert.equal(moduleForPath('extras/src/main/java/Foo.java', modules), undefined);
+});
+
+/**
+ * Faz "Gradle support" G3: the settings.gradle(.kts) counterpart of
+ * discoverModuleRootsFromPoms. Deliberately mirrors GradleProjectScanner.java
+ * in the CLI - the two parse the same files and must agree about which
+ * modules exist, so these cases match that scanner's own tests.
+ */
+test('discoverModuleRootsFromSettingsGradle: kts include() calls become module roots', () => {
+	const modules = discoverModuleRootsFromSettingsGradle('rootProject.name = "demo"\ninclude(":core", ":extras")\n');
+	assert.deepEqual(modules, [{ id: 'core', root: 'core' }, { id: 'extras', root: 'extras' }]);
+});
+
+test('discoverModuleRootsFromSettingsGradle: Groovy include without parentheses parses the same way', () => {
+	const modules = discoverModuleRootsFromSettingsGradle("include ':gson', ':gson:extras'\n");
+	assert.deepEqual(modules, [{ id: 'gson', root: 'gson' }, { id: 'extras', root: 'gson/extras' }]);
+});
+
+/** junit-framework's real shape: every module is declared through the build's own includeProject(...) helper, never a bare include(...). */
+test('discoverModuleRootsFromSettingsGradle: an include-prefixed wrapper function is matched too', () => {
+	const modules = discoverModuleRootsFromSettingsGradle([
+		'fun includeProject(name: String, mavenized: Boolean = false) {',
+		'\tinclude(name)',
+		'}',
+		'includeProject("junit-jupiter", mavenized = true)',
+		'includeProject("junit-platform-commons")',
+	].join('\n'));
+
+	assert.deepEqual(modules.map((m) => m.root), ['junit-jupiter', 'junit-platform-commons']);
+});
+
+/** A composite build is a separate Gradle root with its own lifecycle, not a subproject of this one. */
+test('discoverModuleRootsFromSettingsGradle: includeBuild is never a subproject', () => {
+	assert.deepEqual(discoverModuleRootsFromSettingsGradle('includeBuild("gradle/plugins")\n'), []);
+});
+
+/** includeFlat("sib") means ../sib - a sibling of the repo root, which a repo-relative path cannot express at all. */
+test('discoverModuleRootsFromSettingsGradle: includeFlat is skipped rather than reported at a wrong root', () => {
+	assert.deepEqual(discoverModuleRootsFromSettingsGradle('includeFlat("sibling")\n'), []);
+});
+
+test('discoverModuleRootsFromSettingsGradle: a wrapper that merely starts with an excluded word is still matched', () => {
+	assert.deepEqual(discoverModuleRootsFromSettingsGradle('includeFlattenedModules(":core")\n').map((m) => m.root), ['core']);
+});
+
+test('discoverModuleRootsFromSettingsGradle: the same project declared twice is one module', () => {
+	assert.deepEqual(discoverModuleRootsFromSettingsGradle('include(":core")\ninclude(":core")\n').map((m) => m.root), ['core']);
+});
+
+test('discoverModuleRootsFromSettingsGradle: a path escaping the repo root is not followed', () => {
+	assert.deepEqual(discoverModuleRootsFromSettingsGradle('include(":..:outside")\n'), []);
+});
+
+test('discoverModuleRootsFromSettingsGradle: CRLF line endings parse identically', () => {
+	assert.deepEqual(discoverModuleRootsFromSettingsGradle('include(":core")\r\ninclude(":extras")\r\n').map((m) => m.root), ['core', 'extras']);
+});
+
+test('discoverModuleRootsFromSettingsGradle: a settings file declaring nothing yields no modules', () => {
+	assert.deepEqual(discoverModuleRootsFromSettingsGradle('rootProject.name = "demo"\n'), []);
+});
+
+/** The root project is never `include(...)`d; whether it is a real module is a filesystem fact the caller decides. */
+test('discoverModuleRootsFromSettingsGradle: the root project is added only when the caller says so', () => {
+	assert.deepEqual(discoverModuleRootsFromSettingsGradle('include(":core")\n', true), [
+		{ id: 'root', root: '.' },
+		{ id: 'core', root: 'core' },
+	]);
+});
+
+test('discoverModuleRootsFromSettingsGradle: a subproject literally named root collides safely instead of shadowing the root project', () => {
+	const modules = discoverModuleRootsFromSettingsGradle('include(":root")\n', true);
+	assert.deepEqual(modules, [{ id: 'root', root: '.' }, { id: 'root-2', root: 'root' }]);
+});
+
+/** The raw-path layer, matching the CLI scanner one-to-one: a wrapper's own definition line has no quoted argument and contributes nothing. */
+test('parseSettingsGradleProjectPaths: only real call sites with literal strings contribute', () => {
+	const paths = parseSettingsGradleProjectPaths([
+		'fun includeProject(name: String) { include(name) }',
+		'include(":a", ":b:c")',
+	].join('\n'));
+
+	assert.deepEqual(paths, [':a', ':b:c']);
 });

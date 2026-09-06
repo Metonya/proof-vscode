@@ -107,6 +107,92 @@ export function discoverModuleRootsFromPoms(repoRelativePomPaths: readonly strin
 	return assignIds(repoRelativePomPaths.map((pomPath) => describeModuleForPom(pomPath).root));
 }
 
+/**
+ * Matches `include` and any same-purpose wrapper function whose name starts
+ * with it (`includeProject(...)`), excluding two real Gradle APIs that are
+ * not subprojects of this build: `includeBuild` (a composite build - a
+ * separate Gradle root with its own lifecycle) and `includeFlat` (a project
+ * whose directory is a *sibling* of the root, i.e. `../name`, which a
+ * repo-relative path cannot express at all). Both exclusions are
+ * prefix-exact - the trailing `\b` keeps a user wrapper like
+ * `includeFlattenedModules(...)` matched.
+ *
+ * Deliberately identical to `GradleProjectScanner.java`'s own INCLUDE_KEYWORD
+ * in the CLI: the two run on the same settings files and must agree about
+ * which modules exist. Matched per line rather than over the whole text (a
+ * repeated group over an unbounded string is the catastrophic-backtracking
+ * shape both sides avoid).
+ */
+const GRADLE_INCLUDE_KEYWORD = /\binclude(?!Build\b)(?!Flat\b)[A-Za-z]*\b/;
+const GRADLE_QUOTED_ARG = /['"]([^'"]+)['"]/g;
+
+/**
+ * Raw Gradle project paths (`:core`, `:modules:service-a`) as they are
+ * literally written in a `settings.gradle(.kts)`. A wrapper function's own
+ * *definition* line (`fun includeProject(name: String, ...)`) carries no
+ * quoted argument, so it contributes nothing - only real call sites do.
+ * Anything computed rather than written literally is invisible here, the
+ * same best-effort posture the CLI's scanner documents.
+ */
+export function parseSettingsGradleProjectPaths(settingsText: string): readonly string[] {
+	const paths: string[] = [];
+	for (const line of settingsText.split('\n')) {
+		if (!GRADLE_INCLUDE_KEYWORD.test(line)) {
+			continue;
+		}
+		for (const match of line.matchAll(GRADLE_QUOTED_ARG)) {
+			paths.push(match[1]);
+		}
+	}
+	return paths;
+}
+
+/**
+ * The `settings.gradle(.kts)` counterpart to `discoverModuleRootsFromPoms` -
+ * same id-assignment rule, different discovery input.
+ *
+ * Gradle's root project is not declared by an `include(...)` at all, and
+ * whether it is a real module worth running tests in is a filesystem fact
+ * (does it have test sources of its own?) this pure function cannot see -
+ * hence `includeRootProject`, decided by `ui/preflight.ts`. Passing it here
+ * rather than prepending afterwards keeps every id coming from one
+ * assignment pass, so a subproject literally named `root` still collides
+ * safely into `root-2` instead of shadowing the root project.
+ */
+export function discoverModuleRootsFromSettingsGradle(settingsText: string, includeRootProject = false): readonly { id: string; root: string }[] {
+	const roots: string[] = includeRootProject ? ['.'] : [];
+	for (const gradlePath of parseSettingsGradleProjectPaths(settingsText)) {
+		const root = (gradlePath.startsWith(':') ? gradlePath.slice(1) : gradlePath).replaceAll(':', '/');
+		if (root.length === 0 || isEscapingRepoRoot(root) || roots.includes(root)) {
+			continue;
+		}
+		roots.push(root);
+	}
+	return assignIds(roots);
+}
+
+/** Pure segment check, the TypeScript twin of the CLI's `RepoPaths.isEscapingRepoRoot` - an absolute path, or one that climbs above the repo root once `.`/`..` collapse, is never a module of this repo. */
+function isEscapingRepoRoot(normalizedPath: string): boolean {
+	if (normalizedPath.startsWith('/') || /^[A-Za-z]:/.test(normalizedPath)) {
+		return true;
+	}
+	let depth = 0;
+	for (const segment of normalizedPath.split('/')) {
+		if (segment === '' || segment === '.') {
+			continue;
+		}
+		if (segment === '..') {
+			depth--;
+			if (depth < 0) {
+				return true;
+			}
+		} else {
+			depth++;
+		}
+	}
+	return false;
+}
+
 /** Shared by `bindModules`/`discoverModuleRootsFromPoms`: base id from the root's own last path segment, a numeric suffix on a real collision rather than silently merging two modules. */
 function assignIds(roots: readonly string[]): readonly { id: string; root: string }[] {
 	const usedIds = new Set<string>();

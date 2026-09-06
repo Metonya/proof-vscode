@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 
 import { buildAnalyzeArgs, type DiffMode, type TargetBinding } from '../cli/argsBuilder';
 import { locateJar } from '../cli/jarLocator';
+import { interpretGradleFailure } from '../cli/gradleErrorInterpreter';
 import { interpretMavenFailure } from '../cli/mavenErrorInterpreter';
 import { incrementFor, parseProgressLine, progressMessage } from '../cli/progressParser';
 import { moduleForPath, toRepoRelativePosix } from '../cli/reportDiscovery';
@@ -183,17 +184,11 @@ export function registerRunTestsCommand(output: vscode.OutputChannel, sinks: Cov
 		// (`resolveRunTestsModuleScope`), so the button is scoped correctly
 		// from its very first click too, not only after this window's own
 		// first successful scan.
-		if (detectRunTestsBuildTool(folder) === 'gradle') {
-			const gradleResult = await runGradleTestsTask(folder, output);
-			if (gradleResult?.success) {
-				await runAnalyze(output, sinks);
-			} else if (gradleResult && !gradleResult.success) {
-				vscode.window.showErrorMessage('Proof: Gradle failed. See the terminal output for detail.');
-			}
-			sinks.runView.refresh();
-			return;
-		}
-
+		// Scope first, build tool second: both `moduleRootsFromBoundModules`
+		// and `resolveRunTestsModuleScope` are build-tool agnostic (the
+		// latter discovers Gradle projects from settings.gradle(.kts) the
+		// same way it globs poms), and `bindModules` roots are already clean
+		// module directories, so only the runner below differs.
 		const boundModules = getCoverageState()?.modules;
 		let moduleRoots: readonly string[] | undefined;
 		if (boundModules) {
@@ -205,16 +200,36 @@ export function registerRunTestsCommand(output: vscode.OutputChannel, sinks: Cov
 			}
 			moduleRoots = scope.moduleRoots;
 		}
-		const result = await runTestsTask(folder, output, moduleRoots);
-		if (result?.success) {
+
+		if (await runTestsWithBuildTool(folder, output, moduleRoots)) {
 			await runAnalyze(output, sinks);
-		} else if (result && !result.success) {
-			const interpretation = interpretMavenFailure(result.capturedOutput);
-			const reasonSuffix = interpretation ? ` Reason: ${interpretation.detail}` : ' See the terminal output for detail.';
-			vscode.window.showErrorMessage(`Proof: Maven failed.${reasonSuffix}`);
 		}
 		sinks.runView.refresh();
 	});
+}
+
+/**
+ * Runs the already-scoped test build with whichever tool this workspace
+ * actually uses, and reports a failure with a real cause when one of the
+ * two interpreters recognizes it (hard rule 3a: an unrecognized failure is
+ * pointed at the terminal, never given an invented reason).
+ *
+ * @returns true only when a build actually ran and succeeded - the caller
+ *          re-scans on exactly that.
+ */
+async function runTestsWithBuildTool(folder: vscode.WorkspaceFolder, output: vscode.OutputChannel, moduleRoots: readonly string[] | undefined): Promise<boolean> {
+	const isGradle = detectRunTestsBuildTool(folder) === 'gradle';
+	const result = isGradle
+		? await runGradleTestsTask(folder, output, moduleRoots)
+		: await runTestsTask(folder, output, moduleRoots);
+	if (result === undefined || result.success) {
+		return result?.success === true;
+	}
+
+	const interpretation = isGradle ? interpretGradleFailure(result.capturedOutput) : interpretMavenFailure(result.capturedOutput);
+	const reasonSuffix = interpretation ? ` Reason: ${interpretation.detail}` : ' See the terminal output for detail.';
+	vscode.window.showErrorMessage(`Proof: ${isGradle ? 'Gradle' : 'Maven'} failed.${reasonSuffix}`);
+	return false;
 }
 
 /**
