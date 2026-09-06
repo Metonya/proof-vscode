@@ -13,7 +13,7 @@ const ALL_RULES: readonly RuleId[] = [
 	'SUBSUMED_TEST',
 ];
 
-/** Faz 18: every rule the CLI can emit must have a Turkish title/summary/action - a missing one would silently fall back to the raw enum the user complained about. */
+/** Faz 18: every rule the CLI can emit must have a readable title/summary/action - a missing one would silently fall back to the raw enum the user complained about. */
 test('every RuleId has a non-empty title, summary and action', () => {
 	for (const rule of ALL_RULES) {
 		const info = ruleInfo(rule);

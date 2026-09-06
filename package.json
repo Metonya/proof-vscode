@@ -30,17 +30,17 @@
         "proof.jarPath": {
           "type": "string",
           "default": "",
-          "description": "proof-java.jar dosyasının yolu. Göreli yollar workspace kök dizinine göre çözülür. Varsayılan arama sırasını kullanmak için boş bırakın (önce proof-java-cli/target/proof-java.jar, sonra .proof-java/proof-java.jar)."
+          "description": "Path to proof-java.jar. Relative paths resolve against the workspace root. Leave empty to use the default search order (proof-java-cli/target/proof-java.jar, then .proof-java/proof-java.jar)."
         },
         "proof.javaExecutable": {
           "type": "string",
           "default": "java",
-          "description": "proof-java.jar'ı çalıştırmak için kullanılan Java çalıştırılabilir dosyası."
+          "description": "The Java executable used to run proof-java.jar."
         },
         "proof.mavenExecutable": {
           "type": "string",
           "default": "",
-          "description": "Derin tarama için classpath listesi eksik olduğunda onu üretmekte kullanılacak Maven komutu. Boş bırakılırsa Windows'ta \"mvn.cmd\", diğer sistemlerde \"mvn\" kullanılır. Maven PATH'te değilse tam yolunu yazın."
+          "description": "The Maven command used to generate a missing classpath list for Deep Scan. If left empty, \"mvn.cmd\" is used on Windows and \"mvn\" elsewhere. Set the full path if Maven isn't on PATH."
         },
         "proof.coverageExclusions": {
           "type": "array",
@@ -48,12 +48,12 @@
             "type": "string"
           },
           "default": [],
-          "description": "sonar.coverage.exclusions tarzı glob desenleri (SonarQube'a yapıştıracağınız sözdizimiyle aynı). Her analiz koşusuna --coverage-exclusions olarak geçirilir - tek, elle yazılmış bir liste (D-05), repo'nun kendi proof.config.json dosyasıyla asla birleştirilmez."
+          "description": "Glob patterns in the style of sonar.coverage.exclusions (same syntax you'd paste into SonarQube). Passed to every analysis run as --coverage-exclusions - a single, hand-maintained list (D-05), never merged with the repo's own proof.config.json."
         },
         "proof.reportPath": {
           "type": "string",
           "default": "target/site/jacoco/jacoco.xml",
-          "description": "JaCoCo XML rapor dosyasının yolu (workspace köküne göre). \"proof-java: Analiz Et\" bu dosyayı okur - dosya yoksa size ayarı düzeltmeniz için bir uyarı gösterilir, her koşuda tekrar sorulmaz."
+          "description": "Path to the JaCoCo XML report (relative to the workspace root). \"proof-java: Quick Scan\" reads this file - if it's missing, you get a one-time prompt to fix the setting, not a repeat warning on every run."
         },
         "proof.diffMode": {
           "type": "string",
@@ -63,37 +63,37 @@
             "base"
           ],
           "default": "uncommitted",
-          "description": "\"Yeni kod\" hangi değişikliklere göre hesaplansın. uncommitted (varsayılan): commit beklemekte olan her şey (staged + unstaged), yani şu an dosyada duran değişiklikler. base: proof.baseRef'te yazan commit/branch'ten bu yana yapılan değişiklikler (örn. bir feature branch'i main ile kıyaslamak). no-vcs: git hiç kullanılmaz, \"yeni kod\" hesaplanamaz - tüm repo tek bir kapsama olarak gösterilir. \"proof-java: Analiz Et (test bazlı)\" bu mod no-vcs iken çalışmaz, çünkü test bazlı kanıt bir diff gerektirir."
+          "description": "What \"new code\" is measured against. uncommitted (default): everything not yet committed (staged + unstaged) - i.e. what's currently sitting in your working tree. base: changes since the commit/branch named in proof.baseRef (e.g. comparing a feature branch to main). no-vcs: git is never used, \"new code\" can't be computed - the whole repo is shown as one coverage figure. \"proof-java: Deep Scan\" does not run in this mode, because per-test evidence requires a diff."
         },
         "proof.baseRef": {
           "type": "string",
           "default": "",
-          "description": "proof.diffMode \"base\" iken karşılaştırılacak commit, branch veya tag adı (örn. \"main\" veya \"origin/main\"). Diğer diffMode değerlerinde kullanılmaz. HEAD'in kendisini veya HEAD'in atası olmayan bir ref'i girerseniz diff boş çıkar - karşılaştıracak gerçek bir fark yoktur."
+          "description": "The commit, branch, or tag to compare against when proof.diffMode is \"base\" (e.g. \"main\" or \"origin/main\"). Unused for other diffMode values. Setting this to HEAD itself, or to a ref that isn't an ancestor of HEAD, produces an empty diff - there's no real difference to compare."
         },
         "proof.perTestClasspathPath": {
           "type": "string",
           "default": "target/proof-classpath.txt",
-          "description": "\"proof-java: Analiz Et (test bazlı)\" komutunun kullanacağı classpath liste dosyasının yolu (workspace köküne göre, satır başına bir jar/çıktı-dizini). Genelde \"mvn dependency:build-classpath\" ile üretilir - coverdict-playground'daki run.ps1 örneğine bakın."
+          "description": "Path to the classpath list file (relative to the workspace root, one jar/output-dir per line) used by \"proof-java: Deep Scan\". Usually generated by \"mvn dependency:build-classpath\" - see the example run.ps1 in coverdict-playground."
         },
         "proof.show.explorerBadges": {
           "type": "boolean",
           "default": true,
-          "description": "Dosya Gezgini'nde her dosyanın ve klasörün yanında kapsama yüzdesini bir rozet olarak göster (örn. Calculator.java'nın yanında \"85\"). proof.show.lineGutter'dan bağımsızdır: bunu kapatırsanız sadece rozetler gider, editördeki satır renkleri etkilenmez."
+          "description": "Show a coverage-percentage badge next to every file and folder in the Explorer (e.g. \"85\" next to Calculator.java). Independent of proof.show.lineGutter: turning this off only removes the badges, editor line colors are unaffected."
         },
         "proof.show.lineGutter": {
           "type": "boolean",
           "default": true,
-          "description": "Açık bir dosyada, her satırın solunda o satırın kapsanıp kapsanmadığını gösteren renkli bir çizgi çiz (yeşil: kapsandı, sarı: kısmen, kırmızı: kapsanmadı - proof.colorblindMode açıkken farklı bir palet kullanılır). proof.show.explorerBadges'ten bağımsızdır: bunu kapatırsanız sadece bu çizgiler gider, Dosya Gezgini'ndeki yüzde rozetleri etkilenmez."
+          "description": "Draw a colored line to the left of each line in an open file, showing whether it's covered (green: covered, yellow: partial, red: uncovered - a different palette applies when proof.colorblindMode is on). Independent of proof.show.explorerBadges: turning this off only removes these lines, Explorer percentage badges are unaffected."
         },
         "proof.colorblindMode": {
           "type": "boolean",
           "default": false,
-          "description": "Satır kapsama çizgilerinde (proof.show.lineGutter) kırmızı/yeşili kullanmak yerine, üç tip renk körlüğü altında da (protanopi, döteranopi, tritanopi) birbirinden ayrılabilir kalan bir palet kullan (Okabe-Ito paleti: mavi=kapsandı, sarı=kısmen, vermilyon=kapsanmadı, mor=\"yalancı yeşil\"). Değiştirir değiştirmez açık editörlere hemen yansır, pencere yenilemeye gerek yok."
+          "description": "Use a palette that stays distinguishable under all three types of color blindness (protanopia, deuteranopia, tritanopia) instead of red/green for line coverage (proof.show.lineGutter) - the Okabe-Ito palette: blue=covered, yellow=partial, vermillion=uncovered, purple=\"falsely green\". Takes effect immediately in open editors, no window reload needed."
         },
         "proof.show.oraclelessLines": {
           "type": "boolean",
           "default": true,
-          "description": "Bir satır JaCoCo'ya göre kapsanmış olsa bile, onu kapsayan HİÇBİR testin gerçek bir doğrulaması (oracle'ı) yoksa - hepsi NO_RECOGNIZED_ORACLE/TAUTOLOGICAL_ORACLE/CATCH_ORACLE_WITHOUT_FAIL bulgularından biriyse - o satırı yeşil yerine turuncu göster (\"yalancı yeşil\"). Test bazlı kanıt (proof-java: Derin Tarama ya da Bu Sınıf İçin Hangi Test Hangi Satırı Kapsıyor) toplanmamışsa hiçbir satır bu şekilde işaretlenmez - kanıt yokken suçlama yok."
+          "description": "Even when JaCoCo counts a line as covered, show it orange instead of green if NONE of the tests covering it has a real assertion (oracle) - i.e. every one of them produced a NO_RECOGNIZED_ORACLE/TAUTOLOGICAL_ORACLE/CATCH_ORACLE_WITHOUT_FAIL finding (\"falsely green\"). No line is ever marked this way unless per-test evidence (proof-java: Deep Scan or Which Test Covers Which Line For This Class) has actually been collected - no evidence, no accusation."
         },
         "proof.badgeMetric": {
           "type": "string",
@@ -103,19 +103,19 @@
             "sonar-compatible"
           ],
           "default": "sonar-compatible",
-          "description": "Dosya Gezgini rozetlerinde ve satır boyamasında hangi kapsama modu kullanılsın. sonar-compatible (varsayılan): SonarQube'un gösterdiği yüzdeyle ±0.1 içinde eşleşir - dal (branch) kapsamını da sayar, bu yüzden jacoco-line'dan genelde daha düşük çıkar. jacoco-line: bir satırdaki herhangi bir komut çalıştıysa o satır kapsanmış sayılır (en yüksek çıkan sayı). strict-line: bir satırın kapsanmış sayılması için o satırdaki HER komutun çalışmış olması gerekir (en katı, genelde en düşük sayı). Durum çubuğu ve tooltip'ler her zaman üçünü birden gösterir; bu ayar sadece rozet/satır rengi için tek bir sayı seçer."
+          "description": "Which coverage mode drives Explorer badges and line coloring. sonar-compatible (default): matches SonarQube's own percentage within +/-0.1 - it also counts branch coverage, so it usually comes out lower than jacoco-line. jacoco-line: a line counts as covered if any instruction on it ran (the highest number you'll see). strict-line: a line only counts as covered if EVERY instruction on it ran (the strictest, usually the lowest number). The status bar and tooltips always show all three; this setting only picks one for the badge/line color."
         },
         "proof.mutationTimeout": {
           "type": "number",
           "default": 300,
           "minimum": 1,
-          "description": "Mutasyon testinde bir modül için saniye cinsinden zaman bütçesi (--mutation-timeout). Aşılırsa koşu durdurulur ve sonuç kısmi kalır - kısmi sonuç yine gösterilir, sessizce atılmaz. Tek sınıf koşuları genelde saniyeler sürer; modül geneli koşular için artırmanız gerekebilir."
+          "description": "Time budget, in seconds, for one module in mutation testing (--mutation-timeout). If exceeded, the run stops and the result is partial - the partial result is still shown, never silently dropped. Single-class runs are usually seconds long; you may need to raise this for module-wide runs."
         },
         "proof.perTestTimeout": {
           "type": "number",
           "default": 120,
           "minimum": 1,
-          "description": "Derin Tarama'da bir modül için saniye cinsinden zaman bütçesi (--per-test-timeout). Aşılırsa koşu durdurulur (PER_TEST_COLLECTION_FAILED). Diff'te değişen birkaç sınıf için varsayılan genelde yeterlidir; \"Yine de Tüm Modülü Tara\" gibi çok sayıda sınıfı tek seferde hedefleyen koşularda artırmanız gerekebilir."
+          "description": "Time budget, in seconds, for one module in Deep Scan (--per-test-timeout). If exceeded, the run stops (PER_TEST_COLLECTION_FAILED). The default is usually enough for a handful of classes changed in a diff; you may need to raise it for a run that targets many classes at once, such as \"Deep Scan Whole Module Anyway\"."
         },
         "proof.testCommandPhase": {
           "type": "string",
@@ -124,12 +124,12 @@
             "verify"
           ],
           "default": "test",
-          "description": "\"proof-java: Testleri Çalıştır\" hangi Maven aşamasını çalıştırsın. test (varsayılan): en kısa yol, JaCoCo raporunu üretmek için genelde yeterli. verify: modülleriniz paketlenmiş bir jar'a ihtiyaç duyuyorsa (ör. bir JPMS/OSGi testi) gereklidir - daha uzun sürer."
+          "description": "Which Maven phase \"proof-java: Run Tests\" runs. test (default): the shortest path, usually enough to produce the JaCoCo report. verify: needed if your modules require a packaged jar (e.g. a JPMS/OSGi test) - takes longer."
         },
         "proof.jacocoPluginVersion": {
           "type": "string",
           "default": "0.8.13",
-          "description": "Pom'da JaCoCo eklentisi tanımlı değilse \"proof-java: Testleri Çalıştır\"ın komut satırından bağlayacağı org.jacoco:jacoco-maven-plugin sürümü. Pom zaten kendi JaCoCo sürümünü tanımlıyorsa bu ayar kullanılmaz - pom'a asla dokunulmaz."
+          "description": "The org.jacoco:jacoco-maven-plugin version \"proof-java: Run Tests\" binds from the command line when the pom doesn't declare the JaCoCo plugin at all. Unused if the pom already declares its own JaCoCo version - the pom itself is never touched."
         }
       }
     },
@@ -142,7 +142,7 @@
         "properties": {
           "kind": {
             "type": "string",
-            "description": "proof-java'in kendi başlattığı görev türü (ör. runTests)."
+            "description": "The kind of task proof-java itself launches (e.g. runTests)."
           }
         }
       }
@@ -150,89 +150,89 @@
     "commands": [
       {
         "command": "proof.analyze",
-        "title": "proof-java: Hızlı Tarama"
+        "title": "proof-java: Quick Scan"
       },
       {
         "command": "proof.runTests",
-        "title": "proof-java: Testleri Çalıştır"
+        "title": "proof-java: Run Tests"
       },
       {
         "command": "proof.toggleCoverage",
-        "title": "proof-java: Coverage Görünümünü Aç/Kapat"
+        "title": "proof-java: Toggle Coverage View"
       },
       {
         "command": "proof.analyzePerTest",
-        "title": "proof-java: Derin Tarama"
+        "title": "proof-java: Deep Scan"
       },
       {
         "command": "proof.exportReport",
-        "title": "proof-java: Raporu Dışa Aktar (HTML)",
+        "title": "proof-java: Export Report (HTML)",
         "icon": "$(export)"
       },
       {
         "command": "proof.openSettings",
-        "title": "proof-java: Ayarları Aç",
+        "title": "proof-java: Open Settings",
         "icon": "$(gear)"
       },
       {
         "command": "proof.perTestForFile",
-        "title": "proof-java: Bu Sınıf İçin Hangi Test Hangi Satırı Kapsıyor"
+        "title": "proof-java: Which Test Covers Which Line For This Class"
       },
       {
         "command": "proof.perTestForModuleAll",
-        "title": "proof-java: Tüm Modül İçin Derin Tarama (diff'siz)"
+        "title": "proof-java: Deep Scan Whole Module (no diff)"
       },
       {
         "command": "proof.copyItem",
-        "title": "Kopyala"
+        "title": "Copy"
       },
       {
         "command": "proof.qualityView.filter",
-        "title": "proof-java: Bulguları Filtrele",
+        "title": "proof-java: Filter Findings",
         "icon": "$(filter)"
       },
       {
         "command": "proof.qualityView.toggleGrouping",
-        "title": "proof-java: Gruplamayı Değiştir (kural ↔ dosya)",
+        "title": "proof-java: Toggle Grouping (rule ↔ file)",
         "icon": "$(group-by-ref-type)"
       },
       {
         "command": "proof.lineTestsView.toggleProblemsOnly",
-        "title": "proof-java: Sadece Sorunlu Satırlar",
+        "title": "proof-java: Problem Lines Only",
         "icon": "$(filter)"
       },
       {
         "command": "proof.mutationForFile",
-        "title": "proof-java: Bu Sınıf İçin Mutasyon Testi"
+        "title": "proof-java: Mutation Test This Class"
       },
       {
         "command": "proof.mutationForModule",
-        "title": "proof-java: Mutasyon Testi (Modül Geneli)"
+        "title": "proof-java: Mutation Testing (Whole Module)"
       },
       {
         "command": "proof.mutationForModuleAll",
-        "title": "proof-java: Mutasyon Testi - Tüm Modül (diff'siz)"
+        "title": "proof-java: Mutation Testing - Whole Module (no diff)"
       },
       {
         "command": "proof.mutationView.toggleSurvivorsOnly",
-        "title": "proof-java: Sadece Hayatta Kalan Mutantlar",
+        "title": "proof-java: Survived Mutants Only",
         "icon": "$(filter)"
       },
       {
         "command": "proof.qualityView.showInMutation",
-        "title": "Mutasyon Ağacında Göster"
+        "title": "Show in Mutation Tree"
       },
       {
         "command": "proof.mutationView.showInQuality",
-        "title": "Test Kalitesi'nde Göster"
+        "title": "Show in Test Quality"
       },
       {
         "command": "proof.lineTestsView.showInMutation",
-        "title": "Mutasyon Ağacında Göster"
+        "title": "Show in Mutation Tree"
       },
       {
         "command": "proof.mutationView.showInLineTests",
-        "title": "Satır → Testler'de Göster"
+        "title": "Show in Line → Tests"
       }
     ],
     "menus": {
@@ -343,7 +343,7 @@
       "proof-java": [
         {
           "id": "proof.runView",
-          "name": "Çalıştır"
+          "name": "Run"
         },
         {
           "id": "proof.coverageView",
@@ -351,15 +351,15 @@
         },
         {
           "id": "proof.qualityView",
-          "name": "Test Kalitesi"
+          "name": "Test Quality"
         },
         {
           "id": "proof.lineTestsView",
-          "name": "Satır → Testler"
+          "name": "Line → Tests"
         },
         {
           "id": "proof.mutationView",
-          "name": "Mutasyon"
+          "name": "Mutation"
         }
       ]
     }

@@ -1,17 +1,18 @@
 import type { Reason } from '../verdict/types';
 
 /**
- * Faz 18: `warnings[]` Faz 14d'de görünür oldu ama ham CLI mesajıyla -
- * kullanıcının kendi sözleri: "uyarılar neler anlamadım". Kodlar
- * İngilizce ve teknik ("CHANGED_LINES_ABSENT_FROM_REPORT: 3 changed
- * line(s) ... are absent from the bound report(s)"), ne anlama geldiği ve
- * ne yapılacağı hiçbir yerde yazmıyor.
+ * Phase 18: `warnings[]` became visible in Phase 14d, but only with the
+ * raw CLI message - codes are English and technical
+ * ("CHANGED_LINES_ABSENT_FROM_REPORT: 3 changed line(s) ... are absent
+ * from the bound report(s)"), with no explanation of what it means or
+ * what to do about it anywhere.
  *
- * Burada her kod için düz Türkçe bir başlık + "ne demek" + "ne yapmalı"
- * var. Ham mesaj **atılmıyor** - tooltip'te aynen duruyor, çünkü içinde
- * CLI'ın kendi saydığı gerçek sayılar var (kaç satır, kaç dosya) ve
- * uydurulamaz. Bilinmeyen bir kod gelirse ham hali gösterilir (hard rule
- * 3a: tanımadığımız bir şeyi tanıyormuş gibi yapmayız).
+ * This catalog gives each code a plain title + "what it means" + "what to
+ * do". The raw message is **never dropped** - it stays in the tooltip
+ * verbatim, because it carries real numbers the CLI itself counted (how
+ * many lines, how many files) that can't be invented here. An unrecognized
+ * code falls back to its raw form (hard rule 3a: never pretend to
+ * recognize something we don't).
  * Pure - no `vscode`.
  */
 export interface WarningInfo {
@@ -24,56 +25,56 @@ export interface WarningInfo {
 
 const CATALOG: Record<string, { title: string; explanation: string; action: string }> = {
 	CHANGED_LINES_ABSENT_FROM_REPORT: {
-		title: 'Değişen bazı satırlar coverage raporunda yok',
-		explanation: 'Değiştirdiğiniz satırların bir kısmı JaCoCo raporunda hiç geçmiyor, bu yüzden "yeni kod" yüzdesinin ne payına ne paydasına katıldılar. '
-			+ 'İki sebebi olabilir ve proof-java bunları birbirinden ayıramaz: (1) o satırlar zaten çalıştırılabilir kod değil - süslü parantez, metot imzası, boş satır; JaCoCo bunları hiç listelemez, bu tamamen normaldir. '
-			+ '(2) Rapor bu değişiklikten eski - yani testleri son düzenlemenizden sonra çalıştırmadınız.',
-		action: 'Sayı beklediğinizden düşükse önce testleri yeniden çalıştırıp raporu tazeleyin (mvn test). Sonra hâlâ görünüyorsa, geri kalan satırlar muhtemelen sadece parantez/imza satırlarıdır.',
+		title: 'Some changed lines are missing from the coverage report',
+		explanation: 'Some of the lines you changed never appear in the JaCoCo report at all, so they contributed to neither the numerator nor the denominator of the "new code" percentage. '
+			+ 'There are two possible causes and proof-java can\'t tell them apart: (1) those lines aren\'t executable code to begin with - a brace, a method signature, a blank line; JaCoCo never lists these, and that\'s completely normal. '
+			+ '(2) The report is older than this change - i.e. you haven\'t run the tests since your last edit.',
+		action: 'If the number is lower than expected, rerun the tests to refresh the report first (mvn test). If it still shows up after that, the remaining lines are likely just braces/signatures.',
 	},
 	CHANGED_FILES_EXCLUDED: {
-		title: 'Bazı değişen dosyalar coverage dışı bırakıldı',
-		explanation: 'Değiştirdiğiniz dosyalardan bazıları proof.coverageExclusions desenlerine (ya da bir test klasörüne) uyduğu için yeni kod hesabına hiç girmedi.',
-		action: 'Bu kasıtlıysa yapacak bir şey yok. Değilse proof.coverageExclusions ayarınızı gözden geçirin.',
+		title: 'Some changed files were excluded from coverage',
+		explanation: 'Some of the files you changed matched a proof.coverageExclusions pattern (or a test folder), so they never entered the new-code calculation at all.',
+		action: 'If that\'s intentional, there\'s nothing to do. Otherwise, review your proof.coverageExclusions setting.',
 	},
 	MODULE_WITHOUT_REPORT: {
-		title: 'Bir modülün coverage raporu yok',
-		explanation: 'Tanımlanmış bir modüle hiçbir JaCoCo raporu bağlanmamış, bu yüzden o modül analiz edilen kümeden tamamen çıkarıldı - coverage\'ı %0 değil, hiç bilinmiyor.',
-		action: 'O modül için testleri JaCoCo ile çalıştırın ve proof.reportPath ayarının doğru dosyayı gösterdiğinden emin olun.',
+		title: 'A module has no coverage report',
+		explanation: 'A defined module has no JaCoCo report bound to it, so that module was excluded from the analyzed set entirely - its coverage isn\'t 0%, it\'s simply unknown.',
+		action: 'Run that module\'s tests with JaCoCo and make sure the proof.reportPath setting points at the right file.',
 	},
 	PER_TEST_NO_CHANGED_TARGETS: {
-		title: 'Test bazlı kanıt için hedef sınıf yok',
-		explanation: 'Derin tarama yalnızca diff\'te değişen production sınıflarını hedefleyebilir; bu koşuda değişen sınıf olmadığı için hiçbir şey toplanmadı. Bu bir hata değil.',
-		action: 'Bir dosyada gerçek bir değişiklik yapıp tekrar tarayın, ya da tek bir sınıf için: o dosyada sağ tık → "Bu Sınıf İçin Hangi Test Hangi Satırı Kapsıyor".',
+		title: 'No target class for per-test evidence',
+		explanation: 'Deep Scan can only target production classes that changed in the diff; nothing was collected because no class changed in this run. This isn\'t an error.',
+		action: 'Make a real change to a file and scan again, or for a single class: right-click that file → "Which Test Covers Which Line For This Class".',
 	},
 	PER_TEST_CLASSPATH_MISSING: {
-		title: 'Test bazlı kanıt için classpath dosyası bağlı değil',
-		explanation: 'Derin tarama testleri PIT altında yeniden çalıştırır ve bunun için tam test classpath\'ini satır satır listeleyen bir dosyaya ihtiyaç duyar; bu modüle böyle bir dosya bağlanmamış.',
-		action: 'Classpath listesini üretin (mvn dependency:build-classpath) ve proof.perTestClasspathPath ayarının o dosyayı gösterdiğinden emin olun.',
+		title: 'No classpath file bound for per-test evidence',
+		explanation: 'Deep Scan reruns your tests under PIT, which needs a file listing the full test classpath line by line; no such file is bound to this module.',
+		action: 'Generate the classpath list (mvn dependency:build-classpath) and make sure proof.perTestClasspathPath points at it.',
 	},
 	PER_TEST_TRUNCATED: {
-		title: 'Test bazlı kanıt kırpıldı',
-		explanation: 'Toplanan kanıtın bir kısmı düşürüldü. Gösterilenler eksik olabilir - bir satırın burada görünmemesi "onu hiçbir test kapsamıyor" anlamına GELMEZ.',
-		action: 'Eksiksiz kanıt gerekiyorsa taramayı daha dar bir kapsamla (tek sınıf) tekrarlayın.',
+		title: 'Per-test evidence was truncated',
+		explanation: 'Part of the collected evidence was dropped. What\'s shown may be incomplete - a line not appearing here does NOT mean "no test covers it".',
+		action: 'If you need complete evidence, rerun the scan with a narrower scope (a single class).',
 	},
 	PER_TEST_EMPTY_EVIDENCE: {
-		title: 'Test bazlı kanıt çalıştı ama boş döndü',
-		explanation: 'Motor çalıştı fakat hiçbir test-satır kaydı çözemedi. İstenmesine rağmen kanıt yok - yani "bu satırları hiçbir test kapsamıyor" değil, "bilemedik".',
-		action: 'Testlerin gerçekten çalıştığını ve classpath listesinin derlenmiş sınıfları (target/classes, target/test-classes) içerdiğini doğrulayın.',
+		title: 'Per-test evidence ran but came back empty',
+		explanation: 'The engine ran but couldn\'t resolve any test-to-line records. Evidence was requested but is missing - this means "we couldn\'t tell", not "no test covers these lines".',
+		action: 'Confirm the tests actually ran and that the classpath list includes the compiled classes (target/classes, target/test-classes).',
 	},
 	PER_TEST_TARGET_UNRESOLVED: {
-		title: 'Hedeflenen sınıf bulunamadı',
-		explanation: 'Test bazlı kanıt için verilen sınıf adı, tanımlı kaynak klasörlerinin altında bir .java dosyasına çözülemedi, bu yüzden atlandı.',
-		action: 'Sınıf adının tam nitelikli (paket dahil) olduğundan ve dosyanın src/main/java altında bulunduğundan emin olun.',
+		title: 'Target class not found',
+		explanation: 'The class name given for per-test evidence couldn\'t be resolved to a .java file under any declared source root, so it was skipped.',
+		action: 'Make sure the class name is fully qualified (package included) and the file lives under src/main/java.',
 	},
 	PER_TEST_TARGET_NOT_BOUND: {
-		title: 'Bir modüle hedef sınıf verilmedi',
-		explanation: 'Tanımlı bir modüle bu koşuda hiçbir hedef sınıf bağlanmadı, bu yüzden test bazlı kanıttan tamamen çıkarıldı. Çok modüllü bir projede tek modülü hedeflerken normaldir.',
-		action: 'Kasıtlıysa yapacak bir şey yok.',
+		title: 'No target class given for a module',
+		explanation: 'A defined module had no target class bound to it in this run, so it was excluded from per-test evidence entirely. Normal when targeting a single module in a multi-module project.',
+		action: 'If that\'s intentional, there\'s nothing to do.',
 	},
 	PER_TEST_COLLECTION_FAILED: {
-		title: 'Test bazlı kanıt toplanamadı',
-		explanation: 'Motor bu modül için hata verdi; o modülün test bazlı kanıtı atlandı. Coverage sayıları etkilenmedi, yalnızca "hangi test hangi satırı kapsıyor" bilgisi eksik.',
-		action: 'Ayrıntı için proof-java çıktı kanalına bakın (Output → proof-java).',
+		title: 'Per-test evidence collection failed',
+		explanation: 'The engine reported an error for this module; its per-test evidence was skipped. Coverage numbers are unaffected, only "which test covers which line" is missing.',
+		action: 'Check the proof-java output channel for detail (Output → proof-java).',
 	},
 };
 

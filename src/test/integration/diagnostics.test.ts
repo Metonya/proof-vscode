@@ -56,7 +56,7 @@ suite('Diagnostics (Faz 11a)', () => {
 			publishFindings(collection, 'C:/repo', [FINDING]);
 			const uri = vscode.Uri.file('C:/repo/src/test/java/CalcTest.java');
 			const message = (collection.get(uri) ?? [])[0].message;
-			assert.equal(message, 'Doğrulama yok: subtractHasNoAssertion');
+			assert.equal(message, 'No assertion: subtractHasNoAssertion');
 			assert.ok(!message.includes(FINDING.message), 'the raw CLI sentence must not be duplicated here - it already lives in the Test Kalitesi tree tooltip');
 			assert.ok(!message.includes(FINDING.suggestedAction), 'suggestedAction must not be duplicated here either');
 		} finally {
@@ -69,7 +69,7 @@ suite('Diagnostics (Faz 11a)', () => {
 		try {
 			publishFindings(collection, 'C:/repo', [{ ...FINDING, testMethod: undefined }]);
 			const uri = vscode.Uri.file('C:/repo/src/test/java/CalcTest.java');
-			assert.equal((collection.get(uri) ?? [])[0].message, 'Doğrulama yok');
+			assert.equal((collection.get(uri) ?? [])[0].message, 'No assertion');
 		} finally {
 			collection.dispose();
 		}
