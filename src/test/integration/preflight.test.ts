@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 
-import { detectRunTestsBuildTool, resolveRunTestsModuleScope } from '../../ui/preflight';
+import { detectRunTestsBuildTool, resolveEvidenceClasspaths, resolveRunTestsModuleScope } from '../../ui/preflight';
 
 /**
  * Faz 31: the real fix behind the gson `test-jpms` failure - a first-ever
@@ -198,5 +198,43 @@ suite('detectRunTestsBuildTool (Faz "Gradle support" G2)', () => {
 		fs.writeFileSync(path.join(root, 'build.gradle.kts'), '', 'utf8');
 
 		assert.equal(detectRunTestsBuildTool(makeWorkspaceFolder(root)), undefined);
+	});
+});
+
+/**
+ * Faz "Gradle support" G2: `resolveEvidenceClasspaths` used to look for
+ * L2/L3 classpath lists under `target/proof-*-classpath.txt` unconditionally
+ * - correct for Maven, but `GradleClasspathFixer.java`'s own output lands
+ * under `build/proof-*-classpath.txt`, so on a Gradle project this always
+ * reported "missing" even right after a real `doctor --fix` had just
+ * written the file, then tried to run `doctor --fix` again pointlessly.
+ * This exercises only the fast path (files already on disk) - it does not
+ * need a real CLI jar, since that path never spawns one.
+ */
+suite('resolveEvidenceClasspaths looks in the right build-output directory (Faz "Gradle support" G2)', () => {
+	function fakeOutputChannel(): vscode.OutputChannel {
+		return { appendLine: () => undefined } as unknown as vscode.OutputChannel;
+	}
+
+	test('a Gradle project finds its classpath list under build/, not target/', async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-classpath-gradle-'));
+		fs.writeFileSync(path.join(root, process.platform === 'win32' ? 'gradlew.bat' : 'gradlew'), '', 'utf8');
+		fs.mkdirSync(path.join(root, 'build'), { recursive: true });
+		fs.writeFileSync(path.join(root, 'build', 'proof-per-test-classpath.txt'), path.join(root, 'build', 'classes', 'java', 'main'), 'utf8');
+
+		const classpaths = await resolveEvidenceClasspaths(makeWorkspaceFolder(root), 'unused.jar', 'java', fakeOutputChannel(), [{ id: 'root', root: '.' }], 'perTest');
+
+		assert.deepEqual(classpaths, [{ moduleId: 'root', path: 'build/proof-per-test-classpath.txt' }]);
+	});
+
+	test('a Maven project still finds its classpath list under target/, unchanged', async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-classpath-maven-'));
+		writePom(root, '.');
+		fs.mkdirSync(path.join(root, 'target'), { recursive: true });
+		fs.writeFileSync(path.join(root, 'target', 'proof-per-test-classpath.txt'), path.join(root, 'target', 'classes'), 'utf8');
+
+		const classpaths = await resolveEvidenceClasspaths(makeWorkspaceFolder(root), 'unused.jar', 'java', fakeOutputChannel(), [{ id: 'root', root: '.' }], 'perTest');
+
+		assert.deepEqual(classpaths, [{ moduleId: 'root', path: 'target/proof-per-test-classpath.txt' }]);
 	});
 });
