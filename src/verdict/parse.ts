@@ -45,16 +45,22 @@ export function parseVerdict(raw: string): Result<VerdictDocument> {
 	}
 
 	if (!isVerdictDocument(json)) {
-		return { ok: false, error: 'does not look like a coverdict verdict document (missing a required top-level field)' };
+		return { ok: false, error: 'does not look like a proof-java verdict document (missing a required top-level field)' };
 	}
 	if ('fileCoverage' in json && !isFileCoverageBlock(json.fileCoverage)) {
 		return { ok: false, error: 'fileCoverage is present but malformed' };
 	}
-	if ('perTest' in json && !isPerTestBlock(json.perTest)) {
-		return { ok: false, error: 'perTest is present but malformed' };
+	if ('perTest' in json) {
+		resolveInternedTestIds(json.perTest);
+		if (!isPerTestBlock(json.perTest)) {
+			return { ok: false, error: 'perTest is present but malformed' };
+		}
 	}
-	if ('mutation' in json && !isMutationBlock(json.mutation)) {
-		return { ok: false, error: 'mutation is present but malformed' };
+	if ('mutation' in json) {
+		resolveInternedMutationTestIds(json.mutation);
+		if (!isMutationBlock(json.mutation)) {
+			return { ok: false, error: 'mutation is present but malformed' };
+		}
 	}
 	return { ok: true, value: json };
 }
@@ -147,6 +153,142 @@ function isLineTuple(value: unknown): value is LineTuple {
 	return Array.isArray(value) && value.length === 5 && value.every((n) => typeof n === 'number');
 }
 
+/**
+ * D-86 (proof-java, 2026-09-05): a real gson run produced a 312 MB verdict
+ * document because the same long PIT test id was written out once per line
+ * it touched. The fix moved each module's test ids into a sorted `testIds`
+ * array and replaced each line's `tests: string[]` with `tests: number[]`
+ * indexes into it - a breaking wire-format change taken before proof-java's
+ * v0.1 (no published consumers to break at the time). This extension is
+ * one now: resolves the indexes back into raw strings in place, mirroring
+ * proof-java's own `VerdictJsonReader` (D-86: "every other reader see[s]
+ * what they saw before"), so every downstream consumer here
+ * (`model/lineIndex.ts`, `ui/hoverProvider.ts`, `ui/treeViews/lineTestsView.ts`,
+ * `model/falseGreenIndex.ts`) keeps reading plain `tests: string[]`
+ * unchanged. A module with no `testIds` array (an older proof-java build,
+ * pre-D-86) is left untouched - its `tests` are presumably already strings,
+ * and `isPerTestBlock` below is what actually catches a truly malformed
+ * shape either way.
+ */
+function resolveInternedTestIds(value: unknown): void {
+	if (!isRecord(value) || !Array.isArray(value.modules)) {
+		return;
+	}
+	for (const testModule of value.modules) {
+		if (!isRecord(testModule) || !Array.isArray(testModule.testIds)) {
+			continue;
+		}
+		const testIds = testModule.testIds;
+		for (const entry of [...(Array.isArray(testModule.entries) ? testModule.entries : []), ...(Array.isArray(testModule.ambient) ? testModule.ambient : [])]) {
+			if (!isRecord(entry) || !Array.isArray(entry.lines)) {
+				continue;
+			}
+			for (const line of entry.lines) {
+				if (!isRecord(line) || !Array.isArray(line.tests)) {
+					continue;
+				}
+				line.tests = line.tests.map((index: unknown) => (typeof index === 'number' ? testIds[index] : index));
+			}
+		}
+		// Faz 34: without this, the module is left in a mixed state (a
+		// `testIds` array alongside now-resolved-to-strings `tests`) - a
+		// snapshot later written from this data would then fool
+		// `reinternPerTestIds`'s "already interned" check (which only looks
+		// for `testIds`'s presence) into skipping it, re-emitting plain
+		// strings where proof-java's own reader expects numeric indexes
+		// again. Deleting it here keeps "has `testIds`" and "`tests` is
+		// numeric" the same fact everywhere in this file.
+		delete testModule.testIds;
+	}
+}
+
+/**
+ * Faz 34, real user bug: "Proof: report could not be generated (exit code
+ * 2) ... Current token (VALUE_STRING) not numeric". `ui/commands.ts`'s
+ * `runExportReport` merges `pertest-current.json`/`mutation-current.json`
+ * (our OWN snapshots - already resolved to plain strings by
+ * `resolveInternedTestIds` above, since that runs at `parseVerdict` time,
+ * before `writeJsonSnapshot` ever sees the data) into a document it then
+ * hands back to proof-java's `render-html` command. That reader still
+ * expects D-86's wire shape (`testIds` + numeric indexes) - feeding it
+ * plain strings where it expects numbers is exactly this crash. This is
+ * the inverse of `resolveInternedTestIds`: rebuilds a `testIds` array and
+ * replaces each `tests: string[]` with indexes into it, so the document
+ * `runExportReport` sends back to the CLI matches what the CLI itself
+ * would have produced. A module that already has a `testIds` array (read
+ * straight from a fresh `verdict-current.json`, never touched by our
+ * resolver) is left alone - re-interning it would silently discard its
+ * real one.
+ */
+export function reinternPerTestIds(value: unknown): void {
+	if (!isRecord(value) || !Array.isArray(value.modules)) {
+		return;
+	}
+	for (const testModule of value.modules) {
+		if (!isRecord(testModule)) {
+			continue;
+		}
+		const lines = [...(Array.isArray(testModule.entries) ? testModule.entries : []), ...(Array.isArray(testModule.ambient) ? testModule.ambient : [])]
+			.flatMap((entry) => (isRecord(entry) && Array.isArray(entry.lines) ? entry.lines : []))
+			.filter((line): line is Record<string, unknown> => isRecord(line) && Array.isArray(line.tests));
+		// A stray leftover `testIds` field (an older extension build's
+		// snapshot, written before it deleted this on resolve) is not a
+		// reliable "already native" signal on its own - checking the
+		// `tests` values themselves is: a module with nothing left to
+		// convert is a true no-op, self-healing regardless of what shape
+		// this document happened to arrive in.
+		if (!lines.some((line) => (line.tests as unknown[]).some((t) => typeof t === 'string'))) {
+			continue;
+		}
+		const testIds: string[] = [];
+		const indexOf = (id: string): number => {
+			const existing = testIds.indexOf(id);
+			if (existing !== -1) {
+				return existing;
+			}
+			testIds.push(id);
+			return testIds.length - 1;
+		};
+		for (const line of lines) {
+			line.tests = (line.tests as unknown[]).map((id) => (typeof id === 'string' ? indexOf(id) : id));
+		}
+		testModule.testIds = testIds;
+	}
+}
+
+/** Same reasoning as `reinternPerTestIds`, for `mutation.modules[].methods[].mutants[].killingTests`. */
+export function reinternMutationTestIds(value: unknown): void {
+	if (!isRecord(value) || !Array.isArray(value.modules)) {
+		return;
+	}
+	for (const mutationModule of value.modules) {
+		if (!isRecord(mutationModule) || !Array.isArray(mutationModule.methods)) {
+			continue;
+		}
+		const mutants = mutationModule.methods
+			.flatMap((method) => (isRecord(method) && Array.isArray(method.mutants) ? method.mutants : []))
+			.filter((mutant): mutant is Record<string, unknown> => isRecord(mutant) && Array.isArray(mutant.killingTests));
+		// Same reasoning as reinternPerTestIds: check the values, not a
+		// possibly-stale leftover testIds field.
+		if (!mutants.some((mutant) => (mutant.killingTests as unknown[]).some((t) => typeof t === 'string'))) {
+			continue;
+		}
+		const testIds: string[] = [];
+		const indexOf = (id: string): number => {
+			const existing = testIds.indexOf(id);
+			if (existing !== -1) {
+				return existing;
+			}
+			testIds.push(id);
+			return testIds.length - 1;
+		};
+		for (const mutant of mutants) {
+			mutant.killingTests = (mutant.killingTests as unknown[]).map((id) => (typeof id === 'string' ? indexOf(id) : id));
+		}
+		mutationModule.testIds = testIds;
+	}
+}
+
 /** Faz 28 (§7.5b): `extension.ts`'in kendi `pertest-current.json`'ını doğrularken de kullanılıyor - `isMutationBlock`'un aynı gerekçesi. */
 export function isPerTestBlock(value: unknown): value is PerTestBlock {
 	return isRecord(value)
@@ -173,6 +315,32 @@ function isPerTestLine(value: unknown): value is PerTestLine {
 	return isRecord(value)
 		&& typeof value.line === 'number'
 		&& Array.isArray(value.tests) && value.tests.every((t) => typeof t === 'string');
+}
+
+/** D-86 (see `resolveInternedTestIds` above): the same test-id interning applies to `mutation.modules[].methods[].mutants[].killingTests`, resolved back here the same way so `Mutant.killingTests` stays `readonly string[]` for every consumer. */
+function resolveInternedMutationTestIds(value: unknown): void {
+	if (!isRecord(value) || !Array.isArray(value.modules)) {
+		return;
+	}
+	for (const mutationModule of value.modules) {
+		if (!isRecord(mutationModule) || !Array.isArray(mutationModule.testIds) || !Array.isArray(mutationModule.methods)) {
+			continue;
+		}
+		const testIds = mutationModule.testIds;
+		for (const method of mutationModule.methods) {
+			if (!isRecord(method) || !Array.isArray(method.mutants)) {
+				continue;
+			}
+			for (const mutant of method.mutants) {
+				if (!isRecord(mutant) || !Array.isArray(mutant.killingTests)) {
+					continue;
+				}
+				mutant.killingTests = mutant.killingTests.map((index: unknown) => (typeof index === 'number' ? testIds[index] : index));
+			}
+		}
+		// Faz 34: same reasoning as resolveInternedTestIds's own delete above.
+		delete mutationModule.testIds;
+	}
 }
 
 /** Faz 25 (§7.5): `extension.ts`'in kendi `mutation-current.json`'ını doğrularken de kullanılıyor - CLI'ın `mutation` bloğuyla aynı şema, iki ayrı validator tutmamak için dışa açıldı. */

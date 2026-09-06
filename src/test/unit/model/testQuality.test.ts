@@ -6,7 +6,7 @@ import type { Finding } from '../../../verdict/types';
 
 /**
  * Real data captured from a live `--per-test-target` run against
- * coverdict-playground's `Calculator.java` (2026-08-28, session that added
+ * proof-java-playground's `Calculator.java` (2026-08-28, session that added
  * Faz 15) - not synthesized. Four lines, four different outcomes:
  *   - line 37 (`square`): one test, no oracle -> false green.
  *   - line 11 (`subtract`): same shape, different rule -> false green.
@@ -16,21 +16,21 @@ import type { Finding } from '../../../verdict/types';
  *     INCONCLUSIVE confidence -> must not count as noOracle, must not make
  *     the line false green even though every OTHER test also has no finding.
  */
-const SQUARE_HAS_NO_ASSERTION = '[engine:junit-jupiter]/[class:dev.coverdict.playground.CalculatorPseudoTestedTest]/[method:squareHasNoAssertion()]';
-const SUBTRACT_HAS_NO_ASSERTION = '[engine:junit-jupiter]/[class:dev.coverdict.playground.CalculatorNoOracleTest]/[method:subtractHasNoAssertion()]';
-const DIVIDE_AND_MULTIPLY_WIDE = '[engine:junit-jupiter]/[class:dev.coverdict.playground.CalculatorSubsumedTest]/[method:divideAndMultiplyWide()]';
-const MULTIPLY_CONSTANT_VS_CONSTANT = '[engine:junit-jupiter]/[class:dev.coverdict.playground.CalculatorTautologicalOracleTest]/[method:multiplyConstantVsConstant()]';
-const MULTIPLY_LITERAL_BOOLEAN = '[engine:junit-jupiter]/[class:dev.coverdict.playground.CalculatorTautologicalOracleTest]/[method:multiplyLiteralBoolean()]';
-const ADD_WORKS_CORRECTLY = '[engine:junit-jupiter]/[class:dev.coverdict.playground.CalculatorGoodTest]/[method:addWorksCorrectly()]';
-const ADD_PARAM_INVOCATION_1 = '[class:dev.coverdict.playground.CalculatorParameterizedTest]/[test-template:addProducesTheSumForEveryPair(int, int, int)]/[test-template-invocation:#1]';
-const ADD_CHECKED_VIA_SOFT_ASSERTIONS = '[engine:junit-jupiter]/[class:dev.coverdict.playground.CalculatorUnresolvedOracleTest]/[method:addCheckedViaLocalSoftAssertions()]';
+const SQUARE_HAS_NO_ASSERTION = '[engine:junit-jupiter]/[class:dev.proofjava.playground.CalculatorPseudoTestedTest]/[method:squareHasNoAssertion()]';
+const SUBTRACT_HAS_NO_ASSERTION = '[engine:junit-jupiter]/[class:dev.proofjava.playground.CalculatorNoOracleTest]/[method:subtractHasNoAssertion()]';
+const DIVIDE_AND_MULTIPLY_WIDE = '[engine:junit-jupiter]/[class:dev.proofjava.playground.CalculatorSubsumedTest]/[method:divideAndMultiplyWide()]';
+const MULTIPLY_CONSTANT_VS_CONSTANT = '[engine:junit-jupiter]/[class:dev.proofjava.playground.CalculatorTautologicalOracleTest]/[method:multiplyConstantVsConstant()]';
+const MULTIPLY_LITERAL_BOOLEAN = '[engine:junit-jupiter]/[class:dev.proofjava.playground.CalculatorTautologicalOracleTest]/[method:multiplyLiteralBoolean()]';
+const ADD_WORKS_CORRECTLY = '[engine:junit-jupiter]/[class:dev.proofjava.playground.CalculatorGoodTest]/[method:addWorksCorrectly()]';
+const ADD_PARAM_INVOCATION_1 = '[class:dev.proofjava.playground.CalculatorParameterizedTest]/[test-template:addProducesTheSumForEveryPair(int, int, int)]/[test-template-invocation:#1]';
+const ADD_CHECKED_VIA_SOFT_ASSERTIONS = '[engine:junit-jupiter]/[class:dev.proofjava.playground.CalculatorUnresolvedOracleTest]/[method:addCheckedViaLocalSoftAssertions()]';
 
 const FINDINGS: readonly Finding[] = [
-	finding('NO_RECOGNIZED_ORACLE', 'HIGH', 'dev.coverdict.playground.CalculatorPseudoTestedTest#squareHasNoAssertion()'),
-	finding('NO_RECOGNIZED_ORACLE', 'HIGH', 'dev.coverdict.playground.CalculatorNoOracleTest#subtractHasNoAssertion()'),
-	finding('TAUTOLOGICAL_ORACLE', 'HIGH', 'dev.coverdict.playground.CalculatorTautologicalOracleTest#multiplyConstantVsConstant()'),
-	finding('TAUTOLOGICAL_ORACLE', 'HIGH', 'dev.coverdict.playground.CalculatorTautologicalOracleTest#multiplyLiteralBoolean()'),
-	finding('NO_RECOGNIZED_ORACLE', 'INCONCLUSIVE', 'dev.coverdict.playground.CalculatorUnresolvedOracleTest#addCheckedViaLocalSoftAssertions()'),
+	finding('NO_RECOGNIZED_ORACLE', 'HIGH', 'dev.proofjava.playground.CalculatorPseudoTestedTest#squareHasNoAssertion()'),
+	finding('NO_RECOGNIZED_ORACLE', 'HIGH', 'dev.proofjava.playground.CalculatorNoOracleTest#subtractHasNoAssertion()'),
+	finding('TAUTOLOGICAL_ORACLE', 'HIGH', 'dev.proofjava.playground.CalculatorTautologicalOracleTest#multiplyConstantVsConstant()'),
+	finding('TAUTOLOGICAL_ORACLE', 'HIGH', 'dev.proofjava.playground.CalculatorTautologicalOracleTest#multiplyLiteralBoolean()'),
+	finding('NO_RECOGNIZED_ORACLE', 'INCONCLUSIVE', 'dev.proofjava.playground.CalculatorUnresolvedOracleTest#addCheckedViaLocalSoftAssertions()'),
 ];
 
 function finding(rule: Finding['rule'], confidence: Finding['confidence'], testMethod: string): Finding {

@@ -31,7 +31,7 @@ export interface GutterDecorationTypes {
  * classic red-green color-vision-deficiency confusion pair - the two
  * states a coverage gutter most needs to keep visually distinct. Swapped
  * for the Okabe-Ito palette (Okabe & Ito, "Color Universal Design", 2008)
- * when `coverdict.colorblindMode` is on - blue/vermillion/yellow/purple
+ * when `proof.colorblindMode` is on - blue/vermillion/yellow/purple
  * stay distinguishable under protanopia, deuteranopia, *and* tritanopia
  * simultaneously, which a single hand-picked "colorblind-friendly" pair
  * usually is not (different CVD types confuse different hues). Raw hex,
@@ -46,22 +46,39 @@ const COLORBLIND_PALETTE = {
 } as const;
 
 /**
- * Called at activation and again, live, whenever `coverdict.colorblindMode`
+ * User report: the default `charts.*` theme colors were too close to each
+ * other to tell apart at a glance on a 3px border (`charts.red` and
+ * `charts.orange` in particular render nearly identically in several
+ * built-in themes), forcing colorblindMode on just to get distinguishable
+ * colors - not what that setting is for. A fixed, high-contrast palette
+ * (not theme-derived) fixes the default directly instead, same reasoning
+ * as COLORBLIND_PALETTE: chosen for mutual distinguishability on both
+ * light and dark editor backgrounds, not to track the active color theme.
+ */
+const DEFAULT_PALETTE = {
+	covered: '#4ADE80', // green
+	partial: '#FACC15', // yellow
+	uncovered: '#F87171', // red
+	oracleless: '#FB923C', // orange
+} as const;
+
+/**
+ * Called at activation and again, live, whenever `proof.colorblindMode`
  * changes (`extension.ts`'s own `onDidChangeConfiguration` handler disposes
  * the old types and swaps in a fresh set) - no window reload needed.
  */
 export function createGutterDecorationTypes(colorblindMode = false): GutterDecorationTypes {
 	return {
-		covered: borderDecoration(colorblindMode ? COLORBLIND_PALETTE.covered : new vscode.ThemeColor('charts.green')),
-		partial: borderDecoration(colorblindMode ? COLORBLIND_PALETTE.partial : new vscode.ThemeColor('charts.yellow')),
-		uncovered: borderDecoration(colorblindMode ? COLORBLIND_PALETTE.uncovered : new vscode.ThemeColor('charts.red')),
+		covered: borderDecoration(colorblindMode ? COLORBLIND_PALETTE.covered : DEFAULT_PALETTE.covered),
+		partial: borderDecoration(colorblindMode ? COLORBLIND_PALETTE.partial : DEFAULT_PALETTE.partial),
+		uncovered: borderDecoration(colorblindMode ? COLORBLIND_PALETTE.uncovered : DEFAULT_PALETTE.uncovered),
 		excluded: vscode.window.createTextEditorDecorationType({
 			isWholeLine: true,
 			backgroundColor: new vscode.ThemeColor('editorInactiveSelection.background'),
 			overviewRulerColor: new vscode.ThemeColor('charts.gray'),
 			overviewRulerLane: vscode.OverviewRulerLane.Left,
 			after: {
-				contentText: '  coverdict: coverage dışı bırakılmış',
+				contentText: '  Proof: excluded from coverage',
 				color: new vscode.ThemeColor('descriptionForeground'),
 				fontStyle: 'italic',
 				margin: '0 0 0 1em',
@@ -75,13 +92,13 @@ export function createGutterDecorationTypes(colorblindMode = false): GutterDecor
 			overviewRulerColor: new vscode.ThemeColor('charts.yellow'),
 			overviewRulerLane: vscode.OverviewRulerLane.Left,
 			after: {
-				contentText: '  coverdict: bu dosya son taramadan sonra değişti - coverage bayat, tekrar tarayın',
+				contentText: '  Proof: this file changed since the last scan - coverage is stale, scan again',
 				color: new vscode.ThemeColor('editorWarning.foreground'),
 				fontStyle: 'italic',
 				margin: '0 0 0 1em',
 			},
 		}),
-		oracleless: borderDecoration(colorblindMode ? COLORBLIND_PALETTE.oracleless : new vscode.ThemeColor('charts.orange')),
+		oracleless: borderDecoration(colorblindMode ? COLORBLIND_PALETTE.oracleless : DEFAULT_PALETTE.oracleless),
 	};
 }
 

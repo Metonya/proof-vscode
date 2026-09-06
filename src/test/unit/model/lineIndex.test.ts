@@ -10,15 +10,15 @@ const BLOCK: PerTestBlock = {
 	modules: [{
 		id: 'root',
 		entries: [
-			{ className: 'dev.coverdict.playground.Calculator', methodName: 'add', lines: [
+			{ className: 'dev.proofjava.playground.Calculator', methodName: 'add', lines: [
 				{ line: 7, tests: ['CalcTest#addsTwoNumbers()'] },
 			] },
-			{ className: 'dev.coverdict.playground.Calculator$Inner', methodName: 'helper', lines: [
+			{ className: 'dev.proofjava.playground.Calculator$Inner', methodName: 'helper', lines: [
 				{ line: 40, tests: ['CalcTest#innerHelperTest()'] },
 			] },
 		],
 		ambient: [
-			{ className: 'dev.coverdict.playground.Calculator', methodName: '<clinit>', lines: [
+			{ className: 'dev.proofjava.playground.Calculator', methodName: '<clinit>', lines: [
 				{ line: 3, tests: ['CalcTest#addsTwoNumbers()'] },
 			] },
 		],
@@ -33,7 +33,7 @@ const BLOCK: PerTestBlock = {
  * `<clinit>`".
  */
 test('a known class returns real entries in linesToTests, static-initializer evidence separately in ambientLinesToTests', () => {
-	const result = testsForClass(BLOCK, 'dev.coverdict.playground.Calculator');
+	const result = testsForClass(BLOCK, 'dev.proofjava.playground.Calculator');
 	assert.equal(result.kind, 'found');
 	if (result.kind === 'found') {
 		assert.deepEqual(result.linesToTests.get(7), ['CalcTest#addsTwoNumbers()']);
@@ -44,7 +44,7 @@ test('a known class returns real entries in linesToTests, static-initializer evi
 
 /** Faz 24 (§7.6 madde 4): `linesToMethod` gerçek `methodName` alanından geliyor - satır 3 yalnızca ambient'te olduğu için `linesToMethod`'da değil `ambientLinesToMethod`'da görünür. */
 test('linesToMethod carries the real production method name per line, ambient stays in its own map', () => {
-	const result = testsForClass(BLOCK, 'dev.coverdict.playground.Calculator');
+	const result = testsForClass(BLOCK, 'dev.proofjava.playground.Calculator');
 	assert.equal(result.kind, 'found');
 	if (result.kind === 'found') {
 		assert.equal(result.linesToMethod.get(7), 'add');
@@ -54,7 +54,7 @@ test('linesToMethod carries the real production method name per line, ambient st
 });
 
 test('a nested class entry is matched under its outer class name', () => {
-	const result = testsForClass(BLOCK, 'dev.coverdict.playground.Calculator');
+	const result = testsForClass(BLOCK, 'dev.proofjava.playground.Calculator');
 	assert.equal(result.kind, 'found');
 	if (result.kind === 'found') {
 		assert.deepEqual(result.linesToTests.get(40), ['CalcTest#innerHelperTest()']);
@@ -64,12 +64,12 @@ test('a nested class entry is matched under its outer class name', () => {
 /** Faz 30: no L2 evidence collected at all this run (`perTest.modules` empty) is distinct from "collected, but not for this class" (hard rule 3a). */
 test('an empty modules array is noEvidence, distinct from a missing class', () => {
 	const empty: PerTestBlock = { engine: 'pitest', engineVersion: '1.15.8', modules: [] };
-	const result = testsForClass(empty, 'dev.coverdict.playground.Calculator');
+	const result = testsForClass(empty, 'dev.proofjava.playground.Calculator');
 	assert.equal(result.kind, 'noEvidence');
 });
 
 test('a class with no matching entries is classNotFound - "L2 sadece değişen sınıflar için"', () => {
-	const result = testsForClass(BLOCK, 'dev.coverdict.playground.NotAChangedClass');
+	const result = testsForClass(BLOCK, 'dev.proofjava.playground.NotAChangedClass');
 	assert.equal(result.kind, 'classNotFound');
 });
 
@@ -79,9 +79,9 @@ const TWO_CLASSES: PerTestBlock = {
 	modules: [{
 		id: 'root',
 		entries: [
-			{ className: 'dev.coverdict.playground.Calculator', methodName: 'add', lines: [{ line: 7, tests: ['CalcTest#addsTwoNumbers()'] }] },
-			{ className: 'dev.coverdict.playground.Multiplier', methodName: 'times', lines: [{ line: 12, tests: ['MultiplierTest#timesTwo()'] }] },
-			{ className: 'dev.coverdict.playground.CalculatorGoodTest', methodName: 'addsTwoNumbers', lines: [{ line: 5, tests: ['CalcTest#addsTwoNumbers()'] }] },
+			{ className: 'dev.proofjava.playground.Calculator', methodName: 'add', lines: [{ line: 7, tests: ['CalcTest#addsTwoNumbers()'] }] },
+			{ className: 'dev.proofjava.playground.Multiplier', methodName: 'times', lines: [{ line: 12, tests: ['MultiplierTest#timesTwo()'] }] },
+			{ className: 'dev.proofjava.playground.CalculatorGoodTest', methodName: 'addsTwoNumbers', lines: [{ line: 5, tests: ['CalcTest#addsTwoNumbers()'] }] },
 		],
 		ambient: [],
 	}],
@@ -89,16 +89,16 @@ const TWO_CLASSES: PerTestBlock = {
 
 test('allClasses: groups entries by outer class name, one ClassLines per real class', () => {
 	const classes = allClasses(TWO_CLASSES);
-	assert.deepEqual(classes.map((c) => c.className), ['dev.coverdict.playground.Calculator', 'dev.coverdict.playground.CalculatorGoodTest', 'dev.coverdict.playground.Multiplier']);
-	const calculator = classes.find((c) => c.className === 'dev.coverdict.playground.Calculator')!;
+	assert.deepEqual(classes.map((c) => c.className), ['dev.proofjava.playground.Calculator', 'dev.proofjava.playground.CalculatorGoodTest', 'dev.proofjava.playground.Multiplier']);
+	const calculator = classes.find((c) => c.className === 'dev.proofjava.playground.Calculator')!;
 	assert.deepEqual(calculator.linesToTests.get(7), ['CalcTest#addsTwoNumbers()']);
 	assert.equal(calculator.linesToMethod.get(7), 'add');
 });
 
 test('allClasses: with a production-class filter, test classes (PIT mutates them too) are dropped - same convention as classesOf/testsToLines', () => {
-	const isProduction = (className: string) => className !== 'dev.coverdict.playground.CalculatorGoodTest';
+	const isProduction = (className: string) => className !== 'dev.proofjava.playground.CalculatorGoodTest';
 	const classes = allClasses(TWO_CLASSES, isProduction);
-	assert.deepEqual(classes.map((c) => c.className), ['dev.coverdict.playground.Calculator', 'dev.coverdict.playground.Multiplier']);
+	assert.deepEqual(classes.map((c) => c.className), ['dev.proofjava.playground.Calculator', 'dev.proofjava.playground.Multiplier']);
 });
 
 test('allClasses: without a filter nothing is dropped - missing information must not silently delete evidence', () => {
@@ -112,7 +112,7 @@ test('allClasses: an empty modules array returns an empty list, not an error', (
 
 test('allClasses: a nested class entry is grouped under its outer class name', () => {
 	const classes = allClasses(BLOCK);
-	assert.deepEqual(classes.map((c) => c.className), ['dev.coverdict.playground.Calculator']);
+	assert.deepEqual(classes.map((c) => c.className), ['dev.proofjava.playground.Calculator']);
 	assert.deepEqual(classes[0].linesToTests.get(40), ['CalcTest#innerHelperTest()'], 'the $Inner entry must merge into the outer class');
 });
 
@@ -129,7 +129,7 @@ test('testsForClass merges evidence across several bound modules', () => {
 			},
 		],
 	};
-	const fromFirstModule = testsForClass(twoModules, 'dev.coverdict.playground.Calculator');
+	const fromFirstModule = testsForClass(twoModules, 'dev.proofjava.playground.Calculator');
 	assert.equal(fromFirstModule.kind, 'found');
 	const fromSecondModule = testsForClass(twoModules, 'com.example.Other');
 	assert.equal(fromSecondModule.kind, 'found');
@@ -147,7 +147,7 @@ test('testsToLines: a test appears once per production line it covers, keyed by 
 	const reverse = testsToLines(BLOCK);
 	const refs = reverse.get('CalcTest#addsTwoNumbers()');
 	assert.ok(refs);
-	assert.deepEqual([...refs!].sort((a, b) => a.line - b.line), [{ outerClassName: 'dev.coverdict.playground.Calculator', line: 7 }]);
+	assert.deepEqual([...refs!].sort((a, b) => a.line - b.line), [{ outerClassName: 'dev.proofjava.playground.Calculator', line: 7 }]);
 });
 
 test('testsToLines: ambient (<clinit>-only) evidence is excluded - a test does not "run" a line it only reached indirectly', () => {
@@ -160,7 +160,7 @@ test('testsToLines: ambient (<clinit>-only) evidence is excluded - a test does n
 test('testsToLines: a nested-class entry is reported under its outer class name', () => {
 	const reverse = testsToLines(BLOCK);
 	const refs = reverse.get('CalcTest#innerHelperTest()');
-	assert.deepEqual(refs, [{ outerClassName: 'dev.coverdict.playground.Calculator', line: 40 }]);
+	assert.deepEqual(refs, [{ outerClassName: 'dev.proofjava.playground.Calculator', line: 40 }]);
 });
 
 /**
@@ -175,15 +175,15 @@ const BLOCK_WITH_SELF_COVERING_TEST: PerTestBlock = {
 	modules: [{
 		id: 'root',
 		entries: [
-			{ className: 'dev.coverdict.playground.Calculator', methodName: 'add', lines: [{ line: 7, tests: ['CalcTest#addsTwoNumbers()'] }] },
-			{ className: 'dev.coverdict.playground.CalcTest', methodName: 'addsTwoNumbers', lines: [{ line: 18, tests: ['CalcTest#addsTwoNumbers()'] }] },
+			{ className: 'dev.proofjava.playground.Calculator', methodName: 'add', lines: [{ line: 7, tests: ['CalcTest#addsTwoNumbers()'] }] },
+			{ className: 'dev.proofjava.playground.CalcTest', methodName: 'addsTwoNumbers', lines: [{ line: 18, tests: ['CalcTest#addsTwoNumbers()'] }] },
 		],
 		ambient: [],
 	}],
 };
 
 test('testsToLines: with a production-class filter, a test does not report its own lines as production lines', () => {
-	const reverse = testsToLines(BLOCK_WITH_SELF_COVERING_TEST, (c) => c === 'dev.coverdict.playground.Calculator');
+	const reverse = testsToLines(BLOCK_WITH_SELF_COVERING_TEST, (c) => c === 'dev.proofjava.playground.Calculator');
 	assert.deepEqual(reverse.get('CalcTest#addsTwoNumbers()')?.map((r) => r.line), [7]);
 });
 
@@ -260,7 +260,7 @@ test('groupConsecutiveLines: a lone line is its own group with startLine === end
 
 /**
  * Faz 24 (§7.6 madde 4): real playground data (verified 2026-08-28,
- * --per-test-target root=dev.coverdict.playground.Calculator) shows the
+ * --per-test-target root=dev.proofjava.playground.Calculator) shows the
  * compiler-generated no-arg constructor's single instruction attributed to
  * the class declaration line, "Satır 4 · 14 test" - every test that builds
  * a Calculator shows up there, which reads as noise unless the line is

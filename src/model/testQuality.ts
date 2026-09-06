@@ -2,13 +2,13 @@ import { parseTestIdentity } from '../verdict/testIdentity';
 import type { Finding } from '../verdict/types';
 
 /**
- * Faz 15a: the join coverdict-vscode never made. `findings[].testMethod`
+ * Faz 15a: the join proof-vscode never made. `findings[].testMethod`
  * (shape `FQCN#method()`) and `perTest`'s test ids (JUnit5 UniqueId or the
  * same `FQCN#method()` shape, see `verdict/testIdentity.ts`) refer to the
  * exact same test - confirmed against a real playground run, 2026-08-28,
  * 17 exact matches. Without this join, a line covered only by a test with
  * no assertion looks identical in the UI to a line covered by a real test -
- * coverdict's entire reason to exist over plain JaCoCo, invisible until now.
+ * proof-java's entire reason to exist over plain JaCoCo, invisible until now.
  *
  * Pure - no `vscode` (Plan.md Bölüm 2's first invariant).
  */

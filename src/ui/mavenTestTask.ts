@@ -45,7 +45,7 @@ async function scanPoms(folder: vscode.WorkspaceFolder): Promise<ReactorPomFacts
 }
 
 function resolveMavenExecutable(folder: vscode.WorkspaceFolder): string {
-	const configured = vscode.workspace.getConfiguration('coverdict', folder).get<string>('mavenExecutable');
+	const configured = vscode.workspace.getConfiguration('proof', folder).get<string>('mavenExecutable');
 	return configured || (process.platform === 'win32' ? 'mvn.cmd' : 'mvn');
 }
 
@@ -70,7 +70,7 @@ export interface MavenTaskResult {
  */
 async function runVisibleMavenTask(folder: vscode.WorkspaceFolder, output: vscode.OutputChannel, taskKind: string, label: string, args: readonly string[]): Promise<MavenTaskResult> {
 	const mavenExecutable = resolveMavenExecutable(folder);
-	output.appendLine(`coverdict: ${mavenExecutable} ${args.join(' ')} (${folder.uri.fsPath})`);
+	output.appendLine(`Proof: ${mavenExecutable} ${args.join(' ')} (${folder.uri.fsPath})`);
 
 	const writeEmitter = new vscode.EventEmitter<string>();
 	const closeEmitter = new vscode.EventEmitter<number>();
@@ -104,10 +104,10 @@ async function runVisibleMavenTask(folder: vscode.WorkspaceFolder, output: vscod
 	};
 
 	const task = new vscode.Task(
-		{ type: 'coverdict', kind: taskKind },
+		{ type: 'proof-java', kind: taskKind },
 		folder,
 		label,
-		'coverdict',
+		'proof-java',
 		new vscode.CustomExecution(() => Promise.resolve(pty)),
 	);
 	task.presentationOptions = { reveal: vscode.TaskRevealKind.Always, panel: vscode.TaskPanelKind.Dedicated, clear: true };
@@ -135,7 +135,7 @@ export async function runMavenInstallTask(folder: vscode.WorkspaceFolder, output
  * `moduleRoots` (Faz 31): scopes the build to already-bound module(s) via
  * `-pl ... -am` when the caller has them (a re-run after a scan already
  * happened) - real gson testing found a whole-reactor run pulling in
- * sibling modules coverdict never needed (native-image, ProGuard-obfuscated
+ * sibling modules proof-java never needed (native-image, ProGuard-obfuscated
  * tests, JPMS) whose own fragility has nothing to do with the module being
  * analyzed. The very first run (no scan yet) has nothing to scope to and
  * stays whole-reactor - guessing a module here would be a guess.
@@ -145,30 +145,30 @@ export async function runTestsTask(folder: vscode.WorkspaceFolder, output: vscod
 
 	if (facts.literalArgLine) {
 		const choice = await vscode.window.showWarningMessage(
-			`coverdict: ${facts.literalArgLine.file} (satır ${facts.literalArgLine.line}) içindeki surefire yapılandırması <argLine> değerini sabit bir metin olarak yazıyor.`,
+			`Proof: the surefire configuration in ${facts.literalArgLine.file} (line ${facts.literalArgLine.line}) writes <argLine> as a literal string.`,
 			{
 				modal: true,
-				detail: 'JaCoCo ajanı komut satırından bağlandığında bu satır ajanı düşürür - hiç jacoco.exec üretilmez, coverage verisi çıkmaz. '
-					+ 'Bu, komut satırından düzeltilemez (-DargLine=... işe yaramaz, çünkü pomdaki <configuration><argLine> her zaman kazanır). '
-					+ `Pomdaki satırı @{argLine} ekleyecek şekilde düzenlemeniz gerekir, örn.: <argLine>@{argLine} ${facts.literalArgLine.text.replaceAll(/<\/?argLine>/g, '')}</argLine>`,
+				detail: 'When the JaCoCo agent is bound from the command line, this line drops the agent - no jacoco.exec is produced, no coverage data comes out. '
+					+ 'This can\'t be fixed from the command line (-DargLine=... has no effect, because the pom\'s <configuration><argLine> always wins). '
+					+ `You need to edit the line in the pom to include @{argLine}, e.g.: <argLine>@{argLine} ${facts.literalArgLine.text.replaceAll(/<\/?argLine>/g, '')}</argLine>`,
 			},
-			"Pom'u Aç",
-			'Yine de Çalıştır',
+			'Open pom.xml',
+			'Run Anyway',
 		);
-		if (choice === "Pom'u Aç") {
+		if (choice === 'Open pom.xml') {
 			const uri = vscode.Uri.file(path.join(folder.uri.fsPath, facts.literalArgLine.file));
 			const selection = new vscode.Range(facts.literalArgLine.line - 1, 0, facts.literalArgLine.line - 1, 0);
 			await vscode.window.showTextDocument(uri, { selection });
 			return undefined;
 		}
-		if (choice !== 'Yine de Çalıştır') {
+		if (choice !== 'Run Anyway') {
 			return undefined;
 		}
 	}
 
-	const config = vscode.workspace.getConfiguration('coverdict', folder);
+	const config = vscode.workspace.getConfiguration('proof', folder);
 	const phase = (config.get<MavenTestPhase>('testCommandPhase')) || 'test';
 	const jacocoPluginVersion = config.get<string>('jacocoPluginVersion') || '0.8.13';
 	const args = buildMavenTestArgs({ phase, injectJacocoGoals: !facts.hasJacocoPlugin, jacocoPluginVersion, moduleRoots });
-	return runVisibleMavenTask(folder, output, 'runTests', 'Testleri Çalıştır (JaCoCo)', args);
+	return runVisibleMavenTask(folder, output, 'runTests', 'Run Tests (JaCoCo)', args);
 }

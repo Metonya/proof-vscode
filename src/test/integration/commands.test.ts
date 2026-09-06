@@ -15,8 +15,8 @@ import type { MetricSet } from '../../verdict/types';
  */
 suite('describeNode (Faz 31 - "Kopyala" coverage)', () => {
 	test('empty: the long explanation message itself, the exact real report', () => {
-		const text = describeNode({ kind: 'empty', message: "Bu koşuda hiçbir sınıf değişmemiş, bu yüzden test bazlı kanıt boş - bu bir hata değil: L2 sadece diff'te değişen production sınıflarını hedefler." });
-		assert.equal(text, "Bu koşuda hiçbir sınıf değişmemiş, bu yüzden test bazlı kanıt boş - bu bir hata değil: L2 sadece diff'te değişen production sınıflarını hedefler.");
+		const text = describeNode({ kind: 'empty', message: "No class changed in this run, so per-test evidence is empty - this is not an error: L2 only targets changed production classes in the diff." });
+		assert.equal(text, "No class changed in this run, so per-test evidence is empty - this is not an error: L2 only targets changed production classes in the diff.");
 	});
 
 	test('empty: a node with no message copies nothing, never an empty string masquerading as content', () => {
@@ -24,11 +24,11 @@ suite('describeNode (Faz 31 - "Kopyala" coverage)', () => {
 	});
 
 	test('header (mutation view target line)', () => {
-		assert.equal(describeNode({ kind: 'header', text: 'Hedef: Calculator · az önce' }), 'Hedef: Calculator · az önce');
+		assert.equal(describeNode({ kind: 'header', text: 'Target: Calculator · just now' }), 'Target: Calculator · just now');
 	});
 
 	test('class (both tree views\' class node)', () => {
-		assert.equal(describeNode({ kind: 'class', className: 'dev.coverdict.playground.Calculator' }), 'dev.coverdict.playground.Calculator');
+		assert.equal(describeNode({ kind: 'class', className: 'dev.proofjava.playground.Calculator' }), 'dev.proofjava.playground.Calculator');
 	});
 
 	test('testMethod (line tests view, reverse direction)', () => {
@@ -36,21 +36,21 @@ suite('describeNode (Faz 31 - "Kopyala" coverage)', () => {
 	});
 
 	test('testLine (line tests view, reverse direction leaf)', () => {
-		assert.equal(describeNode({ kind: 'testLine', ref: { outerClassName: 'dev.coverdict.playground.Calculator', line: 37 } }), 'dev.coverdict.playground.Calculator:37');
+		assert.equal(describeNode({ kind: 'testLine', ref: { outerClassName: 'dev.proofjava.playground.Calculator', line: 37 } }), 'dev.proofjava.playground.Calculator:37');
 	});
 
 	test('method (mutation view)', () => {
-		const text = describeNode({ kind: 'method', className: 'dev.coverdict.playground.Calculator', method: { methodName: 'square', methodDescription: '(I)I' } });
-		assert.equal(text, 'dev.coverdict.playground.Calculator#square(I)I');
+		const text = describeNode({ kind: 'method', className: 'dev.proofjava.playground.Calculator', method: { methodName: 'square', methodDescription: '(I)I' } });
+		assert.equal(text, 'dev.proofjava.playground.Calculator#square(I)I');
 	});
 
 	test('mutant (mutation view)', () => {
-		const text = describeNode({ kind: 'mutant', className: 'dev.coverdict.playground.Calculator', mutant: { line: 37, mutator: 'PrimitiveReturnsMutator', status: 'SURVIVED' } });
-		assert.equal(text, 'dev.coverdict.playground.Calculator:37 PrimitiveReturnsMutator SURVIVED');
+		const text = describeNode({ kind: 'mutant', className: 'dev.proofjava.playground.Calculator', mutant: { line: 37, mutator: 'PrimitiveReturnsMutator', status: 'SURVIVED' } });
+		assert.equal(text, 'dev.proofjava.playground.Calculator:37 PrimitiveReturnsMutator SURVIVED');
 	});
 
 	test('killingTest (mutation view) - same raw-id convention as prodTest, unchanged', () => {
-		const rawTestId = '[class:dev.coverdict.playground.CalculatorSubsumedTest]/[method:divideNarrow()]';
+		const rawTestId = '[class:dev.proofjava.playground.CalculatorSubsumedTest]/[method:divideNarrow()]';
 		assert.equal(describeNode({ kind: 'killingTest', rawTestId }), rawTestId);
 		assert.equal(describeNode({ kind: 'prodTest', rawTestId }), rawTestId);
 	});
@@ -71,16 +71,16 @@ suite('describeNode (Faz 31 - "Kopyala" coverage)', () => {
 	 * could ever match it.
 	 */
 	test('a plain TreeItem-shaped node (no `kind`, e.g. runView.ts\'s RunItem) uses its own real label/description', () => {
-		assert.equal(describeNode({ label: 'Testleri Çalıştır', description: 'rapor: henüz yok' }), 'Testleri Çalıştır - rapor: henüz yok');
-		assert.equal(describeNode({ label: 'Coverage Görünümü', description: 'açık - gizlemek için tıklayın' }), 'Coverage Görünümü - açık - gizlemek için tıklayın');
+		assert.equal(describeNode({ label: 'Run Tests', description: 'report: not yet' }), 'Run Tests - report: not yet');
+		assert.equal(describeNode({ label: 'Coverage View', description: 'open - click to hide' }), 'Coverage View - open - click to hide');
 	});
 
 	test('a plain TreeItem-shaped node with no description copies just the label', () => {
-		assert.equal(describeNode({ label: 'Hızlı Tarama' }), 'Hızlı Tarama');
+		assert.equal(describeNode({ label: 'Quick Scan' }), 'Quick Scan');
 	});
 
 	test('a plain TreeItem-shaped node with a boolean description (VS Code\'s "always show" flag, not real text) copies just the label', () => {
-		assert.equal(describeNode({ label: 'Hızlı Tarama', description: true }), 'Hızlı Tarama');
+		assert.equal(describeNode({ label: 'Quick Scan', description: true }), 'Quick Scan');
 	});
 });
 
@@ -109,14 +109,14 @@ suite('allProductionTargets (Faz 31)', () => {
 			...BASE_STATE,
 			fileCoverage: {
 				files: [
-					{ module: 'root', path: 'src/main/java/dev/coverdict/playground/Calculator.java', metrics: METRIC, lines: [] },
-					{ module: 'root', path: 'src/main/java/dev/coverdict/playground/Multiplier.java', metrics: METRIC, lines: [] },
+					{ module: 'root', path: 'src/main/java/dev/proofjava/playground/Calculator.java', metrics: METRIC, lines: [] },
+					{ module: 'root', path: 'src/main/java/dev/proofjava/playground/Multiplier.java', metrics: METRIC, lines: [] },
 				],
 				excluded: [],
 			},
 		};
 		const targets = allProductionTargets(state);
-		assert.deepEqual(targets.map((t) => t.fqcn), ['dev.coverdict.playground.Calculator', 'dev.coverdict.playground.Multiplier']);
+		assert.deepEqual(targets.map((t) => t.fqcn), ['dev.proofjava.playground.Calculator', 'dev.proofjava.playground.Multiplier']);
 		assert.ok(targets[0].filePath.endsWith('Calculator.java'));
 	});
 

@@ -67,7 +67,7 @@ export function setGutterVisible(next: boolean): void {
 }
 
 /**
- * F3: the last run's L2 evidence, set only by `coverdict.analyzePerTest` (a
+ * F3: the last run's L2 evidence, set only by `proof.analyzePerTest` (a
  * separate command from the main scan - --per-test-report needs a diff
  * mode, D-55). Faz 30: no `moduleId` - `perTest.modules[]` may hold several
  * (a multi-module run), and every consumer merges across all of them
@@ -76,6 +76,10 @@ export function setGutterVisible(next: boolean): void {
 export interface PerTestState {
 	perTest: PerTestBlock | undefined;
 	warnings: readonly Reason[];
+	/** Faz 34 (user request): same convention as `MutationState.targets` - what was asked for, not derived from the result. Empty means diff-derived (the CLI picked the targets, same as Mutation's diff-scoped runs). */
+	targets: readonly string[];
+	/** Faz 34: same convention as `MutationState.ranAt` - our own timestamp, set at write time (the CLI's own output carries none). `undefined` after a restore with no recorded time. */
+	ranAt: number | undefined;
 }
 
 let perTestState: PerTestState | undefined;

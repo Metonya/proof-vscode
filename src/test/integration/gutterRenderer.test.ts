@@ -62,7 +62,7 @@ suite('Gutter renderer (Faz 9)', () => {
 	});
 
 	/**
-	 * Faz 31 (user request): `coverdict.colorblindMode` swaps the gutter's
+	 * Faz 31 (user request): `proof.colorblindMode` swaps the gutter's
 	 * red/green pair (the classic red-green CVD confusion) for the
 	 * Okabe-Ito palette - real color values are a manual check (see above),
 	 * this only proves the raw-hex branch builds valid decoration types too.

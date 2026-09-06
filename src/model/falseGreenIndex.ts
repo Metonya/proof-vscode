@@ -45,7 +45,7 @@ export function buildFalseGreenIndex(
 	return index;
 }
 
-/** Same convention as `model/lineIndex.ts`'s own copy - coverdict-cli's `PseudoTestedMethodRule` strips nested classes the same way on the production side. */
+/** Same convention as `model/lineIndex.ts`'s own copy - proof-java-cli's `PseudoTestedMethodRule` strips nested classes the same way on the production side. */
 function stripNestedSuffix(className: string): string {
 	const dollar = className.indexOf('$');
 	return dollar < 0 ? className : className.slice(0, dollar);

@@ -62,18 +62,18 @@ export class ExplorerBadgeProvider implements vscode.FileDecorationProvider, vsc
 		}
 
 		if (isFileStale(uri.fsPath)) {
-			return new vscode.FileDecoration('!', 'coverdict: bu dosya son taramadan sonra değişti - coverage bayat olabilir, tekrar tarayın', new vscode.ThemeColor('charts.yellow'));
+			return new vscode.FileDecoration('!', 'Proof: this file changed since the last scan - coverage may be stale, scan again', new vscode.ThemeColor('charts.yellow'));
 		}
 
-		// Faz 18: coverage dışı bırakılmış dosyalar artık Explorer'da da
-		// görünüyor - "hiç veri yok" ile "kasten hariç tutuldu" aynı
-		// görünmemeli (hard rule 3a). Kapsama listesinden ÖNCE bakılır:
-		// hariç tutulmuş bir dosya zaten `files[]`'ta olmaz.
+		// Faz 18: excluded files now show up in the Explorer too - "no data
+		// at all" and "deliberately excluded" must not look the same (hard
+		// rule 3a). Checked BEFORE the coverage list: an excluded file is
+		// never in `files[]` anyway.
 		if (this.excludedAbsolutePaths.has(uri.fsPath)) {
 			const relative = toRepoRelativePath(this.workspaceRoot, uri.fsPath) ?? uri.fsPath;
 			return new vscode.FileDecoration(
 				EXCLUDED_BADGE,
-				`coverdict: coverage dışı bırakıldı (coverdict.coverageExclusions)\n${relative}\nBu dosya coverage yüzdelerine hiç katılmıyor.`,
+				`Proof: excluded from coverage (proof.coverageExclusions)\n${relative}\nThis file never factors into coverage percentages.`,
 				new vscode.ThemeColor('charts.gray'),
 			);
 		}
@@ -94,8 +94,8 @@ export class ExplorerBadgeProvider implements vscode.FileDecorationProvider, vsc
 		if (metric.percent === null) {
 			return undefined; // no executable lines at all (a pure interface) - "no data" is not "0%"
 		}
-		const tooltip = `coverdict: bu dosya ${metric.percent}% (${metric.numerator}/${metric.denominator}, ${this.metric})\n`
-			+ 'Durum çubuğundaki yüzde tüm repo içindir - bu sayı yalnızca bu dosyanın kendisi.';
+		const tooltip = `Proof: this file is ${metric.percent}% (${metric.numerator}/${metric.denominator}, ${this.metric})\n`
+			+ 'The status bar percentage is for the whole repo - this number is just this file.';
 		return this.badge(metric.percent, tooltip);
 	}
 
@@ -111,8 +111,8 @@ export class ExplorerBadgeProvider implements vscode.FileDecorationProvider, vsc
 		if (rollup.percent === null) {
 			return undefined;
 		}
-		const tooltip = `coverdict: bu klasör ${rollup.percent}% (${rollup.numerator}/${rollup.denominator}, ${this.metric})\n`
-			+ `${childFiles.length} dosyanın toplamı.`;
+		const tooltip = `Proof: this folder is ${rollup.percent}% (${rollup.numerator}/${rollup.denominator}, ${this.metric})\n`
+			+ `Rolled up from ${childFiles.length} file(s).`;
 		return this.badge(rollup.percent, tooltip);
 	}
 

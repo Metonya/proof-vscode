@@ -15,7 +15,7 @@ export interface RunOptions {
 	/**
 	 * `undefined` runs `javaExecutable` with `args` directly, no `-jar`
 	 * wrapper - lets this same runner invoke a non-jar executable (e.g.
-	 * Maven) when a caller needs to, not only `coverdict.jar`.
+	 * Maven) when a caller needs to, not only `proof-java.jar`.
 	 */
 	jarPath?: string;
 	args: string[];

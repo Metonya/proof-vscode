@@ -40,8 +40,8 @@ test('marking the same file stale twice is a no-op, not a growing set', () => {
 /** Faz 30: PerTestState/MutationState no longer carry a moduleId - a multi-module run's evidence lives entirely inside perTest.modules[]/mutation.modules[], nothing left to select. */
 test('PerTestState/MutationState round-trip with no moduleId field', () => {
 	const perTestBlock = { engine: 'pitest', engineVersion: '1.15.8', modules: [] };
-	setPerTestState({ perTest: perTestBlock, warnings: [] });
-	assert.deepEqual(getPerTestState(), { perTest: perTestBlock, warnings: [] });
+	setPerTestState({ perTest: perTestBlock, warnings: [], targets: [], ranAt: undefined });
+	assert.deepEqual(getPerTestState(), { perTest: perTestBlock, warnings: [], targets: [], ranAt: undefined });
 
 	const mutationBlock = { engine: 'pitest', engineVersion: '1.15.8', modules: [] };
 	setMutationState({ mutation: mutationBlock, warnings: [], targets: [], ranAt: undefined });

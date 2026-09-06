@@ -4,18 +4,18 @@
  * bugüne kadar ham metin olarak Output kanalına dökülüyor, kullanıcı uzun
  * bir mutasyon koşusunda ne kadar ilerlediğini göremiyordu.
  *
- * CLI her ilerleme satırını **stderr**'e, `coverdict: ` önekiyle, anında
+ * CLI her ilerleme satırını **stderr**'e, `proof-java: ` önekiyle, anında
  * flush ederek basar (D-64: stdout metin raporunu taşır ve JSON'un byte
  * düzeyinde deterministik kalması gerekir). Heartbeat 30 saniyedir.
  * Gerçek biçimler (`MutationCollector`/`MutationRunner`/`PerTestCollector`/
  * `PerTestRunner`, doğrulandı 2026-08-28):
  *
- *   coverdict: mutation: module 'root' - 3 target class(es), budget 300s
- *   coverdict: mutation: module 'root' - 2/3 class(es), 6m12s elapsed
- *   coverdict: mutation: module 'root' - done, 5 method(s) with mutants
- *   coverdict: mutation: module 'root' - FAILED, budget of 300s exhausted after 2/3 class(es) completed
- *   coverdict: per-test: module 'root' - 4 target class(es)
- *   coverdict: per-test: module 'root' - collecting coverage, 48s elapsed
+ *   proof-java: mutation: module 'root' - 3 target class(es), budget 300s
+ *   proof-java: mutation: module 'root' - 2/3 class(es), 6m12s elapsed
+ *   proof-java: mutation: module 'root' - done, 5 method(s) with mutants
+ *   proof-java: mutation: module 'root' - FAILED, budget of 300s exhausted after 2/3 class(es) completed
+ *   proof-java: per-test: module 'root' - 4 target class(es)
+ *   proof-java: per-test: module 'root' - collecting coverage, 48s elapsed
  *
  * Saf - `vscode` import etmez (`cli/argsBuilder.ts` ile aynı sözleşme).
  *
@@ -35,7 +35,7 @@ export type ProgressEvent =
 	| { kind: ProgressEventKind; phase: 'done'; moduleId: string; message: string }
 	| { kind: ProgressEventKind; phase: 'failed'; moduleId: string; message: string };
 
-const PREFIX = 'coverdict: ';
+const PREFIX = 'proof-java: ';
 const HEAD = /^(mutation|per-test): module '([^']*)' - (.*)$/;
 const START = /^(\d+) target class\(es\)(?:, budget (\d+)s)?$/;
 const HEARTBEAT_WITH_COUNT = /^(\d+)\/(\d+) class\(es\), (.+) elapsed$/;
@@ -89,14 +89,14 @@ export function progressMessage(event: ProgressEvent, showModule = false): strin
 	switch (event.phase) {
 		case 'start':
 			return prefix + (event.budgetSeconds === undefined
-				? `${event.total} sınıf taranacak`
-				: `${event.total} sınıf taranacak · bütçe ${event.budgetSeconds}s`);
+				? `${event.total} class(es) to scan`
+				: `${event.total} class(es) to scan · budget ${event.budgetSeconds}s`);
 		case 'heartbeat':
 			return prefix + (event.done !== undefined && event.total !== undefined
-				? `${event.done}/${event.total} sınıf · ${event.elapsed}`
-				: `kanıt toplanıyor · ${event.elapsed}`);
+				? `${event.done}/${event.total} class(es) · ${event.elapsed}`
+				: `collecting evidence · ${event.elapsed}`);
 		case 'done':
-			return `${prefix}bitti`;
+			return `${prefix}done`;
 		case 'failed':
 			return prefix + event.message;
 	}
@@ -124,7 +124,7 @@ export function incrementFor(event: ProgressEvent, previousDone: number, moduleC
 	return increment > 0 ? { increment, done: event.done } : undefined;
 }
 
-const DOCTOR_FIX_LINE = /^coverdict: doctor: fixing classpath for '([^']*)'\.\.\.$/;
+const DOCTOR_FIX_LINE = /^proof-java: doctor: fixing classpath for '([^']*)'\.\.\.$/;
 
 /**
  * `doctor --fix`'in kendi ilerleme satırı (`DoctorCommand.applyFixes`,

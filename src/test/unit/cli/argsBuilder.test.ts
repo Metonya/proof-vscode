@@ -94,7 +94,7 @@ test('an absent perTest never appends either flag', () => {
 test('perTest.targets appends one --per-test-target per FQCN, using each target\'s own module id, even under no-vcs (Faz 14b)', () => {
 	const args = buildAnalyzeArgs({
 		repo: '/repo', diffMode: { kind: 'no-vcs' }, reportPath: 'jacoco.xml', outPath: '/tmp/out.json',
-		perTest: { classpaths: [{ moduleId: 'root', path: 'coverdict-classpath.txt' }], targets: [{ moduleId: 'root', fqcn: 'dev.example.Calculator' }] },
+		perTest: { classpaths: [{ moduleId: 'root', path: 'proof-classpath.txt' }], targets: [{ moduleId: 'root', fqcn: 'dev.example.Calculator' }] },
 	});
 	const flagIndex = args.indexOf('--per-test-target');
 	assert.ok(flagIndex >= 0);
@@ -105,7 +105,7 @@ test('perTest.targets appends one --per-test-target per FQCN, using each target\
 test('perTest without targets never appends --per-test-target', () => {
 	const args = buildAnalyzeArgs({
 		repo: '/repo', diffMode: { kind: 'uncommitted' }, reportPath: 'jacoco.xml', outPath: '/tmp/out.json',
-		perTest: { classpaths: [{ moduleId: 'root', path: 'coverdict-classpath.txt' }] },
+		perTest: { classpaths: [{ moduleId: 'root', path: 'proof-classpath.txt' }] },
 	});
 	assert.ok(!args.includes('--per-test-target'));
 });
@@ -113,7 +113,7 @@ test('perTest without targets never appends --per-test-target', () => {
 test('perTest.timeoutSeconds appends --per-test-timeout, mirroring mutation\'s own timeout flag (Faz 31)', () => {
 	const args = buildAnalyzeArgs({
 		repo: '/repo', diffMode: { kind: 'uncommitted' }, reportPath: 'jacoco.xml', outPath: '/tmp/out.json',
-		perTest: { classpaths: [{ moduleId: 'root', path: 'coverdict-classpath.txt' }], timeoutSeconds: 180 },
+		perTest: { classpaths: [{ moduleId: 'root', path: 'proof-classpath.txt' }], timeoutSeconds: 180 },
 	});
 	assert.equal(args[args.indexOf('--per-test-timeout') + 1], '180');
 });
@@ -121,7 +121,7 @@ test('perTest.timeoutSeconds appends --per-test-timeout, mirroring mutation\'s o
 test('perTest without an explicit timeoutSeconds never appends --per-test-timeout', () => {
 	const args = buildAnalyzeArgs({
 		repo: '/repo', diffMode: { kind: 'uncommitted' }, reportPath: 'jacoco.xml', outPath: '/tmp/out.json',
-		perTest: { classpaths: [{ moduleId: 'root', path: 'coverdict-classpath.txt' }] },
+		perTest: { classpaths: [{ moduleId: 'root', path: 'proof-classpath.txt' }] },
 	});
 	assert.ok(!args.includes('--per-test-timeout'));
 });
@@ -142,10 +142,10 @@ test('--out is always the last two args, so a caller can rely on args[args.lengt
 test('mutation appends --mutation-report, its own classpath flag and the timeout', () => {
 	const args = buildAnalyzeArgs({
 		repo: '/repo', diffMode: { kind: 'uncommitted' }, reportPath: 'jacoco.xml', outPath: '/tmp/out.json',
-		mutation: { classpaths: [{ moduleId: 'root', path: 'target/coverdict-classpath.txt' }], timeoutSeconds: 300 },
+		mutation: { classpaths: [{ moduleId: 'root', path: 'target/proof-classpath.txt' }], timeoutSeconds: 300 },
 	});
 	assert.ok(args.includes('--mutation-report'));
-	assert.equal(args[args.indexOf('--mutation-classpath') + 1], 'root=target/coverdict-classpath.txt');
+	assert.equal(args[args.indexOf('--mutation-classpath') + 1], 'root=target/proof-classpath.txt');
 	assert.equal(args[args.indexOf('--mutation-timeout') + 1], '300');
 	assert.ok(!args.includes('--per-test-report'), 'mutation must not silently drag L2 along - separate opt-ins');
 });

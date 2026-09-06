@@ -20,6 +20,7 @@ import {
 	registerPerTestForModuleAllCommand,
 	registerQualityMutationBridgeCommands,
 	registerToggleCoverageCommand,
+	resolveStorageRoot,
 	type CoverageSinks,
 	type MutationSnapshot,
 	type PerTestSnapshot,
@@ -28,6 +29,7 @@ import { createDiagnosticCollection } from './ui/diagnostics';
 import { ExplorerBadgeProvider } from './ui/explorerBadges';
 import { applyGutterCoverage, createGutterDecorationTypes } from './ui/gutterRenderer';
 import { registerHoverProvider } from './ui/hoverProvider';
+import { registerInstallSkillCommand } from './ui/skillInstaller';
 import { createStatusBarItem } from './ui/statusBar';
 import { CoverageTreeProvider } from './ui/treeViews/coverageView';
 import { LineTestsTreeProvider, type LineTestsNode } from './ui/treeViews/lineTestsView';
@@ -42,8 +44,8 @@ import { isMutationBlock, isPerTestBlock, parseVerdict } from './verdict/parse';
  * short list of `context.subscriptions.push(...)` calls (Plan.md Bölüm 2).
  */
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-	const output = vscode.window.createOutputChannel('coverdict');
-	const colorblindMode = vscode.workspace.getConfiguration('coverdict').get<boolean>('colorblindMode') ?? false;
+	const output = vscode.window.createOutputChannel('proof-java');
+	const colorblindMode = vscode.workspace.getConfiguration('proof').get<boolean>('colorblindMode') ?? false;
 	let gutterTypes = createGutterDecorationTypes(colorblindMode);
 	const explorerBadges = new ExplorerBadgeProvider();
 	const statusBarItem = createStatusBarItem();
@@ -60,16 +62,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	// webview panel, clicking a node in this view cannot empty it: the
 	// provider tracks the last Java editor itself (`setActiveDocument`),
 	// never reads `vscode.window.activeTextEditor` live.
-	const lineTestsTreeView = vscode.window.createTreeView('coverdict.lineTestsView', { treeDataProvider: lineTestsView, showCollapseAll: true });
+	const lineTestsTreeView = vscode.window.createTreeView('proof.lineTestsView', { treeDataProvider: lineTestsView, showCollapseAll: true });
 	lineTestsView.setActiveDocument(vscode.window.activeTextEditor?.document);
 
 	// Faz 24 (§7.6 madde 5): Test Kalitesi ↔ Mutasyon köprüsü de `reveal()`
 	// kullanıyor, aynı sebeple - her ikisi de plain `registerTreeDataProvider`
 	// ile kalsaydı köprü komutları hedefi ekrana odaklayamazdı.
-	const qualityTreeView = vscode.window.createTreeView('coverdict.qualityView', { treeDataProvider: qualityView, showCollapseAll: true });
-	const mutationTreeView = vscode.window.createTreeView('coverdict.mutationView', { treeDataProvider: mutationView, showCollapseAll: true });
+	const qualityTreeView = vscode.window.createTreeView('proof.qualityView', { treeDataProvider: qualityView, showCollapseAll: true });
+	const mutationTreeView = vscode.window.createTreeView('proof.mutationView', { treeDataProvider: mutationView, showCollapseAll: true });
 
-	const sinks: CoverageSinks = { context, gutterTypes, explorerBadges, statusBarItem, diagnostics, runView, coverageView, qualityView, qualityTreeView, lineTestsView, lineTestsTreeView, mutationView, mutationTreeView };
+	const sinks: CoverageSinks = { gutterTypes, explorerBadges, statusBarItem, diagnostics, runView, coverageView, qualityView, qualityTreeView, lineTestsView, lineTestsTreeView, mutationView, mutationTreeView };
 
 	context.subscriptions.push(
 		output,
@@ -83,22 +85,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		vscode.window.registerFileDecorationProvider(explorerBadges),
 		statusBarItem,
 		diagnostics,
-		vscode.window.registerTreeDataProvider('coverdict.runView', runView),
-		vscode.window.registerTreeDataProvider('coverdict.coverageView', coverageView),
+		vscode.window.registerTreeDataProvider('proof.runView', runView),
+		vscode.window.registerTreeDataProvider('proof.coverageView', coverageView),
 		qualityTreeView,
 		lineTestsTreeView,
 		mutationTreeView,
 		registerHoverProvider(),
-		registerAnalyzeCommand(context, output, sinks),
-		registerRunTestsCommand(context, output, sinks),
-		registerAnalyzePerTestCommand(context, output, sinks),
-		registerExportReportCommand(context, output),
+		registerAnalyzeCommand(output, sinks),
+		registerRunTestsCommand(output, sinks),
+		registerAnalyzePerTestCommand(output, sinks),
+		registerExportReportCommand(output),
 		registerOpenSettingsCommand(),
-		registerPerTestForFileCommand(context, output, sinks),
-		registerPerTestForModuleAllCommand(context, output, sinks),
+		registerInstallSkillCommand(),
+		registerPerTestForFileCommand(output, sinks),
+		registerPerTestForModuleAllCommand(output, sinks),
 		registerToggleCoverageCommand(sinks),
 		...registerCopyCommands(sinks),
-		...registerMutationCommands(context, output, sinks),
+		...registerMutationCommands(output, sinks),
 		...registerQualityMutationBridgeCommands(sinks),
 		// setDecorations is per-editor, not global - a newly-visible editor
 		// needs its gutter marks re-applied by hand (Faz 9: always our own
@@ -142,11 +145,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 				void lineTestsTreeView.reveal(node, { select: true, focus: false });
 			}
 		}),
-		// coverdict.show.* ayarları canlı: kullanıcı ayarlar sayfasında
+		// proof.show.* ayarları canlı: kullanıcı ayarlar sayfasında
 		// değiştirdiği anda son taramadan yeniden boyanır, tekrar analiz veya
 		// aç/kapat yapmasına gerek kalmaz.
 		vscode.workspace.onDidChangeConfiguration((e) => {
-			if (!e.affectsConfiguration('coverdict.show') && !e.affectsConfiguration('coverdict.badgeMetric')) {
+			if (!e.affectsConfiguration('proof.show') && !e.affectsConfiguration('proof.badgeMetric')) {
 				return;
 			}
 			const state = getCoverageState();
@@ -154,17 +157,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 				republishFromState(sinks, state.workspaceRoot);
 			}
 		}),
-		// coverdict.colorblindMode da canlı: eski davranış (yalnızca
-		// açılışta okunup pencere yenilemesi isteyen) coverdict.show.* ile
+		// proof.colorblindMode da canlı: eski davranış (yalnızca
+		// açılışta okunup pencere yenilemesi isteyen) proof.show.* ile
 		// tutarsızdı ve kafa karıştırıyordu - eskiler dispose edilip
 		// yenileri kaydedilir, sinks.gutterTypes güncellenir (commands.ts
 		// hep sinks üzerinden okur), açık editörler hemen yeni renklerle
 		// boyanır.
 		vscode.workspace.onDidChangeConfiguration((e) => {
-			if (!e.affectsConfiguration('coverdict.colorblindMode')) {
+			if (!e.affectsConfiguration('proof.colorblindMode')) {
 				return;
 			}
-			const newMode = vscode.workspace.getConfiguration('coverdict').get<boolean>('colorblindMode') ?? false;
+			const newMode = vscode.workspace.getConfiguration('proof').get<boolean>('colorblindMode') ?? false;
 			const oldTypes = gutterTypes;
 			gutterTypes = createGutterDecorationTypes(newMode);
 			sinks.gutterTypes = gutterTypes;
@@ -188,7 +191,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	// Awaited (not fire-and-forget) so `activate()` only resolves once this
 	// is done - otherwise a command dispatched right after activation could
 	// run against empty state and race the restore that was about to fill it.
-	await restoreLastCoverage(context, sinks);
+	await restoreLastCoverage(sinks);
 
 	// Faz 25: on a real window reload, VS Code has not always finished
 	// restoring the previously-active editor tab by the time this function
@@ -203,24 +206,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	lineTestsView.setActiveDocument(vscode.window.activeTextEditor?.document);
 }
 
-async function restoreLastCoverage(context: vscode.ExtensionContext, sinks: CoverageSinks): Promise<void> {
+async function restoreLastCoverage(sinks: CoverageSinks): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
-	// Deliberately not falling back to globalStorageUri: that storage is
-	// shared across every workspace, so a verdict saved there could belong
-	// to a different project entirely and get painted onto this one's files.
-	const storageRoot = context.storageUri;
-	if (!folder || !storageRoot) {
+	if (!folder) {
 		return;
 	}
-	await restoreLastCoverageFrom(storageRoot.fsPath, folder.uri.fsPath, sinks);
+	await restoreLastCoverageFrom(resolveStorageRoot(folder).fsPath, folder.uri.fsPath, sinks);
 }
 
 /**
- * The `vscode.workspace`/`vscode.ExtensionContext`-free half of the restore -
- * split out from `restoreLastCoverage` so a test can drive it with a plain
- * temp directory instead of a real open workspace folder (`context.storageUri`
- * only exists when one is open, which the integration test host does not
- * have by default).
+ * The `vscode.workspace`-free half of the restore - split out from
+ * `restoreLastCoverage` so a test can drive it with a plain temp directory
+ * instead of a real open workspace folder.
  */
 export async function restoreLastCoverageFrom(storageDir: string, workspaceRoot: string, sinks: CoverageSinks): Promise<void> {
 	// Faz 25/28 (§7.5, §7.5b): ikisi de kendi dosyasında yaşıyor artık,
@@ -246,7 +243,11 @@ export async function restoreLastCoverageFrom(storageDir: string, workspaceRoot:
 	// tekrar `setPerTestState` çağırıp onu `verdict-current.json`'ın
 	// (muhtemelen perTest'siz) haliyle ezmiyoruz - hangisi varsa o kalır.
 	if (!perTestRestored) {
-		setPerTestState({ perTest: parsed.value.perTest, warnings: parsed.value.warnings });
+		// verdict-current.json carries neither the requested targets nor a
+		// timestamp (D-xx, same reason mutation/perTest snapshots exist as
+		// their own files) - empty/undefined here means exactly that,
+		// mirroring how a restored MutationState with no ranAt is handled.
+		setPerTestState({ perTest: parsed.value.perTest, warnings: parsed.value.warnings, targets: [], ranAt: undefined });
 	}
 	// Faz 23: publishAnalysis kendi refresh()'ini setPerTestState çağrılmadan
 	// ÖNCE tetikliyor (bu fonksiyonun içinde), yani TreeView eski/boş
@@ -276,6 +277,12 @@ async function restoreMutationSnapshot(storageDir: string, sinks: CoverageSinks)
 	}
 	setMutationState({ mutation: snapshot.mutation, warnings: snapshot.warnings, targets: snapshot.targets, ranAt: snapshot.ranAtMs });
 	sinks.mutationView.refresh();
+	// Faz 33: the Run panel's Mutation Testing row shows this same ranAt
+	// as a "last run: X ago" freshness text and needs its own refresh -
+	// the Run panel can already be visible by the time this restore
+	// finishes, so without this it keeps showing "never run" until
+	// something unrelated happens to refresh it.
+	sinks.runView.refresh();
 }
 
 /**
@@ -322,7 +329,7 @@ async function restorePerTestSnapshot(storageDir: string, sinks: CoverageSinks):
 	if (!snapshot) {
 		return false;
 	}
-	setPerTestState({ perTest: snapshot.perTest, warnings: snapshot.warnings });
+	setPerTestState({ perTest: snapshot.perTest, warnings: snapshot.warnings, targets: snapshot.targets, ranAt: snapshot.ranAtMs });
 	// verdict-current.json bağımsız olarak eksik/bozuk olabilir (§7.5/§7.5b
 	// aynı gerekçe) - bu yenileme onun varlığına bağlı olmamalı.
 	sinks.lineTestsView.refresh();
@@ -341,13 +348,15 @@ function parsePerTestSnapshot(raw: string): PerTestSnapshot | undefined {
 		typeof json !== 'object' || json === null
 		|| !('perTest' in json) || !isPerTestBlock(json.perTest)
 		|| !('warnings' in json) || !Array.isArray(json.warnings)
+		|| !('targets' in json) || !Array.isArray(json.targets) || !json.targets.every((t) => typeof t === 'string')
+		|| !('ranAtMs' in json) || typeof json.ranAtMs !== 'number'
 	) {
 		return undefined;
 	}
 	return json as unknown as PerTestSnapshot;
 }
 
-/** `coverdict.show.*`/`coverdict.badgeMetric` changed while a run's data is still current - repaint from `model/store`'s own state, no re-parse needed. */
+/** `proof.show.*`/`proof.badgeMetric` changed while a run's data is still current - repaint from `model/store`'s own state, no re-parse needed. */
 function republishFromState(sinks: CoverageSinks, workspaceRoot: string): void {
 	const state = getCoverageState();
 	if (state) {

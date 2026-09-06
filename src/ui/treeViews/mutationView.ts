@@ -26,9 +26,6 @@ import { locateTestFile } from '../testFileLocator';
  */
 export type MutationNode =
 	| { kind: 'empty'; message: string }
-	| { kind: 'runHint' }
-	/** Faz 31: diff hiç değişen sınıf bulamadığında ("ben değişiklik yapmadan tüm repoda tarama yapabilmeliyim") - diff'ten bağımsız, modüldeki her production sınıfını hedefleyen kurtarma eylemi. */
-	| { kind: 'scanAllHint' }
 	/** Faz 22: "bu sonuç neyin, ne zaman?" - dosyadan dosyaya geçince panel değişmediği için hangi koşuya baktığı belli değildi. */
 	| { kind: 'header'; text: string }
 	| { kind: 'class'; className: string; methods: readonly MutatedMethod[] }
@@ -74,10 +71,6 @@ export class MutationTreeProvider implements vscode.TreeDataProvider<MutationNod
 		switch (node.kind) {
 			case 'empty':
 				return leaf(node.message, 'info');
-			case 'runHint':
-				return runHintItem();
-			case 'scanAllHint':
-				return scanAllHintItem();
 			case 'header':
 				return headerItem(node.text);
 			case 'class':
@@ -112,17 +105,10 @@ export class MutationTreeProvider implements vscode.TreeDataProvider<MutationNod
 	private rootChildren(): MutationNode[] {
 		const state = getMutationState();
 		if (!state) {
-			return [
-				{ kind: 'empty', message: 'Henüz mutasyon testi çalıştırılmadı.' },
-				{ kind: 'runHint' },
-			];
+			return [{ kind: 'empty', message: 'No mutation test has run yet. Use the Run view, or right-click a Java file → "Mutation Test This Class".' }];
 		}
 		if (!state.mutation) {
-			const nodes: MutationNode[] = [{ kind: 'empty', message: noMutationEvidenceMessage() }, { kind: 'runHint' }];
-			if (hasNoChangedTargetsWarning(state)) {
-				nodes.push({ kind: 'scanAllHint' });
-			}
-			return nodes;
+			return [{ kind: 'empty', message: noMutationEvidenceMessage() }];
 		}
 
 		const header: MutationNode = { kind: 'header', text: headerText(state) };
@@ -134,39 +120,18 @@ export class MutationTreeProvider implements vscode.TreeDataProvider<MutationNod
 			if (this.survivorsOnly) {
 				return [header, {
 					kind: 'empty',
-					message: 'Hayatta kalan mutant yok - üretilen her mutantı en az bir test yakaladı. (Süzgeci kaldırmak için başlıktaki filtreye tıklayın.)',
+					message: 'No surviving mutants - every generated mutant was caught by at least one test. (Click the title-bar filter to remove this filter.)',
 				}];
 			}
-			// Faz 31 düzeltmesi: CLI, MUTATION_NO_CHANGED_TARGETS'ta bile boş
-			// (ama null olmayan) bir mutation nesnesi döndürüyor - state.mutation
-			// bu yüzden burada "var" görünüyor ve yukarıdaki !state.mutation dalı
-			// hiç çalışmıyor, "Tüm Modülü Tara" düğmesi gerçek bir sebep varken
-			// bile hiç görünmüyordu (gson dogfood'unda yakalandı). Aynı uyarı
-			// kontrolü burada da yapılmalı. `runHint` da eksikti - bir koşu zaten
-			// olsa bile (boş de olsa) "aktif dosya için çalıştır" seçeneği hep
-			// anlamlı, `!state.mutation` dalıyla aynı davranış (kullanıcı isteği).
-			const nodes: MutationNode[] = [header, {
+			return [header, {
 				kind: 'empty',
 				message: hasNoChangedTargetsWarning(state)
 					? noMutationEvidenceMessage()
-					: 'Bu koşuda hiçbir production metodu için mutant üretilmedi. Hedeflenen sınıflar mutasyona uygun kod içermiyor olabilir. (Test sınıflarının kendi mutantları kasten gösterilmiyor.)',
-			}, { kind: 'runHint' }];
-			if (hasNoChangedTargetsWarning(state)) {
-				nodes.push({ kind: 'scanAllHint' });
-			}
-			return nodes;
+					: 'No mutants were generated for any production method in this run. The targeted classes may not contain mutable code. (Test classes\' own mutants are deliberately not shown.)',
+			}];
 		}
-		// Kullanıcı isteği: gerçek bir sonuç ekrandayken (ör. bir sınıfın
-		// mutasyon sonucuna bakılırken) başka bir dosyaya geçince "aktif
-		// dosya için çalıştır"/"tüm modülü tara" seçenekleri tamamen
-		// kayboluyordu - sadece boş sonuç durumlarında vardı. Artık her
-		// zaman görünürler - başlığın hemen altında, sınıf sonuçlarının
-		// üstünde (kullanıcı isteği: uzun bir listeyi kaydırmadan
-		// erişilebilir olsunlar).
 		return [
 			header,
-			{ kind: 'runHint' },
-			{ kind: 'scanAllHint' },
 			...classes.map((c): MutationNode => ({ kind: 'class', className: c.className, methods: c.methods })),
 		];
 	}
@@ -198,24 +163,24 @@ function noMutationEvidenceMessage(): string {
 	const warningFor = (code: string) => state?.warnings.find((w) => w.code === code);
 
 	if (warningFor('MUTATION_BUDGET_EXCEEDED')) {
-		return 'Mutasyon koşusu zaman bütçesini aştı ve sonuç üretemeden durduruldu. coverdict.mutationTimeout ayarını artırın ya da tek bir sınıf hedefleyin (dosyada sağ tık).';
+		return 'The mutation run exceeded its time budget and stopped before producing a result. Raise proof.mutationTimeout, or target a single class (right-click a file).';
 	}
 	if (warningFor('MUTATION_COLLECTION_FAILED')) {
-		return 'Mutasyon koşusu başarısız oldu. Sebep için Output → coverdict kanalına bakın.';
+		return 'The mutation run failed. See Output → proof-java for the reason.';
 	}
 	if (warningFor('MUTATION_TARGET_UNRESOLVED')) {
-		return 'Hedeflenen sınıf hiçbir kaynak kökü altında bulunamadı - sınıf adı ya da kaynak kökleri beklenenden farklı olabilir.';
+		return 'The targeted class wasn\'t found under any source root - the class name or source roots may be different from expected.';
 	}
 	if (warningFor('MUTATION_CLASSPATH_MISSING')) {
-		return 'Mutasyon için classpath listesi bağlanmamış. Komutu tekrar çalıştırın; eklenti listeyi Maven ile üretmeyi teklif edecek.';
+		return 'No classpath list is bound for mutation. Re-run the command; the extension will offer to generate the list with Maven.';
 	}
 	if (warningFor('MUTATION_NO_CHANGED_TARGETS')) {
-		return 'Bu koşuda değişen production sınıfı yok, bu yüzden mutasyona sokulacak hedef de yok. Tek bir sınıf için çalıştırmak isterseniz o dosyada sağ tık → "Bu Sınıf İçin Mutasyon Testi", ya da aşağıdaki düğmeyle diff\'ten bağımsız tüm modülü tarayın.';
+		return 'No production class changed in this run, so there\'s no target to mutate. Right-click a file → "Mutation Test This Class", or use the Run view\'s "no diff" button to scan the whole module regardless.';
 	}
 	if (warningFor('MUTATION_TRUNCATED')) {
-		return 'Mutant kayıtları üst sınıra takıldı - gösterilenler eksik. Daha dar bir hedefle tekrar çalıştırın.';
+		return 'Mutant records hit their upper limit - what\'s shown is incomplete. Re-run with a narrower target.';
 	}
-	return 'Bu koşu mutasyon kanıtı üretmedi. MUTATION_* uyarıları için Output → coverdict kanalına bakın.';
+	return 'This run produced no mutation evidence. See Output → proof-java for the MUTATION_* warnings.';
 }
 
 /**
@@ -228,31 +193,14 @@ function noMutationEvidenceMessage(): string {
  */
 function headerText(state: NonNullable<ReturnType<typeof getMutationState>>): string {
 	const target = targetSummary(state.targets);
-	const when = state.ranAt === undefined ? 'kaydedilmiş sonuç - bu pencerede ne zaman çalıştığı bilinmiyor' : formatRelativeTime(state.ranAt, Date.now());
-	return `Hedef: ${target} · ${when}`;
+	const when = state.ranAt === undefined ? 'saved result - when it ran in this window is unknown' : formatRelativeTime(state.ranAt, Date.now());
+	return `Target: ${target} · ${when}`;
 }
 
 function headerItem(text: string): vscode.TreeItem {
 	const item = new vscode.TreeItem(text, vscode.TreeItemCollapsibleState.None);
 	item.iconPath = new vscode.ThemeIcon('history');
-	item.contextValue = 'coverdict.mutationHeader';
-	return item;
-}
-
-function runHintItem(): vscode.TreeItem {
-	const item = new vscode.TreeItem('Mutasyon Testi Çalıştır', vscode.TreeItemCollapsibleState.None);
-	item.iconPath = new vscode.ThemeIcon('play');
-	item.command = { command: 'coverdict.mutationForFile', title: 'Mutasyon Testi Çalıştır' };
-	item.tooltip = 'Açık Java dosyasındaki sınıf için mutasyon testi çalıştırır (tek sınıf: genelde saniyeler). Modül geneli için "Çalıştır" görünümündeki Mutasyon Testi maddesini kullanın.';
-	return item;
-}
-
-/** Faz 31: "ben değişiklik yapmadan tüm repoda tarama yapabilmeliyim" - diff hiç hedef bulamadığında sunulan kurtarma eylemi, `coverdict.mutationForModuleAll`. Diff-tabanlı koşudan daha pahalı olabileceği için kendi onay modalının arkasında. */
-function scanAllHintItem(): vscode.TreeItem {
-	const item = new vscode.TreeItem('Yine de Tüm Modülü Tara (diff\'siz)', vscode.TreeItemCollapsibleState.None);
-	item.iconPath = new vscode.ThemeIcon('play');
-	item.command = { command: 'coverdict.mutationForModuleAll', title: 'Tüm Modülü Tara' };
-	item.tooltip = 'Diff\'ten bağımsız, bu modüldeki her production sınıfını hedefler - değişmemiş sınıflar da dahil olduğu için diff-tabanlı "modül geneli" koşudan daha uzun sürebilir.';
+	item.contextValue = 'proof.mutationHeader';
 	return item;
 }
 
@@ -262,7 +210,7 @@ function classItem(className: string, methods: readonly MutatedMethod[]): vscode
 	item.description = scoreText(score);
 	item.iconPath = new vscode.ThemeIcon('symbol-class');
 	item.tooltip = new vscode.MarkdownString(`\`${className}\`\n\n${scoreTooltip(score)}`);
-	item.contextValue = 'coverdict.mutationClass';
+	item.contextValue = 'proof.mutationClass';
 	return item;
 }
 
@@ -278,14 +226,14 @@ function methodItem(node: Extract<MutationNode, { kind: 'method' }>): vscode.Tre
 	// bulgusuyla aynı metodu mu anlatıyoruz - gerçek `findings[]`'e bakılır,
 	// kural kendi kendine yeniden türetilmez (CLI zaten hesapladı).
 	const pseudoTestedFinding = findPseudoTestedFinding(node.className, node.method.methodName, node.method.methodDescription);
-	const bridgeNote = pseudoTestedFinding ? '\n\n---\n\nTest Kalitesi\'nde `PSEUDO_TESTED_METHOD` bulgusu var - sağ tık → "Test Kalitesi\'nde Göster".' : '';
+	const bridgeNote = pseudoTestedFinding ? '\n\n---\n\nThere\'s a `PSEUDO_TESTED_METHOD` finding for this in Test Quality - right-click → "Show in Test Quality".' : '';
 	item.tooltip = new vscode.MarkdownString(
 		`\`${node.className}#${node.method.methodName}${node.method.methodDescription}\`\n\n`
-		+ `Satır ${node.method.firstLine}-${node.method.lastLine}\n\n${scoreTooltip(score, allNoCoverage)}${bridgeNote}`,
+		+ `Line ${node.method.firstLine}-${node.method.lastLine}\n\n${scoreTooltip(score, allNoCoverage)}${bridgeNote}`,
 	);
-	item.command = openCommandFor(node.className, node.method.firstLine, 'Metoda Git');
-	item.id = `coverdict.mutationMethod:${node.className}#${node.method.methodName}${node.method.methodDescription}`;
-	item.contextValue = pseudoTestedFinding ? 'coverdict.mutationMethod.pseudoTested' : 'coverdict.mutationMethod';
+	item.command = openCommandFor(node.className, node.method.firstLine, 'Go to Method');
+	item.id = `proof.mutationMethod:${node.className}#${node.method.methodName}${node.method.methodDescription}`;
+	item.contextValue = pseudoTestedFinding ? 'proof.mutationMethod.pseudoTested' : 'proof.mutationMethod';
 	return item;
 }
 
@@ -321,7 +269,7 @@ async function killingTestItem(rawTestId: string): Promise<vscode.TreeItem> {
 		const path = await locateTestFile(state.workspaceRoot, testSourceRoots(state.modules), identity.className, undefined);
 		if (path) {
 			const uri = vscode.Uri.file(toAbsolutePath(state.workspaceRoot, path));
-			item.command = { command: 'vscode.open', title: 'Test Dosyasını Aç', arguments: [uri, { selection: new vscode.Range(0, 0, 0, 0) }] };
+			item.command = { command: 'vscode.open', title: 'Open Test File', arguments: [uri, { selection: new vscode.Range(0, 0, 0, 0) }] };
 		}
 	}
 	if (identity.className && identity.methodName) {
@@ -329,9 +277,9 @@ async function killingTestItem(rawTestId: string): Promise<vscode.TreeItem> {
 		const finding = getCoverageState()?.findings.find((f) => f.confidence === 'INCONCLUSIVE' && f.testMethod === key);
 		if (finding) {
 			item.tooltip = new vscode.MarkdownString(
-				`Bu testin L0 statik oracle taramasında **belirsiz** (\`${finding.rule}\`, INCONCLUSIVE) kaldığı bir bulgu var, ama burada gördüğün gibi gerçekten bir mutant öldürdü - davranışı gözlüyor. "Satır → Testler"de bu testin INCONCLUSIVE etiketine bak.`,
+				`This test has a finding that was **inconclusive** (\`${finding.rule}\`, INCONCLUSIVE) in L0's static oracle scan, but as you can see here it genuinely killed a mutant - it does observe behavior. Look for this test's INCONCLUSIVE label in Line → Tests.`,
 			);
-			item.contextValue = 'coverdict.killingTest.contradiction';
+			item.contextValue = 'proof.killingTest.contradiction';
 		}
 	}
 	return item;
@@ -357,18 +305,18 @@ export function findMutationBridgeTarget(className: string, methodName: string, 
 function mutantItem(className: string, mutant: Mutant): vscode.TreeItem {
 	const bucket = bucketOf(mutant.status);
 	const collapsible = mutant.killingTests.length > 0 ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None;
-	const item = new vscode.TreeItem(`Satır ${mutant.line} · ${mutatorLabel(mutant.mutator)}`, collapsible);
+	const item = new vscode.TreeItem(`Line ${mutant.line} · ${mutatorLabel(mutant.mutator)}`, collapsible);
 	item.description = bucketText(bucket, mutant.status);
 	item.iconPath = new vscode.ThemeIcon(bucketIcon(bucket), bucketColor(bucket));
-	// Faz 26: SURVIVED bir mutantın `killingTests`'i boştur - "onu
-	// yakalayamayan" testleri görmenin tek yolu perTest verisidir (bu
-	// satırı kapsayan testler, oracle kaliteleriyle birlikte). Yalnızca
-	// gerçekten kanıt varsa köprü affordance'ı gösterilir.
+	// Faz 26: a SURVIVED mutant's `killingTests` is empty - the only way to
+	// see the tests that "failed to catch it" is perTest data (the tests
+	// covering this line, with their oracle quality). The bridge
+	// affordance only appears when there's real evidence for it.
 	const hasLineEvidence = lineHasPerTestEvidence(className, mutant.line);
-	const bridgeNote = hasLineEvidence ? '\n\n---\n\nBu satırı kapsayan testler için sağ tık → "Satır → Testler\'de Göster".' : '';
+	const bridgeNote = hasLineEvidence ? '\n\n---\n\nFor the tests covering this line, right-click → "Show in Line → Tests".' : '';
 	item.tooltip = new vscode.MarkdownString(mutantTooltip(bucket, mutant) + bridgeNote);
-	item.command = openCommandFor(className, mutant.line, 'Satıra Git');
-	item.contextValue = hasLineEvidence ? 'coverdict.mutant.hasLineEvidence' : 'coverdict.mutant';
+	item.command = openCommandFor(className, mutant.line, 'Go to Line');
+	item.contextValue = hasLineEvidence ? 'proof.mutant.hasLineEvidence' : 'proof.mutant';
 	return item;
 }
 
@@ -383,19 +331,19 @@ function lineHasPerTestEvidence(className: string, line: number): boolean {
 }
 
 function mutantTooltip(bucket: MutantBucket, mutant: Mutant): string {
-	// Kısa ad etikette, PIT'in tam mutator sınıf adı burada - kısaltma bir gösterim tercihi, veri kaybı değil.
-	const head = `**${mutatorLabel(mutant.mutator)}** · satır ${mutant.line} · \`${mutant.status}\`\n\n\`${mutant.mutator}\`\n\n`;
+	// The short name goes in the label; PIT's full mutator class name goes here - a display preference, not lost data.
+	const head = `**${mutatorLabel(mutant.mutator)}** · line ${mutant.line} · \`${mutant.status}\`\n\n\`${mutant.mutator}\`\n\n`;
 	switch (bucket) {
 		case 'killed':
 			return head + (mutant.status === 'TIMED_OUT'
-				? 'Mutasyon kodu sonsuz döngüye soktu ve koşu zaman aşımına uğradı. PIT bunu **tespit edilmiş** sayar: davranış değişikliği fark edildi.'
-				: `Kod bozuldu ve ${mutant.killingTests.length} test bunu yakaladı. İstenen sonuç bu.`);
+				? 'The mutation sent the code into an infinite loop and the run timed out. PIT counts this as **killed**: the behavior change was noticed.'
+				: `The code was broken and ${mutant.killingTests.length} test(s) caught it. This is the desired outcome.`);
 		case 'survived':
-			return head + '**Kodu bozduk, hiçbir test fark etmedi.** Bu satırın davranışını gerçekten doğrulayan bir assertion eksik.';
+			return head + '**We broke the code, and no test noticed.** An assertion that actually verifies this line\'s behavior is missing.';
 		default:
-			return head + 'Bu mutant hakkında bir şey söylenemez - ne öldürüldü ne hayatta kaldı sayılır, skora da girmez. '
-				+ 'Yaygın sebepler: `NO_COVERAGE` (hiçbir test bu satıra uğramadı), `NON_VIABLE` (JVM mutantı reddetti), '
-				+ '`RUN_ERROR`/`MEMORY_ERROR` (koşu patladı), `NOT_STARTED`/`STARTED` (sıraya girmedi ya da yarım kaldı).';
+			return head + 'Nothing can be said about this mutant - it counts as neither killed nor survived, and doesn\'t factor into the score. '
+				+ 'Common causes: `NO_COVERAGE` (no test reaches this line), `NON_VIABLE` (the JVM rejected the mutant), '
+				+ '`RUN_ERROR`/`MEMORY_ERROR` (the run crashed), `NOT_STARTED`/`STARTED` (never queued or left unfinished).';
 	}
 }
 
@@ -408,26 +356,26 @@ function mutantTooltip(bucket: MutantBucket, mutant: Mutant): string {
  */
 function scoreText(score: MutationScore, allNoCoverage = false): string {
 	if (score.percent === null && allNoCoverage) {
-		return 'skor yok - hiçbir test bu metoda uğramıyor';
+		return 'no score - no test reaches this method';
 	}
 	const base = score.percent === null
-		? 'skor yok'
-		: `${Math.round(score.percent)}% · ${score.killed}/${score.killed + score.survived} öldürüldü`;
-	return score.indeterminate > 0 ? `${base} · ${score.indeterminate} belirsiz` : base;
+		? 'no score'
+		: `${Math.round(score.percent)}% · ${score.killed}/${score.killed + score.survived} killed`;
+	return score.indeterminate > 0 ? `${base} · ${score.indeterminate} inconclusive` : base;
 }
 
 function scoreTooltip(score: MutationScore, allNoCoverage = false): string {
 	const lines = [
-		`Öldürüldü: ${score.killed}`,
-		`Hayatta kaldı: ${score.survived}`,
-		`Belirsiz: ${score.indeterminate}`,
+		`Killed: ${score.killed}`,
+		`Survived: ${score.survived}`,
+		`Inconclusive: ${score.indeterminate}`,
 	];
 	if (score.percent === null && allNoCoverage) {
-		lines.push('\nSkor hesaplanamıyor: üretilen her mutant `NO_COVERAGE` - hiçbir test bu metoda hiç uğramıyor, mutasyon motoru davranışını gözlemleyemiyor bile.');
+		lines.push('\nNo score can be computed: every generated mutant is `NO_COVERAGE` - no test ever reaches this method, so the mutation engine can\'t even observe its behavior.');
 	} else {
 		lines.push(score.percent === null
-			? '\nSkor hesaplanamıyor: karara bağlanmış (öldürülen ya da hayatta kalan) mutant yok.'
-			: `\nSkor = öldürülen / (öldürülen + hayatta kalan) = ${score.percent.toFixed(1)}%. Belirsizler paydaya girmez.`);
+			? '\nNo score can be computed: no mutant has been decided (killed or survived).'
+			: `\nScore = killed / (killed + survived) = ${score.percent.toFixed(1)}%. Inconclusive mutants don't count toward the denominator.`);
 	}
 	return lines.join('\n\n');
 }
@@ -435,11 +383,11 @@ function scoreTooltip(score: MutationScore, allNoCoverage = false): string {
 function bucketText(bucket: MutantBucket, status: string): string {
 	switch (bucket) {
 		case 'killed':
-			return status === 'TIMED_OUT' ? 'öldürüldü (zaman aşımı)' : 'öldürüldü';
+			return status === 'TIMED_OUT' ? 'killed (timed out)' : 'killed';
 		case 'survived':
-			return 'HAYATTA KALDI';
+			return 'SURVIVED';
 		default:
-			return `belirsiz (${status})`;
+			return `inconclusive (${status})`;
 	}
 }
 

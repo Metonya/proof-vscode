@@ -21,9 +21,9 @@ test('a path outside the workspace root is undefined, not a guessed ../ relative
 	assert.equal(toRepoRelativePath(WORKSPACE_ROOT, outside), undefined);
 });
 
-/** Faz 15b: mirrors coverdict-cli's ChangedClassTargets.forEachMappedFile, just run in the opposite direction. */
+/** Faz 15b: mirrors proof-java-cli's ChangedClassTargets.forEachMappedFile, just run in the opposite direction. */
 test('fqcnToRootRelativePath joins a root and dotted FQCN into a repo-relative .java path', () => {
-	assert.equal(fqcnToRootRelativePath('src/test/java', 'dev.coverdict.playground.CalcTest'), 'src/test/java/dev/coverdict/playground/CalcTest.java');
+	assert.equal(fqcnToRootRelativePath('src/test/java', 'dev.proofjava.playground.CalcTest'), 'src/test/java/dev/proofjava/playground/CalcTest.java');
 });
 
 test('fqcnToRootRelativePath tolerates a root with a trailing slash', () => {
@@ -31,8 +31,8 @@ test('fqcnToRootRelativePath tolerates a root with a trailing slash', () => {
 });
 
 test('classNameFromPath is the inverse of fqcnToRootRelativePath for a path under one of the given sourceRoots', () => {
-	const path2 = fqcnToRootRelativePath('src/main/java', 'dev.coverdict.playground.Calculator');
-	assert.equal(classNameFromPath(path2, ['src/main/java']), 'dev.coverdict.playground.Calculator');
+	const path2 = fqcnToRootRelativePath('src/main/java', 'dev.proofjava.playground.Calculator');
+	assert.equal(classNameFromPath(path2, ['src/main/java']), 'dev.proofjava.playground.Calculator');
 });
 
 test('classNameFromPath returns undefined for a path under none of the given sourceRoots (never guesses)', () => {
@@ -52,11 +52,11 @@ test('classNameFromPath returns undefined for a non-.java path', () => {
 const SINGLE_MODULE = [{ sourceRoots: ['src/main/java'], testRoots: ['src/test/java'] }];
 
 test('classifySourcePath calls a file under testRoots a test', () => {
-	assert.equal(classifySourcePath('src/test/java/dev/coverdict/playground/CalcTest.java', SINGLE_MODULE), 'test');
+	assert.equal(classifySourcePath('src/test/java/dev/proofjava/playground/CalcTest.java', SINGLE_MODULE), 'test');
 });
 
 test('classifySourcePath calls a file under sourceRoots production', () => {
-	assert.equal(classifySourcePath('src/main/java/dev/coverdict/playground/Calculator.java', SINGLE_MODULE), 'production');
+	assert.equal(classifySourcePath('src/main/java/dev/proofjava/playground/Calculator.java', SINGLE_MODULE), 'production');
 });
 
 test('classifySourcePath returns unknown for a file under no declared root - never a silent "production"', () => {

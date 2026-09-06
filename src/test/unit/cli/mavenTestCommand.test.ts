@@ -13,7 +13,7 @@ test('buildMavenTestArgs: verify phase is honored, never guessed at as test', ()
 	assert.deepEqual(args, ['-B', 'verify']);
 });
 
-/** Faz 30 (D-30's CLI-goal-binding approach): when no pom in the reactor configures jacoco itself, coverdict injects the exact CLI goals around the phase - never a permanent pom edit. */
+/** Faz 30 (D-30's CLI-goal-binding approach): when no pom in the reactor configures jacoco itself, proof-java injects the exact CLI goals around the phase - never a permanent pom edit. */
 test('buildMavenTestArgs: injectJacocoGoals wraps the phase with prepare-agent and report, full coordinates', () => {
 	const args = buildMavenTestArgs({ phase: 'test', injectJacocoGoals: true, jacocoPluginVersion: '0.8.13' });
 	assert.deepEqual(args, [

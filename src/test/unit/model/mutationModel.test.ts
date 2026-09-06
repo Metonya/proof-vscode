@@ -61,16 +61,16 @@ const BLOCK: MutationBlock = {
 	modules: [{
 		id: 'root',
 		methods: [
-			method('dev.coverdict.playground.Calculator', 'square', 37, [mutant('SURVIVED', 37)]),
-			method('dev.coverdict.playground.Calculator', 'divide', 22, [mutant('KILLED', 22, ['CalcTest#divideNarrow()'])], '(II)I'),
-			method('dev.coverdict.playground.CalculatorSubsumedTest', 'divideNarrow', 19, [mutant('SURVIVED', 19)]),
+			method('dev.proofjava.playground.Calculator', 'square', 37, [mutant('SURVIVED', 37)]),
+			method('dev.proofjava.playground.Calculator', 'divide', 22, [mutant('KILLED', 22, ['CalcTest#divideNarrow()'])], '(II)I'),
+			method('dev.proofjava.playground.CalculatorSubsumedTest', 'divideNarrow', 19, [mutant('SURVIVED', 19)]),
 		],
 	}],
 };
 
 test('classesOf: production süzgeciyle test sınıfları elenir', () => {
-	const classes = classesOf(BLOCK, (c) => c === 'dev.coverdict.playground.Calculator');
-	assert.deepEqual(classes.map((c) => c.className), ['dev.coverdict.playground.Calculator']);
+	const classes = classesOf(BLOCK, (c) => c === 'dev.proofjava.playground.Calculator');
+	assert.deepEqual(classes.map((c) => c.className), ['dev.proofjava.playground.Calculator']);
 	assert.equal(classes[0].methods.length, 2);
 });
 
@@ -93,7 +93,7 @@ test('classesOf: birden fazla modülün metotları birleşir', () => {
 		],
 	};
 	const classes = classesOf(twoModules);
-	assert.deepEqual(classes.map((c) => c.className).sort(), ['com.example.Other', 'dev.coverdict.playground.Calculator', 'dev.coverdict.playground.CalculatorSubsumedTest']);
+	assert.deepEqual(classes.map((c) => c.className).sort(), ['com.example.Other', 'dev.proofjava.playground.Calculator', 'dev.proofjava.playground.CalculatorSubsumedTest']);
 });
 
 /**
@@ -122,62 +122,62 @@ test('methodLabel yalnızca gerçekten aşırı yüklenmiş metotta descriptor g
 
 /** Faz 22: mutasyon panelinin "bu sonuç neyin?" başlığı için hedef özeti. */
 test('targetSummary: tek hedef sınıfın kısa adını gösterir', () => {
-	assert.equal(targetSummary(['dev.coverdict.playground.Calculator']), 'Calculator');
+	assert.equal(targetSummary(['dev.proofjava.playground.Calculator']), 'Calculator');
 });
 
 test('targetSummary: birden çok hedefte sayı gösterir, tek tek listelemez', () => {
-	assert.equal(targetSummary(['a.B', 'a.C', 'a.D']), '3 sınıf');
+	assert.equal(targetSummary(['a.B', 'a.C', 'a.D']), '3 class(es)');
 });
 
 test('targetSummary: hedef boşsa (modül geneli, diff\'ten türetilmiş) bunu söyler', () => {
-	assert.equal(targetSummary([]), "diff'teki değişen sınıflar");
+	assert.equal(targetSummary([]), "changed classes in the diff");
 });
 
 /** Faz 22: "ne kadar önce" - CLI zaman damgası taşımadığı için bu tamamen eklentinin kendi saatiyle hesaplanır. */
 test('formatRelativeTime: bir dakikadan az "az önce"', () => {
 	const now = Date.parse('2026-08-28T12:00:00Z');
-	assert.equal(formatRelativeTime(now - 30_000, now), 'az önce');
+	assert.equal(formatRelativeTime(now - 30_000, now), 'just now');
 });
 
 test('formatRelativeTime: dakika, saat, gün eşikleri', () => {
 	const now = Date.parse('2026-08-28T12:00:00Z');
-	assert.equal(formatRelativeTime(now - 5 * 60_000, now), '5 dakika önce');
-	assert.equal(formatRelativeTime(now - 90 * 60_000, now), '2 saat önce', '90 dakika en yakın saate yuvarlanır');
-	assert.equal(formatRelativeTime(now - 50 * 3600_000, now), '2 gün önce');
+	assert.equal(formatRelativeTime(now - 5 * 60_000, now), '5 minute(s) ago');
+	assert.equal(formatRelativeTime(now - 90 * 60_000, now), '2 hour(s) ago', '90 minutes rounds to the nearest hour');
+	assert.equal(formatRelativeTime(now - 50 * 3600_000, now), '2 day(s) ago');
 });
 
 test('formatRelativeTime: gelecekteki bir zaman (saat kayması) negatif süreye düşmez', () => {
 	const now = Date.parse('2026-08-28T12:00:00Z');
-	assert.equal(formatRelativeTime(now + 10_000, now), 'az önce');
+	assert.equal(formatRelativeTime(now + 10_000, now), 'just now');
 });
 
 /**
  * Faz 24 (§7.6 madde 5): Test Kalitesi ↔ Mutasyon köprüsü.
  * `finding.productionMethod`'ın gerçek biçimi (canlı bir
  * `--mutation-report` koşusundan, 2026-08-28):
- * `"dev.coverdict.playground.Calculator#square(I)I"`.
+ * `"dev.proofjava.playground.Calculator#square(I)I"`.
  */
 test('parseProductionMethod: gerçek biçimi (FQCN#method(desc)dönüşTipi) ayrıştırır', () => {
 	assert.deepEqual(
-		parseProductionMethod('dev.coverdict.playground.Calculator#square(I)I'),
-		{ className: 'dev.coverdict.playground.Calculator', methodName: 'square', methodDescription: '(I)I' },
+		parseProductionMethod('dev.proofjava.playground.Calculator#square(I)I'),
+		{ className: 'dev.proofjava.playground.Calculator', methodName: 'square', methodDescription: '(I)I' },
 	);
 });
 
 test('parseProductionMethod: parametresiz/void bir metodun descriptor\'ı da doğru ayrılır', () => {
 	assert.deepEqual(
-		parseProductionMethod('dev.coverdict.playground.Calculator#describe()Ljava/lang/String;'),
-		{ className: 'dev.coverdict.playground.Calculator', methodName: 'describe', methodDescription: '()Ljava/lang/String;' },
+		parseProductionMethod('dev.proofjava.playground.Calculator#describe()Ljava/lang/String;'),
+		{ className: 'dev.proofjava.playground.Calculator', methodName: 'describe', methodDescription: '()Ljava/lang/String;' },
 	);
 });
 
 test('parseProductionMethod: # ya da ( yoksa uydurmaz, undefined döner', () => {
 	assert.equal(parseProductionMethod('no hash here'), undefined);
-	assert.equal(parseProductionMethod('dev.coverdict.playground.Calculator#square'), undefined);
+	assert.equal(parseProductionMethod('dev.proofjava.playground.Calculator#square'), undefined);
 });
 
 test('productionMethodKey: parseProductionMethod\'ın tam tersi, finding.productionMethod ile birebir eşleşir', () => {
-	assert.equal(productionMethodKey('dev.coverdict.playground.Calculator', 'square', '(I)I'), 'dev.coverdict.playground.Calculator#square(I)I');
+	assert.equal(productionMethodKey('dev.proofjava.playground.Calculator', 'square', '(I)I'), 'dev.proofjava.playground.Calculator#square(I)I');
 });
 
 test('findMutatedMethod: gerçek playground şekliyle, method + description eşleşince bulunur', () => {
@@ -186,20 +186,20 @@ test('findMutatedMethod: gerçek playground şekliyle, method + description eşl
 		modules: [{
 			id: 'root',
 			methods: [
-				{ className: 'dev.coverdict.playground.Calculator', methodName: 'square', methodDescription: '(I)I', firstLine: 37, lastLine: 37, mutants: [] },
-				{ className: 'dev.coverdict.playground.Calculator', methodName: 'add', methodDescription: '(II)I', firstLine: 6, lastLine: 8, mutants: [] },
+				{ className: 'dev.proofjava.playground.Calculator', methodName: 'square', methodDescription: '(I)I', firstLine: 37, lastLine: 37, mutants: [] },
+				{ className: 'dev.proofjava.playground.Calculator', methodName: 'add', methodDescription: '(II)I', firstLine: 6, lastLine: 8, mutants: [] },
 			],
 		}],
 	});
-	const found = findMutatedMethod(classes, 'dev.coverdict.playground.Calculator', 'square', '(I)I');
+	const found = findMutatedMethod(classes, 'dev.proofjava.playground.Calculator', 'square', '(I)I');
 	assert.ok(found);
 	assert.equal(found?.method.methodName, 'square');
-	assert.equal(found?.cls.className, 'dev.coverdict.playground.Calculator');
+	assert.equal(found?.cls.className, 'dev.proofjava.playground.Calculator');
 });
 
 test('findMutatedMethod: bir eşleşme yoksa (güncel olmayan mutasyon sonucu) undefined döner, uydurmaz', () => {
 	const classes = classesOf({ engine: 'pitest', engineVersion: '1.15.8', modules: [{ id: 'root', methods: [] }] });
-	assert.equal(findMutatedMethod(classes, 'dev.coverdict.playground.Calculator', 'square', '(I)I'), undefined);
+	assert.equal(findMutatedMethod(classes, 'dev.proofjava.playground.Calculator', 'square', '(I)I'), undefined);
 });
 
 /**
@@ -234,13 +234,13 @@ const ADD_MUTATION_WITH_CONTRADICTION: MutationBlock = {
 	modules: [{
 		id: 'root',
 		methods: [{
-			className: 'dev.coverdict.playground.Calculator', methodName: 'add', methodDescription: '(II)I',
+			className: 'dev.proofjava.playground.Calculator', methodName: 'add', methodDescription: '(II)I',
 			firstLine: 6, lastLine: 8,
 			mutants: [{
 				mutator: 'org.pitest.mutationtest.engine.gregor.mutators.returns.PrimitiveReturnsMutator', line: 7, status: 'KILLED',
 				killingTests: [
-					'dev.coverdict.playground.CalculatorGoodTest.[engine:junit-jupiter]/[class:dev.coverdict.playground.CalculatorGoodTest]/[method:addWorksCorrectly()]',
-					'dev.coverdict.playground.CalculatorUnresolvedOracleTest.[engine:junit-jupiter]/[class:dev.coverdict.playground.CalculatorUnresolvedOracleTest]/[method:addCheckedViaLocalSoftAssertions()]',
+					'dev.proofjava.playground.CalculatorGoodTest.[engine:junit-jupiter]/[class:dev.proofjava.playground.CalculatorGoodTest]/[method:addWorksCorrectly()]',
+					'dev.proofjava.playground.CalculatorUnresolvedOracleTest.[engine:junit-jupiter]/[class:dev.proofjava.playground.CalculatorUnresolvedOracleTest]/[method:addCheckedViaLocalSoftAssertions()]',
 				],
 			}],
 		}],
@@ -248,15 +248,15 @@ const ADD_MUTATION_WITH_CONTRADICTION: MutationBlock = {
 };
 
 test('findKillContribution: a test statically INCONCLUSIVE is found in a real mutant\'s killingTests - the contradiction is real', () => {
-	const found = findKillContribution(ADD_MUTATION_WITH_CONTRADICTION, 'dev.coverdict.playground.CalculatorUnresolvedOracleTest', 'addCheckedViaLocalSoftAssertions');
-	assert.deepEqual(found, { className: 'dev.coverdict.playground.Calculator', methodName: 'add', methodDescription: '(II)I', mutantLine: 7 });
+	const found = findKillContribution(ADD_MUTATION_WITH_CONTRADICTION, 'dev.proofjava.playground.CalculatorUnresolvedOracleTest', 'addCheckedViaLocalSoftAssertions');
+	assert.deepEqual(found, { className: 'dev.proofjava.playground.Calculator', methodName: 'add', methodDescription: '(II)I', mutantLine: 7 });
 });
 
 test('findKillContribution: a test that never killed anything -> undefined, no contradiction to report', () => {
-	assert.equal(findKillContribution(ADD_MUTATION_WITH_CONTRADICTION, 'dev.coverdict.playground.CalculatorNoOracleTest', 'subtractHasNoAssertion'), undefined);
+	assert.equal(findKillContribution(ADD_MUTATION_WITH_CONTRADICTION, 'dev.proofjava.playground.CalculatorNoOracleTest', 'subtractHasNoAssertion'), undefined);
 });
 
 test('findKillContribution: an empty modules array -> undefined, not an error', () => {
 	const empty: MutationBlock = { engine: 'pitest', engineVersion: '1.15.8', modules: [] };
-	assert.equal(findKillContribution(empty, 'dev.coverdict.playground.CalculatorUnresolvedOracleTest', 'addCheckedViaLocalSoftAssertions'), undefined);
+	assert.equal(findKillContribution(empty, 'dev.proofjava.playground.CalculatorUnresolvedOracleTest', 'addCheckedViaLocalSoftAssertions'), undefined);
 });

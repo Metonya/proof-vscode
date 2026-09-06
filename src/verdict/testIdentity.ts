@@ -1,9 +1,9 @@
 /**
- * Ported from coverdict-cli's `TestIdentity.java` (D-49): a raw test id
+ * Ported from proof-java-cli's `TestIdentity.java` (D-49): a raw test id
  * string from `perTest.entries[].lines[].tests[]` can be a JUnit5
  * `UniqueId` (`[engine:...]/[class:X]/[method:Y()]` for a plain test, or
  * `[class:X]/[test-template:Y(args)]/[test-template-invocation:#N]` for one
- * invocation of a `@ParameterizedTest`/`@RepeatedTest`) or coverdict's own
+ * invocation of a `@ParameterizedTest`/`@RepeatedTest`) or proof-java's own
  * `Class#method(...)` shape, depending on the target's test engine - the
  * real format was never confirmed against every live PIT shape, so an
  * unrecognized id is displayed verbatim (`display`) rather than guessed at
@@ -12,7 +12,7 @@
  *
  * Faz 14c: the original regex only recognized `[method:...]`, so every
  * `@ParameterizedTest` invocation (real, common shape - see
- * coverdict-playground's `CalculatorParameterizedTest`) fell through to the
+ * proof-java-playground's `CalculatorParameterizedTest`) fell through to the
  * `#`-splitting fallback below, which found the `#1` inside
  * `[test-template-invocation:#1]` and mis-parsed the entire UniqueId as one
  * giant "class name". `simpleClassName` is added so callers (the line->tests

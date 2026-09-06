@@ -1,13 +1,14 @@
 {
-  "name": "coverdict-vscode",
-  "displayName": "coverdict",
-  "description": "coverdict CLI tarafından üretilen satır içi kapsama görünümü, satır bazlı test kanıtı ve mutasyon bulguları.",
+  "name": "proof-vscode",
+  "displayName": "Proof",
+  "description": "Runs the proof CLI (currently proof-java) and renders its verdict: inline coverage gutter, per-line test evidence, and mutation findings.",
+  "icon": "media/icon.png",
   "version": "0.0.1",
-  "publisher": "coverdict",
+  "publisher": "metonya",
   "private": true,
   "repository": {
     "type": "git",
-    "url": "https://github.com/Metonya/coverdict-vscode"
+    "url": "https://github.com/Metonya/proof-vscode"
   },
   "engines": {
     "vscode": "^1.88.0"
@@ -25,37 +26,37 @@
   "main": "./dist/extension.js",
   "contributes": {
     "configuration": {
-      "title": "coverdict",
+      "title": "Proof",
       "properties": {
-        "coverdict.jarPath": {
+        "proof.jarPath": {
           "type": "string",
           "default": "",
-          "description": "coverdict.jar dosyasının yolu. Göreli yollar workspace kök dizinine göre çözülür. Varsayılan arama sırasını kullanmak için boş bırakın (önce coverdict-cli/target/coverdict.jar, sonra .coverdict/coverdict.jar)."
+          "description": "Path to proof-java.jar. Relative paths resolve against the workspace root. Leave empty to use the default search order (proof-java-cli/target/proof-java.jar, then .proof-java/proof-java.jar)."
         },
-        "coverdict.javaExecutable": {
+        "proof.javaExecutable": {
           "type": "string",
           "default": "java",
-          "description": "coverdict.jar'ı çalıştırmak için kullanılan Java çalıştırılabilir dosyası."
+          "description": "The Java executable used to run proof-java.jar."
         },
-        "coverdict.mavenExecutable": {
+        "proof.mavenExecutable": {
           "type": "string",
           "default": "",
-          "description": "Derin tarama için classpath listesi eksik olduğunda onu üretmekte kullanılacak Maven komutu. Boş bırakılırsa Windows'ta \"mvn.cmd\", diğer sistemlerde \"mvn\" kullanılır. Maven PATH'te değilse tam yolunu yazın."
+          "description": "The Maven command used to generate a missing classpath list for Deep Scan. If left empty, \"mvn.cmd\" is used on Windows and \"mvn\" elsewhere. Set the full path if Maven isn't on PATH."
         },
-        "coverdict.coverageExclusions": {
+        "proof.coverageExclusions": {
           "type": "array",
           "items": {
             "type": "string"
           },
           "default": [],
-          "description": "sonar.coverage.exclusions tarzı glob desenleri (SonarQube'a yapıştıracağınız sözdizimiyle aynı). Her analiz koşusuna --coverage-exclusions olarak geçirilir - tek, elle yazılmış bir liste (D-05), repo'nun kendi coverdict.config.json dosyasıyla asla birleştirilmez."
+          "description": "Glob patterns in the style of sonar.coverage.exclusions (same syntax you'd paste into SonarQube). Passed to every analysis run as --coverage-exclusions - a single, hand-maintained list (D-05), never merged with the repo's own proof.config.json."
         },
-        "coverdict.reportPath": {
+        "proof.reportPath": {
           "type": "string",
           "default": "target/site/jacoco/jacoco.xml",
-          "description": "JaCoCo XML rapor dosyasının yolu (workspace köküne göre). \"coverdict: Analiz Et\" bu dosyayı okur - dosya yoksa size ayarı düzeltmeniz için bir uyarı gösterilir, her koşuda tekrar sorulmaz."
+          "description": "Path to the JaCoCo XML report (relative to the workspace root). \"Proof: Quick Scan\" reads this file - if it's missing, you get a one-time prompt to fix the setting, not a repeat warning on every run."
         },
-        "coverdict.diffMode": {
+        "proof.diffMode": {
           "type": "string",
           "enum": [
             "no-vcs",
@@ -63,39 +64,39 @@
             "base"
           ],
           "default": "uncommitted",
-          "description": "\"Yeni kod\" hangi değişikliklere göre hesaplansın. uncommitted (varsayılan): commit beklemekte olan her şey (staged + unstaged), yani şu an dosyada duran değişiklikler. base: coverdict.baseRef'te yazan commit/branch'ten bu yana yapılan değişiklikler (örn. bir feature branch'i main ile kıyaslamak). no-vcs: git hiç kullanılmaz, \"yeni kod\" hesaplanamaz - tüm repo tek bir kapsama olarak gösterilir. \"coverdict: Analiz Et (test bazlı)\" bu mod no-vcs iken çalışmaz, çünkü test bazlı kanıt bir diff gerektirir."
+          "description": "What \"new code\" is measured against. uncommitted (default): everything not yet committed (staged + unstaged) - i.e. what's currently sitting in your working tree. base: changes since the commit/branch named in proof.baseRef (e.g. comparing a feature branch to main). no-vcs: git is never used, \"new code\" can't be computed - the whole repo is shown as one coverage figure. \"Proof: Deep Scan\" does not run in this mode, because per-test evidence requires a diff."
         },
-        "coverdict.baseRef": {
+        "proof.baseRef": {
           "type": "string",
           "default": "",
-          "description": "coverdict.diffMode \"base\" iken karşılaştırılacak commit, branch veya tag adı (örn. \"main\" veya \"origin/main\"). Diğer diffMode değerlerinde kullanılmaz. HEAD'in kendisini veya HEAD'in atası olmayan bir ref'i girerseniz diff boş çıkar - karşılaştıracak gerçek bir fark yoktur."
+          "description": "The commit, branch, or tag to compare against when proof.diffMode is \"base\" (e.g. \"main\" or \"origin/main\"). Unused for other diffMode values. Setting this to HEAD itself, or to a ref that isn't an ancestor of HEAD, produces an empty diff - there's no real difference to compare."
         },
-        "coverdict.perTestClasspathPath": {
+        "proof.perTestClasspathPath": {
           "type": "string",
-          "default": "target/coverdict-classpath.txt",
-          "description": "\"coverdict: Analiz Et (test bazlı)\" komutunun kullanacağı classpath liste dosyasının yolu (workspace köküne göre, satır başına bir jar/çıktı-dizini). Genelde \"mvn dependency:build-classpath\" ile üretilir - coverdict-playground'daki run.ps1 örneğine bakın."
+          "default": "target/proof-classpath.txt",
+          "description": "Path to the classpath list file (relative to the workspace root, one jar/output-dir per line) used by \"Proof: Deep Scan\". Generated automatically the first time it is needed - you do not need to create it by hand."
         },
-        "coverdict.show.explorerBadges": {
+        "proof.show.explorerBadges": {
           "type": "boolean",
           "default": true,
-          "description": "Dosya Gezgini'nde her dosyanın ve klasörün yanında kapsama yüzdesini bir rozet olarak göster (örn. Calculator.java'nın yanında \"85\"). coverdict.show.lineGutter'dan bağımsızdır: bunu kapatırsanız sadece rozetler gider, editördeki satır renkleri etkilenmez."
+          "description": "Show a coverage-percentage badge next to every file and folder in the Explorer (e.g. \"85\" next to Calculator.java). Independent of proof.show.lineGutter: turning this off only removes the badges, editor line colors are unaffected."
         },
-        "coverdict.show.lineGutter": {
+        "proof.show.lineGutter": {
           "type": "boolean",
           "default": true,
-          "description": "Açık bir dosyada, her satırın solunda o satırın kapsanıp kapsanmadığını gösteren renkli bir çizgi çiz (yeşil: kapsandı, sarı: kısmen, kırmızı: kapsanmadı - coverdict.colorblindMode açıkken farklı bir palet kullanılır). coverdict.show.explorerBadges'ten bağımsızdır: bunu kapatırsanız sadece bu çizgiler gider, Dosya Gezgini'ndeki yüzde rozetleri etkilenmez."
+          "description": "Draw a colored line to the left of each line in an open file, showing whether it's covered (green: covered, yellow: partial, red: uncovered - a different palette applies when proof.colorblindMode is on). Independent of proof.show.explorerBadges: turning this off only removes these lines, Explorer percentage badges are unaffected."
         },
-        "coverdict.colorblindMode": {
+        "proof.colorblindMode": {
           "type": "boolean",
           "default": false,
-          "description": "Satır kapsama çizgilerinde (coverdict.show.lineGutter) kırmızı/yeşili kullanmak yerine, üç tip renk körlüğü altında da (protanopi, döteranopi, tritanopi) birbirinden ayrılabilir kalan bir palet kullan (Okabe-Ito paleti: mavi=kapsandı, sarı=kısmen, vermilyon=kapsanmadı, mor=\"yalancı yeşil\"). Değiştirir değiştirmez açık editörlere hemen yansır, pencere yenilemeye gerek yok."
+          "description": "Use a palette that stays distinguishable under all three types of color blindness (protanopia, deuteranopia, tritanopia) instead of red/green for line coverage (proof.show.lineGutter) - the Okabe-Ito palette: blue=covered, yellow=partial, vermillion=uncovered, purple=\"falsely green\". Takes effect immediately in open editors, no window reload needed."
         },
-        "coverdict.show.oraclelessLines": {
+        "proof.show.oraclelessLines": {
           "type": "boolean",
           "default": true,
-          "description": "Bir satır JaCoCo'ya göre kapsanmış olsa bile, onu kapsayan HİÇBİR testin gerçek bir doğrulaması (oracle'ı) yoksa - hepsi NO_RECOGNIZED_ORACLE/TAUTOLOGICAL_ORACLE/CATCH_ORACLE_WITHOUT_FAIL bulgularından biriyse - o satırı yeşil yerine turuncu göster (\"yalancı yeşil\"). Test bazlı kanıt (coverdict: Derin Tarama ya da Bu Sınıf İçin Hangi Test Hangi Satırı Kapsıyor) toplanmamışsa hiçbir satır bu şekilde işaretlenmez - kanıt yokken suçlama yok."
+          "description": "Even when JaCoCo counts a line as covered, show it orange instead of green if NONE of the tests covering it has a real assertion (oracle) - i.e. every one of them produced a NO_RECOGNIZED_ORACLE/TAUTOLOGICAL_ORACLE/CATCH_ORACLE_WITHOUT_FAIL finding (\"falsely green\"). No line is ever marked this way unless per-test evidence (Proof: Deep Scan or Which Test Covers Which Line For This Class) has actually been collected - no evidence, no accusation."
         },
-        "coverdict.badgeMetric": {
+        "proof.badgeMetric": {
           "type": "string",
           "enum": [
             "jacoco-line",
@@ -103,229 +104,246 @@
             "sonar-compatible"
           ],
           "default": "sonar-compatible",
-          "description": "Dosya Gezgini rozetlerinde ve satır boyamasında hangi kapsama modu kullanılsın. sonar-compatible (varsayılan): SonarQube'un gösterdiği yüzdeyle ±0.1 içinde eşleşir - dal (branch) kapsamını da sayar, bu yüzden jacoco-line'dan genelde daha düşük çıkar. jacoco-line: bir satırdaki herhangi bir komut çalıştıysa o satır kapsanmış sayılır (en yüksek çıkan sayı). strict-line: bir satırın kapsanmış sayılması için o satırdaki HER komutun çalışmış olması gerekir (en katı, genelde en düşük sayı). Durum çubuğu ve tooltip'ler her zaman üçünü birden gösterir; bu ayar sadece rozet/satır rengi için tek bir sayı seçer."
+          "description": "Which coverage mode drives Explorer badges and line coloring. sonar-compatible (default): matches SonarQube's own percentage within +/-0.1 - it also counts branch coverage, so it usually comes out lower than jacoco-line. jacoco-line: a line counts as covered if any instruction on it ran (the highest number you'll see). strict-line: a line only counts as covered if EVERY instruction on it ran (the strictest, usually the lowest number). The status bar and tooltips always show all three; this setting only picks one for the badge/line color."
         },
-        "coverdict.mutationTimeout": {
+        "proof.mutationTimeout": {
           "type": "number",
           "default": 300,
           "minimum": 1,
-          "description": "Mutasyon testinde bir modül için saniye cinsinden zaman bütçesi (--mutation-timeout). Aşılırsa koşu durdurulur ve sonuç kısmi kalır - kısmi sonuç yine gösterilir, sessizce atılmaz. Tek sınıf koşuları genelde saniyeler sürer; modül geneli koşular için artırmanız gerekebilir."
+          "description": "Idle timeout, in seconds, for one module in mutation testing (--mutation-timeout): the run is stopped once no class has completed for this long - not a total budget, so a run that keeps completing classes keeps going however long it takes. When it does trigger, the result is partial and still shown, never silently dropped. Single-class runs are usually seconds long; you may need to raise this if one class legitimately needs longer than the default between completions."
         },
-        "coverdict.perTestTimeout": {
+        "proof.perTestTimeout": {
           "type": "number",
           "default": 120,
           "minimum": 1,
-          "description": "Derin Tarama'da bir modül için saniye cinsinden zaman bütçesi (--per-test-timeout). Aşılırsa koşu durdurulur (PER_TEST_COLLECTION_FAILED). Diff'te değişen birkaç sınıf için varsayılan genelde yeterlidir; \"Yine de Tüm Modülü Tara\" gibi çok sayıda sınıfı tek seferde hedefleyen koşularda artırmanız gerekebilir."
+          "description": "Time budget, in seconds, for one module in Deep Scan (--per-test-timeout). If exceeded, the run stops (PER_TEST_COLLECTION_FAILED). The default is usually enough for a handful of classes changed in a diff; you may need to raise it for a run that targets many classes at once, such as \"Deep Scan Whole Module Anyway\"."
         },
-        "coverdict.testCommandPhase": {
+        "proof.testCommandPhase": {
           "type": "string",
           "enum": [
             "test",
             "verify"
           ],
           "default": "test",
-          "description": "\"coverdict: Testleri Çalıştır\" hangi Maven aşamasını çalıştırsın. test (varsayılan): en kısa yol, JaCoCo raporunu üretmek için genelde yeterli. verify: modülleriniz paketlenmiş bir jar'a ihtiyaç duyuyorsa (ör. bir JPMS/OSGi testi) gereklidir - daha uzun sürer."
+          "description": "Which Maven phase \"Proof: Run Tests\" runs. test (default): the shortest path, usually enough to produce the JaCoCo report. verify: needed if your modules require a packaged jar (e.g. a JPMS/OSGi test) - takes longer."
         },
-        "coverdict.jacocoPluginVersion": {
+        "proof.jacocoPluginVersion": {
           "type": "string",
           "default": "0.8.13",
-          "description": "Pom'da JaCoCo eklentisi tanımlı değilse \"coverdict: Testleri Çalıştır\"ın komut satırından bağlayacağı org.jacoco:jacoco-maven-plugin sürümü. Pom zaten kendi JaCoCo sürümünü tanımlıyorsa bu ayar kullanılmaz - pom'a asla dokunulmaz."
+          "description": "The org.jacoco:jacoco-maven-plugin version \"Proof: Run Tests\" binds from the command line when the pom doesn't declare the JaCoCo plugin at all. Unused if the pom already declares its own JaCoCo version - the pom itself is never touched."
         }
       }
     },
     "taskDefinitions": [
       {
-        "type": "coverdict",
+        "type": "proof-java",
         "required": [
           "kind"
         ],
         "properties": {
           "kind": {
             "type": "string",
-            "description": "coverdict'in kendi başlattığı görev türü (ör. runTests)."
+            "description": "The kind of task proof-java itself launches (e.g. runTests)."
           }
         }
       }
     ],
     "commands": [
       {
-        "command": "coverdict.analyze",
-        "title": "coverdict: Hızlı Tarama"
+        "command": "proof.analyze",
+        "title": "Proof: Quick Scan"
       },
       {
-        "command": "coverdict.runTests",
-        "title": "coverdict: Testleri Çalıştır"
+        "command": "proof.runTests",
+        "title": "Proof: Run Tests"
       },
       {
-        "command": "coverdict.toggleCoverage",
-        "title": "coverdict: Coverage Görünümünü Aç/Kapat"
+        "command": "proof.toggleCoverage",
+        "title": "Proof: Toggle Coverage View"
       },
       {
-        "command": "coverdict.analyzePerTest",
-        "title": "coverdict: Derin Tarama"
+        "command": "proof.analyzePerTest",
+        "title": "Proof: Deep Scan"
       },
       {
-        "command": "coverdict.exportReport",
-        "title": "coverdict: Raporu Dışa Aktar (HTML)",
+        "command": "proof.exportReport",
+        "title": "Proof: Export Report (HTML)",
         "icon": "$(export)"
       },
       {
-        "command": "coverdict.openSettings",
-        "title": "coverdict: Ayarları Aç",
+        "command": "proof.openSettings",
+        "title": "Proof: Open Settings",
         "icon": "$(gear)"
       },
       {
-        "command": "coverdict.perTestForFile",
-        "title": "coverdict: Bu Sınıf İçin Hangi Test Hangi Satırı Kapsıyor"
+        "command": "proof.installSkill",
+        "title": "Proof: Install Skill for AI Agent",
+        "icon": "$(cloud-download)"
       },
       {
-        "command": "coverdict.perTestForModuleAll",
-        "title": "coverdict: Tüm Modül İçin Derin Tarama (diff'siz)"
+        "command": "proof.perTestForFile",
+        "title": "Proof: Which Test Covers Which Line For This Class"
       },
       {
-        "command": "coverdict.copyItem",
-        "title": "Kopyala"
+        "command": "proof.perTestForModuleAll",
+        "title": "Proof: Deep Scan Whole Module (no diff)",
+        "icon": "$(globe)"
       },
       {
-        "command": "coverdict.qualityView.filter",
-        "title": "coverdict: Bulguları Filtrele",
-        "icon": "$(filter)"
+        "command": "proof.copyItem",
+        "title": "Copy"
       },
       {
-        "command": "coverdict.qualityView.toggleGrouping",
-        "title": "coverdict: Gruplamayı Değiştir (kural ↔ dosya)",
+        "command": "proof.qualityView.filter",
+        "title": "Proof: Filter Findings",
+        "icon": "media/icons/filter.svg"
+      },
+      {
+        "command": "proof.qualityView.toggleGrouping",
+        "title": "Proof: Toggle Grouping (rule ↔ file)",
         "icon": "$(group-by-ref-type)"
       },
       {
-        "command": "coverdict.lineTestsView.toggleProblemsOnly",
-        "title": "coverdict: Sadece Sorunlu Satırlar",
-        "icon": "$(filter)"
+        "command": "proof.lineTestsView.toggleProblemsOnly",
+        "title": "Proof: Problem Lines Only",
+        "icon": "media/icons/filter.svg"
       },
       {
-        "command": "coverdict.mutationForFile",
-        "title": "coverdict: Bu Sınıf İçin Mutasyon Testi"
+        "command": "proof.mutationForFile",
+        "title": "Proof: Mutation Test This Class"
       },
       {
-        "command": "coverdict.mutationForModule",
-        "title": "coverdict: Mutasyon Testi (Modül Geneli)"
+        "command": "proof.mutationForModule",
+        "title": "Proof: Mutation Testing (Whole Module)"
       },
       {
-        "command": "coverdict.mutationForModuleAll",
-        "title": "coverdict: Mutasyon Testi - Tüm Modül (diff'siz)"
+        "command": "proof.mutationForModuleAll",
+        "title": "Proof: Mutation Testing - Whole Module (no diff)",
+        "icon": "$(globe)"
       },
       {
-        "command": "coverdict.mutationView.toggleSurvivorsOnly",
-        "title": "coverdict: Sadece Hayatta Kalan Mutantlar",
-        "icon": "$(filter)"
+        "command": "proof.mutationView.toggleSurvivorsOnly",
+        "title": "Proof: Survived Mutants Only",
+        "icon": "media/icons/filter.svg"
       },
       {
-        "command": "coverdict.qualityView.showInMutation",
-        "title": "Mutasyon Ağacında Göster"
+        "command": "proof.qualityView.showInMutation",
+        "title": "Show in Mutation Tree"
       },
       {
-        "command": "coverdict.mutationView.showInQuality",
-        "title": "Test Kalitesi'nde Göster"
+        "command": "proof.mutationView.showInQuality",
+        "title": "Show in Test Quality"
       },
       {
-        "command": "coverdict.lineTestsView.showInMutation",
-        "title": "Mutasyon Ağacında Göster"
+        "command": "proof.lineTestsView.showInMutation",
+        "title": "Show in Mutation Tree"
       },
       {
-        "command": "coverdict.mutationView.showInLineTests",
-        "title": "Satır → Testler'de Göster"
+        "command": "proof.mutationView.showInLineTests",
+        "title": "Show in Line → Tests"
       }
     ],
     "menus": {
       "editor/context": [
         {
-          "command": "coverdict.perTestForFile",
+          "command": "proof.perTestForFile",
           "when": "resourceLangId == java",
-          "group": "coverdict"
+          "group": "proof-java"
         },
         {
-          "command": "coverdict.mutationForFile",
+          "command": "proof.mutationForFile",
           "when": "resourceLangId == java",
-          "group": "coverdict"
+          "group": "proof-java"
         }
       ],
       "view/title": [
         {
-          "command": "coverdict.exportReport",
-          "when": "view == coverdict.runView",
+          "command": "proof.exportReport",
+          "when": "view == proof.runView",
           "group": "navigation@1"
         },
         {
-          "command": "coverdict.openSettings",
-          "when": "view == coverdict.runView",
+          "command": "proof.openSettings",
+          "when": "view == proof.runView",
           "group": "navigation@2"
         },
         {
-          "command": "coverdict.qualityView.filter",
-          "when": "view == coverdict.qualityView",
+          "command": "proof.qualityView.filter",
+          "when": "view == proof.qualityView",
           "group": "navigation@1"
         },
         {
-          "command": "coverdict.qualityView.toggleGrouping",
-          "when": "view == coverdict.qualityView",
+          "command": "proof.qualityView.toggleGrouping",
+          "when": "view == proof.qualityView",
           "group": "navigation@2"
         },
         {
-          "command": "coverdict.lineTestsView.toggleProblemsOnly",
-          "when": "view == coverdict.lineTestsView",
+          "command": "proof.lineTestsView.toggleProblemsOnly",
+          "when": "view == proof.lineTestsView",
           "group": "navigation@1"
         },
         {
-          "command": "coverdict.mutationView.toggleSurvivorsOnly",
-          "when": "view == coverdict.mutationView",
+          "command": "proof.mutationView.toggleSurvivorsOnly",
+          "when": "view == proof.mutationView",
           "group": "navigation@1"
         }
       ],
       "view/item/context": [
         {
-          "command": "coverdict.copyItem",
-          "when": "view == coverdict.qualityView || view == coverdict.coverageView || view == coverdict.lineTestsView || view == coverdict.mutationView",
+          "command": "proof.copyItem",
+          "when": "view == proof.qualityView || view == proof.coverageView || view == proof.lineTestsView || view == proof.mutationView",
           "group": "9_cutcopypaste"
         },
         {
-          "command": "coverdict.qualityView.showInMutation",
-          "when": "view == coverdict.qualityView && viewItem == coverdict.qualityFinding.pseudoTested",
-          "group": "coverdict@1"
+          "command": "proof.qualityView.showInMutation",
+          "when": "view == proof.qualityView && viewItem == proof.qualityFinding.pseudoTested",
+          "group": "proof-java@1"
         },
         {
-          "command": "coverdict.mutationView.showInQuality",
-          "when": "view == coverdict.mutationView && viewItem == coverdict.mutationMethod.pseudoTested",
-          "group": "coverdict@1"
+          "command": "proof.mutationView.showInQuality",
+          "when": "view == proof.mutationView && viewItem == proof.mutationMethod.pseudoTested",
+          "group": "proof-java@1"
         },
         {
-          "command": "coverdict.lineTestsView.showInMutation",
-          "when": "view == coverdict.lineTestsView && viewItem == coverdict.prodTest.contradiction",
-          "group": "coverdict@1"
+          "command": "proof.lineTestsView.showInMutation",
+          "when": "view == proof.lineTestsView && viewItem == proof.prodTest.contradiction",
+          "group": "proof-java@1"
         },
         {
-          "command": "coverdict.mutationView.showInLineTests",
-          "when": "view == coverdict.mutationView && viewItem == coverdict.mutant.hasLineEvidence",
-          "group": "coverdict@1"
+          "command": "proof.mutationView.showInLineTests",
+          "when": "view == proof.mutationView && viewItem == proof.mutant.hasLineEvidence",
+          "group": "proof-java@1"
+        },
+        {
+          "command": "proof.perTestForModuleAll",
+          "when": "view == proof.runView && viewItem == proof.runItem.deepScan",
+          "group": "inline"
+        },
+        {
+          "command": "proof.mutationForModuleAll",
+          "when": "view == proof.runView && viewItem == proof.runItem.mutation",
+          "group": "inline"
         }
       ],
       "commandPalette": [
         {
-          "command": "coverdict.copyItem",
+          "command": "proof.copyItem",
           "when": "false"
         },
         {
-          "command": "coverdict.qualityView.showInMutation",
+          "command": "proof.qualityView.showInMutation",
           "when": "false"
         },
         {
-          "command": "coverdict.mutationView.showInQuality",
+          "command": "proof.mutationView.showInQuality",
           "when": "false"
         },
         {
-          "command": "coverdict.lineTestsView.showInMutation",
+          "command": "proof.lineTestsView.showInMutation",
           "when": "false"
         },
         {
-          "command": "coverdict.mutationView.showInLineTests",
+          "command": "proof.mutationView.showInLineTests",
           "when": "false"
         }
       ]
@@ -333,33 +351,38 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "coverdict",
-          "title": "coverdict",
+          "id": "proof-java",
+          "title": "Proof",
           "icon": "media/activity-bar-icon.svg"
         }
       ]
     },
     "views": {
-      "coverdict": [
+      "proof-java": [
         {
-          "id": "coverdict.runView",
-          "name": "Çalıştır"
+          "id": "proof.runView",
+          "name": "Run",
+          "icon": "media/icons/runbook-page.svg"
         },
         {
-          "id": "coverdict.coverageView",
-          "name": "Coverage"
+          "id": "proof.coverageView",
+          "name": "Coverage",
+          "icon": "media/icons/covering-index.svg"
         },
         {
-          "id": "coverdict.qualityView",
-          "name": "Test Kalitesi"
+          "id": "proof.qualityView",
+          "name": "Test Quality",
+          "icon": "media/icons/bug-play.svg"
         },
         {
-          "id": "coverdict.lineTestsView",
-          "name": "Satır → Testler"
+          "id": "proof.lineTestsView",
+          "name": "Line → Tests",
+          "icon": "media/icons/focused-test.svg"
         },
         {
-          "id": "coverdict.mutationView",
-          "name": "Mutasyon"
+          "id": "proof.mutationView",
+          "name": "Mutation",
+          "icon": "media/icons/mutation-test.svg"
         }
       ]
     }

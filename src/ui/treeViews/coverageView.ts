@@ -6,7 +6,7 @@ import { toAbsolutePath } from '../../model/pathIndex';
 import type { ChangedFile, Metric, MetricSet, Reason } from '../../verdict/types';
 
 /**
- * Faz 11b: "coverdict: Kapsama" - genel kapsama, yeni kod kapsaması, ve
+ * Faz 11b: "proof-java: Kapsama" - genel kapsama, yeni kod kapsaması, ve
  * kapsanmayan yeni satırlar tek yerde. Her üçü de CLI'ın verdict'inde zaten
  * hazır (D-70: dosya/klasör bazlı yeniden hesaplama yok, sadece
  * `changedFiles[].uncoveredNewRanges`'ın kendisi listelenir - "yeni ve
@@ -50,19 +50,19 @@ export class CoverageTreeProvider implements vscode.TreeDataProvider<CoverageNod
 				return warningItem(node.reason);
 			case 'changedFile': {
 				const item = new vscode.TreeItem(node.file.path, vscode.TreeItemCollapsibleState.Collapsed);
-				item.description = `${node.file.uncoveredNewRanges?.length ?? 0} uncovered aralık`;
+				item.description = `${node.file.uncoveredNewRanges?.length ?? 0} uncovered range(s)`;
 				item.iconPath = new vscode.ThemeIcon('file');
 				return item;
 			}
 			case 'range': {
 				const [start, end] = node.range;
-				const label = start === end ? `Satır ${start}` : `Satır ${start}-${end}`;
+				const label = start === end ? `Line ${start}` : `Line ${start}-${end}`;
 				const item = leaf(label, 'circle-filled');
 				const state = getCoverageState();
 				if (state) {
 					const uri = vscode.Uri.file(toAbsolutePath(state.workspaceRoot, node.file.path));
 					const selection = new vscode.Range(start - 1, 0, start - 1, 0);
-					item.command = { command: 'vscode.open', title: 'Dosyayı Aç', arguments: [uri, { selection }] };
+					item.command = { command: 'vscode.open', title: 'Open File', arguments: [uri, { selection }] };
 				}
 				return item;
 			}
@@ -89,7 +89,7 @@ export class CoverageTreeProvider implements vscode.TreeDataProvider<CoverageNod
 
 function rootChildren(state: CoverageState | undefined): CoverageNode[] {
 	if (!state) {
-		return [{ kind: 'empty', message: 'Önce bir analiz çalıştırın.' }];
+		return [{ kind: 'empty', message: 'Run an analysis first.' }];
 	}
 	const sections: CoverageNode[] = [{ kind: 'section', id: 'overall' }, { kind: 'section', id: 'newCode' }, { kind: 'section', id: 'uncovered' }];
 	if (state.warnings.length > 0) {
@@ -110,7 +110,7 @@ function sectionChildren(id: 'overall' | 'newCode' | 'uncovered' | 'warnings', s
 	}
 	const uncoveredFiles = state.changedFiles.filter((f) => f.classification === 'mapped' && (f.uncoveredNewRanges?.length ?? 0) > 0);
 	return uncoveredFiles.length === 0
-		? [{ kind: 'empty', message: 'Uncovered yeni satır yok.' }]
+		? [{ kind: 'empty', message: 'No uncovered new lines.' }]
 		: uncoveredFiles.map((file): CoverageNode => ({ kind: 'changedFile', file }));
 }
 
@@ -135,19 +135,19 @@ function newCodeChildren(newCode: CoverageState['newCode'], changedFiles: Covera
 	return metricNodes(newCode);
 }
 
-/** `coverdict.diffMode`/`coverdict.baseRef`'i okuyup kullanıcının "hangi mod aktif" sorusuna tek satırlık bir cevap üretir - ayarları değiştirmeden burada tekrar görünür kılmak için. */
+/** Reads `proof.diffMode`/`proof.baseRef` and produces a one-line answer to "which mode is active" - surfaced here again without having to go check the settings. */
 function diffModeDetail(): string {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
 		return '';
 	}
-	const config = vscode.workspace.getConfiguration('coverdict', folder);
+	const config = vscode.workspace.getConfiguration('proof', folder);
 	const diffMode = config.get<string>('diffMode') ?? 'uncommitted';
 	if (diffMode === 'base') {
 		const baseRef = config.get<string>('baseRef')?.trim();
-		return `mod: base, ref: ${baseRef || '(boş - coverdict.baseRef ayarlanmamış)'}`;
+		return `mode: base, ref: ${baseRef || '(empty - proof.baseRef not set)'}`;
 	}
-	return `mod: ${diffMode}`;
+	return `mode: ${diffMode}`;
 }
 
 function metricNodes(set: MetricSet): CoverageNode[] {
@@ -159,8 +159,8 @@ function metricNodes(set: MetricSet): CoverageNode[] {
 }
 
 function section(id: 'overall' | 'newCode' | 'uncovered' | 'warnings'): vscode.TreeItem {
-	const labels: Record<typeof id, string> = { overall: 'Genel', newCode: 'Yeni Kod', uncovered: 'Uncovered Yeni Satırlar', warnings: 'Uyarılar' };
-	const descriptions: Partial<Record<typeof id, string>> = { overall: 'tüm repo', newCode: 'sadece bu diff\'teki satırlar' };
+	const labels: Record<typeof id, string> = { overall: 'Overall', newCode: 'New Code', uncovered: 'Uncovered New Lines', warnings: 'Warnings' };
+	const descriptions: Partial<Record<typeof id, string>> = { overall: 'whole repo', newCode: 'only lines in this diff' };
 	const item = new vscode.TreeItem(labels[id], id === 'overall' || id === 'newCode' ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
 	item.description = descriptions[id];
 	item.iconPath = new vscode.ThemeIcon(id === 'uncovered' || id === 'warnings' ? 'warning' : 'folder');
@@ -181,11 +181,11 @@ function warningItem(reason: Reason): vscode.TreeItem {
 		[
 			`**${info.title}** \`${info.code}\``,
 			info.explanation,
-			info.action ? `**Ne yapmalı:** ${info.action}` : undefined,
+			info.action ? `**What to do:** ${info.action}` : undefined,
 			`\`\`\`\n${reason.message}\n\`\`\``,
 		].filter(Boolean).join('\n\n'),
 	);
-	item.contextValue = 'coverdict.warning';
+	item.contextValue = 'proof.warning';
 	return item;
 }
 
@@ -202,30 +202,30 @@ function leaf(label: string, icon: string, tooltip?: string): vscode.TreeItem {
 function metricTooltip(name: keyof MetricSet): string {
 	switch (name) {
 		case 'jacoco-line':
-			return 'Bir satırdaki herhangi bir komut çalıştıysa kapsanmış sayılır - en cömert sayı, JaCoCo\'nun ham satır kapsamasıyla birebir aynı.';
+			return 'A line counts as covered if any instruction on it ran - the most generous number, identical to JaCoCo\'s own raw line coverage.';
 		case 'strict-line':
-			return 'Bir satırın kapsanmış sayılması için o satırdaki HER komutun çalışmış olması gerekir - en katı sayı, genelde en düşük çıkar.';
+			return 'A line only counts as covered if EVERY instruction on it ran - the strictest number, usually the lowest.';
 		case 'sonar-compatible':
-			return 'JaCoCo satır kapsamasına dal (branch) kapsamasını da ekler - SonarQube\'un gösterdiği yüzdeyle ±0.1 içinde eşleşir, bu yüzden genelde jacoco-line\'dan daha düşük çıkar.';
+			return 'Adds branch coverage on top of JaCoCo line coverage - matches the percentage SonarQube shows within ±0.1, so it usually comes out lower than jacoco-line.';
 	}
 }
 
 function percentText(metric: Metric): string {
-	return metric.percent === null ? 'yok' : `${metric.percent}% (${metric.numerator}/${metric.denominator})`;
+	return metric.percent === null ? 'n/a' : `${metric.percent}% (${metric.numerator}/${metric.denominator})`;
 }
 
 function newCodeStatusText(status: string): string {
 	if (status === 'unavailable_no_vcs') {
-		return 'no-vcs modunda yeni kod hesaplanamaz';
+		return 'new code cannot be computed in no-vcs mode';
 	}
 	if (status === 'unavailable_incomplete') {
-		return 'diff sırasında bir hata oldu, yeni kod hesaplanamadı';
+		return 'an error occurred during the diff, new code could not be computed';
 	}
 	if (status === 'no-changes') {
-		return 'bu diff\'te değişen dosya yok';
+		return 'no files changed in this diff';
 	}
 	if (status === 'stale-report') {
-		return 'değişen satırlar raporda yok - rapor bu diff\'ten eski olabilir';
+		return 'changed lines are absent from the report - it may be older than this diff';
 	}
 	return status;
 }

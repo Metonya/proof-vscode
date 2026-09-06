@@ -25,7 +25,7 @@ import {
 	setMutationState,
 	setPerTestState,
 } from '../model/store';
-import { parseVerdict } from '../verdict/parse';
+import { parseVerdict, reinternMutationTestIds, reinternPerTestIds } from '../verdict/parse';
 import { parseTestIdentity } from '../verdict/testIdentity';
 import type { ChangedFile, FileCoverageBlock, Finding, MetricSet, ModuleInput, MutationBlock, NewCodeCoverage, PerTestBlock, Reason, VerdictDocument } from '../verdict/types';
 import { publishFindings } from './diagnostics';
@@ -79,20 +79,50 @@ export const PERTEST_STORAGE_FILE = 'pertest-current.json';
 export interface PerTestSnapshot {
 	perTest: PerTestBlock;
 	warnings: readonly Reason[];
+	targets: readonly string[];
+	ranAtMs: number;
+}
+
+/**
+ * Faz 33 (user request): moved off `context.storageUri` (VS Code's own
+ * hidden, per-workspace storage - not visible in the repo, not something
+ * `ls`/`git status` shows) to a plain, repo-local, gitignored `.proof/`
+ * directory. `context.storageUri` already survived a window
+ * reload/reopen (`extension.ts`'s `restoreLastCoverage` on activation) -
+ * that was never the problem this solves. This is about visibility: the
+ * user can see the file exists, read it directly, or delete it by hand.
+ */
+export const STORAGE_DIR_NAME = '.proof';
+
+export function resolveStorageRoot(folder: vscode.WorkspaceFolder): vscode.Uri {
+	return vscode.Uri.joinPath(folder.uri, STORAGE_DIR_NAME);
+}
+
+/**
+ * Creates `.proof/` if missing and drops a `*` `.gitignore` inside it the
+ * first time - the directory ignores itself, so this never touches (or
+ * even needs to know about) the workspace's own `.gitignore`.
+ */
+async function ensureStorageRoot(folder: vscode.WorkspaceFolder): Promise<vscode.Uri> {
+	const storageRoot = resolveStorageRoot(folder);
+	await vscode.workspace.fs.createDirectory(storageRoot);
+	const gitignoreUri = vscode.Uri.joinPath(storageRoot, '.gitignore');
+	try {
+		await vscode.workspace.fs.stat(gitignoreUri);
+	} catch {
+		await vscode.workspace.fs.writeFile(gitignoreUri, Buffer.from('*\n', 'utf8'));
+	}
+	return storageRoot;
 }
 
 /** Best-effort: bir koşunun test bazlı/mutasyon sonucunu diske yazamamak koşunun kendisini başarısız saymaz - sonuç zaten ekranda, yalnızca bir sonraki pencere yenilemesinde kaybolur. Sebep Output kanalına gider, kullanıcıyı bir hata diyaloğuyla kesmez. */
-async function writeJsonSnapshot(context: vscode.ExtensionContext, output: vscode.OutputChannel, fileName: string, data: unknown, failureNoun: string): Promise<void> {
-	const storageRoot = context.storageUri;
-	if (!storageRoot) {
-		return;
-	}
+async function writeJsonSnapshot(folder: vscode.WorkspaceFolder, output: vscode.OutputChannel, fileName: string, data: unknown, failureNoun: string): Promise<void> {
 	try {
-		await vscode.workspace.fs.createDirectory(storageRoot);
+		const storageRoot = await ensureStorageRoot(folder);
 		const outUri = vscode.Uri.joinPath(storageRoot, fileName);
 		await fs.promises.writeFile(outUri.fsPath, JSON.stringify(data), 'utf8');
 	} catch (e) {
-		output.appendLine(`coverdict: ${failureNoun} kalıcı depolamaya yazılamadı (pencere yenilenince kaybolur): ${(e as Error).message}`);
+		output.appendLine(`Proof: could not write ${failureNoun} to persistent storage (will be lost on window reload): ${(e as Error).message}`);
 	}
 }
 
@@ -101,11 +131,10 @@ async function writeJsonSnapshot(context: vscode.ExtensionContext, output: vscod
  * (`explorerBadges`) artık tamamen bizim çizdiğimiz, tam kontrolümüzde iki
  * ayrı yüzey - native Test Coverage API'sinin "addCoverage sonrası hangi
  * yüzeyin çizileceğine VS Code karar verir" kısıtı yok (bkz. plan). Her
- * ikisi de `coverdict.show.*` ayarlarına göre `paintCoverage`'da bağımsız
+ * ikisi de `proof.show.*` ayarlarına göre `paintCoverage`'da bağımsız
  * açılıp kapanıyor.
  */
 export interface CoverageSinks {
-	context: vscode.ExtensionContext;
 	gutterTypes: GutterDecorationTypes;
 	explorerBadges: ExplorerBadgeProvider;
 	statusBarItem: vscode.StatusBarItem;
@@ -124,16 +153,16 @@ export interface CoverageSinks {
 	mutationTreeView: vscode.TreeView<MutationNode>;
 }
 
-export function registerAnalyzeCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
-	return vscode.commands.registerCommand('coverdict.analyze', () => runAnalyze(context, output, sinks));
+export function registerAnalyzeCommand(output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
+	return vscode.commands.registerCommand('proof.analyze', () => runAnalyze(output, sinks));
 }
 
 /** Faz 30 (§7.8): kullanıcının "kolay tekrar koş" isteği - her zaman erişilebilir, `runAnalyzeCore`'un içindeki "rapor yok, testleri koşalım mı?" teklifinden bağımsız olarak. Maven başarılıysa Hızlı Tarama'yı otomatik tetikler - tek eylem gibi hissettiren şey bu. */
-export function registerRunTestsCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
-	return vscode.commands.registerCommand('coverdict.runTests', async () => {
+export function registerRunTestsCommand(output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
+	return vscode.commands.registerCommand('proof.runTests', async () => {
 		const folder = vscode.workspace.workspaceFolders?.[0];
 		if (!folder) {
-			vscode.window.showErrorMessage('coverdict: önce bir klasör açın.');
+			vscode.window.showErrorMessage('Proof: open a folder first.');
 			return;
 		}
 		// Faz 31: prefer this window's own in-memory scan (exact, no prompt) -
@@ -166,11 +195,11 @@ export function registerRunTestsCommand(context: vscode.ExtensionContext, output
 		}
 		const result = await runTestsTask(folder, output, moduleRoots);
 		if (result?.success) {
-			await runAnalyze(context, output, sinks);
+			await runAnalyze(output, sinks);
 		} else if (result && !result.success) {
 			const interpretation = interpretMavenFailure(result.capturedOutput);
-			const reasonSuffix = interpretation ? ` Sebep: ${interpretation.detail}` : ' Ayrıntı için terminaldeki çıktıya bakın.';
-			vscode.window.showErrorMessage(`coverdict: Maven başarısız oldu.${reasonSuffix}`);
+			const reasonSuffix = interpretation ? ` Reason: ${interpretation.detail}` : ' See the terminal output for detail.';
+			vscode.window.showErrorMessage(`Proof: Maven failed.${reasonSuffix}`);
 		}
 		sinks.runView.refresh();
 	});
@@ -192,35 +221,35 @@ export function moduleRootsFromBoundModules(boundModules: readonly { root: strin
 }
 
 /** F3: a diff-mode run with --per-test-report, superset of the plain scan (still paints coverage with the same fileCoverage data). */
-export function registerAnalyzePerTestCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
-	return vscode.commands.registerCommand('coverdict.analyzePerTest', () => runAnalyzePerTest(context, output, sinks));
+export function registerAnalyzePerTestCommand(output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
+	return vscode.commands.registerCommand('proof.analyzePerTest', () => runAnalyzePerTest(output, sinks));
 }
 
 /** F4: toggles both surfaces together for the last analyze run's data - no re-scan, just republish or clear what is already in model/store. */
 export function registerToggleCoverageCommand(sinks: CoverageSinks): vscode.Disposable {
-	return vscode.commands.registerCommand('coverdict.toggleCoverage', () => toggleCoverage(sinks));
+	return vscode.commands.registerCommand('proof.toggleCoverage', () => toggleCoverage(sinks));
 }
 
 /** Faz 14b: diff'siz L2 kanıtı, tek bir açık dosya için (`--per-test-target`, Faz 14a). */
-export function registerPerTestForFileCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
-	return vscode.commands.registerCommand('coverdict.perTestForFile', () => runPerTestForFile(context, output, sinks));
+export function registerPerTestForFileCommand(output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
+	return vscode.commands.registerCommand('proof.perTestForFile', () => runPerTestForFile(output, sinks));
 }
 
 /** Faz 31: diff hiç hedef bulamadığında Satır → Testler'in sunduğu "yine de tüm modülü tara" kurtarma eylemi. */
-export function registerPerTestForModuleAllCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
-	return vscode.commands.registerCommand('coverdict.perTestForModuleAll', () => runAnalyzePerTestAll(context, output, sinks));
+export function registerPerTestForModuleAllCommand(output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
+	return vscode.commands.registerCommand('proof.perTestForModuleAll', () => runAnalyzePerTestAll(output, sinks));
 }
 
 /** Faz 20: mutasyon testi - tek sınıf (önerilen) ve modül geneli (onay arkasında). */
-export function registerMutationCommands(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable[] {
+export function registerMutationCommands(output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable[] {
 	return [
-		vscode.commands.registerCommand('coverdict.mutationForFile', () => runMutationForFile(context, output, sinks)),
-		vscode.commands.registerCommand('coverdict.mutationForModule', () => runMutationForModule(context, output, sinks)),
+		vscode.commands.registerCommand('proof.mutationForFile', () => runMutationForFile(output, sinks)),
+		vscode.commands.registerCommand('proof.mutationForModule', () => runMutationForModule(output, sinks)),
 		// Faz 31: diff hiç hedef bulamadığında Mutasyon görünümünün sunduğu "yine de tüm modülü tara" kurtarma eylemi.
-		vscode.commands.registerCommand('coverdict.mutationForModuleAll', () => runMutationForModuleAll(context, output, sinks)),
-		vscode.commands.registerCommand('coverdict.mutationView.toggleSurvivorsOnly', () => {
+		vscode.commands.registerCommand('proof.mutationForModuleAll', () => runMutationForModuleAll(output, sinks)),
+		vscode.commands.registerCommand('proof.mutationView.toggleSurvivorsOnly', () => {
 			const on = sinks.mutationView.toggleSurvivorsOnly();
-			vscode.window.setStatusBarMessage(on ? 'coverdict: sadece hayatta kalan mutantlar' : 'coverdict: bütün mutantlar', 2000);
+			vscode.window.setStatusBarMessage(on ? 'Proof: survived mutants only' : 'Proof: all mutants', 2000);
 		}),
 	];
 }
@@ -237,23 +266,23 @@ export function registerMutationCommands(context: vscode.ExtensionContext, outpu
  * yeni bir (ve dar kapsamlı) analiz değil. Şimdi bu komut CLI'ı hiç
  * `analyze` ile çağırmıyor - `verdict-current.json`'ı (her taramadan
  * sonra zaten diskte) `pertest-current.json`/`mutation-current.json`
- * varsa onlarla birleştirip yeni `coverdict render-html` komutuna
+ * varsa onlarla birleştirip yeni `proof-java render-html` komutuna
  * veriyor (`RenderHtmlCommand`, D-78) - sıfır yeniden-analiz maliyeti,
  * kenar çubuğu state'ine hiç dokunmuyor, sonuç kanıtlanabilir şekilde
  * ekranda zaten görünenin ta kendisi.
  */
-export function registerExportReportCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel): vscode.Disposable {
-	return vscode.commands.registerCommand('coverdict.exportReport', () => runExportReport(context, output));
+export function registerExportReportCommand(output: vscode.OutputChannel): vscode.Disposable {
+	return vscode.commands.registerCommand('proof.exportReport', () => runExportReport(output));
 }
 
-/** Çalıştır panelinin başlık çubuğundaki dişli ikonu - `coverdict.*` ayarlarına, Ayarlar sekmesinde "coverdict" ile filtrelenmiş halde götürür. Kullanıcının kendi klasörüne özgü ayarları görmesi için workspace scope'unda açılır. */
+/** Çalıştır panelinin başlık çubuğundaki dişli ikonu - `proof.*` ayarlarına, Ayarlar sekmesinde "proof-java" ile filtrelenmiş halde götürür. Kullanıcının kendi klasörüne özgü ayarları görmesi için workspace scope'unda açılır. */
 export function registerOpenSettingsCommand(): vscode.Disposable {
-	return vscode.commands.registerCommand('coverdict.openSettings', () => {
-		void vscode.commands.executeCommand('workbench.action.openSettings', '@ext:coverdict.coverdict-vscode');
+	return vscode.commands.registerCommand('proof.openSettings', () => {
+		void vscode.commands.executeCommand('workbench.action.openSettings', '@ext:metonya.proof-vscode');
 	});
 }
 
-/** `context.storageUri` altındaki bir anlık görüntüyü okur; dosya yoksa (o kanıt hiç toplanmamış) veya bozuksa `undefined` döner - hangisi olduğu çağıranı ilgilendirmiyor, ikisinde de o blok birleştirilmeden atlanır. */
+/** `.proof/` altındaki bir anlık görüntüyü okur; dosya yoksa (o kanıt hiç toplanmamış) veya bozuksa `undefined` döner - hangisi olduğu çağıranı ilgilendirmiyor, ikisinde de o blok birleştirilmeden atlanır. */
 async function readJsonSnapshotIfPresent(storageRoot: vscode.Uri, fileName: string): Promise<Record<string, unknown> | undefined> {
 	try {
 		const raw = await fs.promises.readFile(vscode.Uri.joinPath(storageRoot, fileName).fsPath, 'utf8');
@@ -263,21 +292,17 @@ async function readJsonSnapshotIfPresent(storageRoot: vscode.Uri, fileName: stri
 	}
 }
 
-async function runExportReport(context: vscode.ExtensionContext, output: vscode.OutputChannel): Promise<void> {
+async function runExportReport(output: vscode.OutputChannel): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
-		vscode.window.showErrorMessage('coverdict: önce bir klasör açın.');
+		vscode.window.showErrorMessage('Proof: open a folder first.');
 		return;
 	}
-	const storageRoot = context.storageUri;
-	if (!storageRoot) {
-		vscode.window.showErrorMessage('coverdict: bu pencerede workspace depolaması yok (bir klasör yerine tek dosya mı açık?) - rapor dışa aktarılamaz.');
-		return;
-	}
+	const storageRoot = resolveStorageRoot(folder);
 
 	const verdict = await readJsonSnapshotIfPresent(storageRoot, 'verdict-current.json');
 	if (!verdict) {
-		vscode.window.showErrorMessage('coverdict: henüz bir tarama yok - önce "coverdict: Hızlı Tarama" (veya Derin Tarama/Mutasyon Testi) çalıştırın.');
+		vscode.window.showErrorMessage('Proof: no scan yet - run "Proof: Quick Scan" first (or Deep Scan/Mutation Testing).');
 		return;
 	}
 
@@ -296,34 +321,42 @@ async function runExportReport(context: vscode.ExtensionContext, output: vscode.
 
 	const jarPath = locateJar(folder);
 	if (!jarPath) {
-		void offerToOpenSetting('coverdict: coverdict.jar bulunamadı. coverdict.jarPath ayarını yapın veya coverdict-cli/target/coverdict.jar konumunda bir tane derleyin.', 'coverdict.jarPath');
+		void offerToOpenSetting('Proof: proof-java.jar not found. Set the proof.jarPath setting, or build one at proof-java-cli/target/proof-java.jar.', 'proof.jarPath');
 		return;
 	}
 
 	const target = await vscode.window.showSaveDialog({
-		defaultUri: vscode.Uri.joinPath(folder.uri, 'coverdict-report.html'),
+		defaultUri: vscode.Uri.joinPath(folder.uri, 'proof-report.html'),
 		filters: { HTML: ['html'] },
-		saveLabel: 'Dışa Aktar',
-		title: 'coverdict: Raporu Dışa Aktar',
+		saveLabel: 'Export',
+		title: 'Proof: Export Report',
 	});
 	if (!target) {
 		return;
 	}
 
+	// Faz 34: perTest/mutation here may be our own already-resolved snapshot
+	// (plain string test ids, from readJsonSnapshotIfPresent above) rather
+	// than proof-java's own D-86 wire shape (testIds + numeric indexes) -
+	// render-html's own reader expects the latter. Re-intern before writing,
+	// or the CLI fails with a Jackson "not numeric" error reading this file.
+	reinternPerTestIds(verdict.perTest);
+	reinternMutationTestIds(verdict.mutation);
+
 	const composedUri = vscode.Uri.joinPath(storageRoot, 'export-verdict.json');
 	await vscode.workspace.fs.writeFile(composedUri, Buffer.from(JSON.stringify(verdict), 'utf8'));
 
-	const javaExecutable = vscode.workspace.getConfiguration('coverdict', folder).get<string>('javaExecutable') || 'java';
+	const javaExecutable = vscode.workspace.getConfiguration('proof', folder).get<string>('javaExecutable') || 'java';
 	const args = ['render-html', '--in', composedUri.fsPath, '--out', target.fsPath];
-	output.appendLine(`coverdict: java -jar ${jarPath} ${args.join(' ')}`);
+	output.appendLine(`Proof: java -jar ${jarPath} ${args.join(' ')}`);
 
 	const result = await vscode.window.withProgress(
-		{ location: vscode.ProgressLocation.Notification, title: 'coverdict: rapor dışa aktarılıyor' },
+		{ location: vscode.ProgressLocation.Notification, title: 'Proof: exporting report' },
 		async () => {
 			try {
 				return await run({ javaExecutable, jarPath, args, env: resolveWorkspaceEnv(folder) }).result;
 			} catch (e) {
-				vscode.window.showErrorMessage(`coverdict: "${javaExecutable}" çalıştırılamadı: ${(e as Error).message}`);
+				vscode.window.showErrorMessage(`Proof: couldn't run "${javaExecutable}": ${(e as Error).message}`);
 				return undefined;
 			}
 		},
@@ -333,12 +366,12 @@ async function runExportReport(context: vscode.ExtensionContext, output: vscode.
 	}
 	output.appendLine(result.stdout);
 	if (result.exitCode !== 0) {
-		vscode.window.showErrorMessage(`coverdict: rapor oluşturulamadı (çıkış kodu ${result.exitCode}). ${result.stderr.trim()}`);
+		vscode.window.showErrorMessage(`Proof: report could not be generated (exit code ${result.exitCode}). ${result.stderr.trim()}`);
 		return;
 	}
 
-	const choice = await vscode.window.showInformationMessage(`coverdict: rapor dışa aktarıldı: ${target.fsPath}`, 'Aç');
-	if (choice === 'Aç') {
+	const choice = await vscode.window.showInformationMessage(`Proof: report exported: ${target.fsPath}`, 'Open');
+	if (choice === 'Open') {
 		void vscode.env.openExternal(target);
 	}
 }
@@ -355,7 +388,7 @@ async function runExportReport(context: vscode.ExtensionContext, output: vscode.
  */
 export function registerQualityMutationBridgeCommands(sinks: CoverageSinks): vscode.Disposable[] {
 	return [
-		vscode.commands.registerCommand('coverdict.qualityView.showInMutation', (node: unknown) => {
+		vscode.commands.registerCommand('proof.qualityView.showInMutation', (node: unknown) => {
 			const finding = (node as { kind?: string; finding?: Finding } | undefined)?.finding;
 			const parsed = finding?.productionMethod ? parseProductionMethod(finding.productionMethod) : undefined;
 			if (!parsed) {
@@ -363,26 +396,26 @@ export function registerQualityMutationBridgeCommands(sinks: CoverageSinks): vsc
 			}
 			const target = findMutationBridgeTarget(parsed.className, parsed.methodName, parsed.methodDescription);
 			if (!target) {
-				vscode.window.showInformationMessage("coverdict: bu metot için güncel mutasyon verisi yok - önce bu sınıf için Mutasyon Testi çalıştırın.");
+				vscode.window.showInformationMessage("Proof: no current mutation data for this method - run Mutation Testing for this class first.");
 				return;
 			}
 			void sinks.mutationTreeView.reveal(target, { select: true, focus: true, expand: true });
 		}),
-		vscode.commands.registerCommand('coverdict.mutationView.showInQuality', (node: unknown) => {
+		vscode.commands.registerCommand('proof.mutationView.showInQuality', (node: unknown) => {
 			const n = node as MutationNode | undefined;
 			if (n?.kind !== 'method') {
 				return;
 			}
 			const target = findQualityBridgeTarget(productionMethodKey(n.className, n.method.methodName, n.method.methodDescription));
 			if (!target) {
-				vscode.window.showInformationMessage("coverdict: bu metot için Test Kalitesi'nde bir PSEUDO_TESTED_METHOD bulgusu yok.");
+				vscode.window.showInformationMessage("Proof: no PSEUDO_TESTED_METHOD finding for this method in Test Quality.");
 				return;
 			}
 			void sinks.qualityTreeView.reveal(target, { select: true, focus: true, expand: true });
 		}),
 		// Faz 24 (§7.6 madde 6): "Satır → Testler"deki bir INCONCLUSIVE test'ten,
 		// o testin gerçekten öldürdüğü mutantın metoduna.
-		vscode.commands.registerCommand('coverdict.lineTestsView.showInMutation', (node: unknown) => {
+		vscode.commands.registerCommand('proof.lineTestsView.showInMutation', (node: unknown) => {
 			const n = node as { kind?: string; rawTestId?: string } | undefined;
 			if (n?.kind !== 'prodTest' || !n.rawTestId) {
 				return;
@@ -396,12 +429,12 @@ export function registerQualityMutationBridgeCommands(sinks: CoverageSinks): vsc
 				? findKillContribution(mutationState.mutation, identity.className, identity.methodName)
 				: undefined;
 			if (!contribution) {
-				vscode.window.showInformationMessage('coverdict: bu test için mutasyon kanıtı yok - önce Mutasyon Testi çalıştırın.');
+				vscode.window.showInformationMessage('Proof: no mutation evidence for this test - run Mutation Testing first.');
 				return;
 			}
 			const target = findMutationBridgeTarget(contribution.className, contribution.methodName, contribution.methodDescription);
 			if (!target) {
-				vscode.window.showInformationMessage("coverdict: mutasyon verisi güncel değil - bu sınıf için Mutasyon Testi'ni tekrar çalıştırın.");
+				vscode.window.showInformationMessage("Proof: mutation data isn't current - re-run Mutation Testing for this class.");
 				return;
 			}
 			void sinks.mutationTreeView.reveal(target, { select: true, focus: true, expand: true });
@@ -412,7 +445,7 @@ export function registerQualityMutationBridgeCommands(sinks: CoverageSinks): vsc
 		// `killingTests`'i boş olduğu için tek kaynak perTest verisi -
 		// "Satır → Testler" zaten o satırın tüm kapsayan testlerini oracle
 		// kaliteleriyle birlikte gösteriyor, burada yeniden icat edilmiyor.
-		vscode.commands.registerCommand('coverdict.mutationView.showInLineTests', async (node: unknown) => {
+		vscode.commands.registerCommand('proof.mutationView.showInLineTests', async (node: unknown) => {
 			const n = node as MutationNode | undefined;
 			if (n?.kind !== 'mutant') {
 				return;
@@ -420,7 +453,7 @@ export function registerQualityMutationBridgeCommands(sinks: CoverageSinks): vsc
 			const state = getCoverageState();
 			const filePath = state?.fileCoverage ? buildProductionClassIndex(state.fileCoverage, productionSourceRoots(state.modules)).byClassName.get(n.className) : undefined;
 			if (!state || !filePath) {
-				vscode.window.showInformationMessage('coverdict: bu sınıfın dosyası bilinmiyor - önce fileCoverage üreten bir tarama çalıştırın.');
+				vscode.window.showInformationMessage('Proof: this class\'s file is unknown - run a scan that produces fileCoverage first.');
 				return;
 			}
 			const uri = vscode.Uri.file(toAbsolutePath(state.workspaceRoot, filePath));
@@ -432,7 +465,7 @@ export function registerQualityMutationBridgeCommands(sinks: CoverageSinks): vsc
 			sinks.lineTestsView.setActiveDocument(editor.document);
 			const target = sinks.lineTestsView.nodeForLine(n.mutant.line);
 			if (!target) {
-				vscode.window.showInformationMessage("coverdict: bu satır için test bazlı kanıt yok - Derin Tarama ile toplayın.");
+				vscode.window.showInformationMessage("Proof: no per-test evidence for this line - collect it with Deep Scan.");
 				return;
 			}
 			void sinks.lineTestsTreeView.reveal(target, { select: true, focus: true, expand: true });
@@ -449,31 +482,31 @@ export function registerQualityMutationBridgeCommands(sinks: CoverageSinks): vsc
  */
 export function registerCopyCommands(sinks: CoverageSinks): vscode.Disposable[] {
 	return [
-		vscode.commands.registerCommand('coverdict.copyItem', (node: unknown) => {
+		vscode.commands.registerCommand('proof.copyItem', (node: unknown) => {
 			const text = describeNode(node);
 			if (text) {
 				void vscode.env.clipboard.writeText(text);
-				vscode.window.setStatusBarMessage('coverdict: panoya kopyalandı', 2000);
+				vscode.window.setStatusBarMessage('Proof: copied to clipboard', 2000);
 			}
 		}),
 		// Faz 19: iki ayrı gruplama butonu yerine tek bir geçiş - tıkla,
 		// diğer görünüme geçer; hangi modda olduğun durum çubuğu mesajında
 		// söylenir (ikonun kendisi VS Code'da anlık değiştirilemiyor).
-		vscode.commands.registerCommand('coverdict.qualityView.toggleGrouping', () => {
+		vscode.commands.registerCommand('proof.qualityView.toggleGrouping', () => {
 			const next = sinks.qualityView.getGrouping() === 'rule' ? 'file' : 'rule';
 			sinks.qualityView.setGrouping(next);
-			vscode.window.setStatusBarMessage(`coverdict: Test Kalitesi ${next === 'rule' ? 'kurala' : 'dosyaya'} göre gruplandı`, 2000);
+			vscode.window.setStatusBarMessage(`Proof: Test Quality grouped by ${next === 'rule' ? 'rule' : 'file'}`, 2000);
 		}),
-		vscode.commands.registerCommand('coverdict.lineTestsView.toggleProblemsOnly', () => {
+		vscode.commands.registerCommand('proof.lineTestsView.toggleProblemsOnly', () => {
 			const on = sinks.lineTestsView.toggleProblemsOnly();
-			vscode.window.setStatusBarMessage(on ? 'coverdict: sadece sorunlu satırlar' : 'coverdict: bütün satırlar', 2000);
+			vscode.window.setStatusBarMessage(on ? 'Proof: problem lines only' : 'Proof: all lines', 2000);
 		}),
-		vscode.commands.registerCommand('coverdict.qualityView.filter', async () => {
+		vscode.commands.registerCommand('proof.qualityView.filter', async () => {
 			const filter = await vscode.window.showInputBox({
-				title: 'Test Kalitesi bulgularını filtrele',
-				prompt: 'Kural adı, dosya yolu, test metodu veya mesaj içinde arar. Filtreyi kaldırmak için boş bırakın.',
+				title: 'Filter Test Quality findings',
+				prompt: 'Searches the rule name, file path, test method, or message. Leave empty to clear the filter.',
 				value: sinks.qualityView.getFilter(),
-				placeHolder: 'örn. doğrulama, Calculator, TAUTOLOGICAL',
+				placeHolder: 'e.g. assertion, Calculator, TAUTOLOGICAL',
 			});
 			if (filter !== undefined) {
 				sinks.qualityView.setFilter(filter);
@@ -493,7 +526,7 @@ export function registerCopyCommands(sinks: CoverageSinks): vscode.Disposable[] 
  * than guessing at a representation (hard rule 3a) - the button just does
  * nothing for it, same as today, instead of copying something wrong.
  *
- * Faz 31 follow-up, real user report: still silent on `coverdict.runView`'s
+ * Faz 31 follow-up, real user report: still silent on `proof.runView`'s
  * own items - `RunTreeProvider`'s `RunItem` (`ui/treeViews/runView.ts`) is
  * not a `{kind, ...}` data node at all, it *is* a `vscode.TreeItem`
  * subclass with a real `label`/`description` already set. The generic
@@ -561,7 +594,7 @@ function describeTestOrMutationTreeNode(n: DescribableNode): string | undefined 
 /** `lineTestsView.ts`-only node kinds. */
 function describeLineTestsNode(n: DescribableNode): string | undefined {
 	if (n.kind === 'prodLine' && n.startLine !== undefined) {
-		return n.startLine === n.endLine ? `Satır ${n.startLine}` : `Satır ${n.startLine}-${n.endLine}`;
+		return n.startLine === n.endLine ? `Line ${n.startLine}` : `Line ${n.startLine}-${n.endLine}`;
 	}
 	if (n.kind === 'testMethod' && n.methodName) {
 		return `${n.methodName}()`;
@@ -615,7 +648,7 @@ export function analysisResultFrom(verdict: VerdictDocument): AnalysisResult {
  * `fileCoverage` is present), Problems panel findings (independent of
  * `fileCoverage` - they come from every run), and all three sidebar tree
  * views. Used both by a fresh CLI run and by `restoreLastCoverage`/a
- * `coverdict.show.*` setting change reading the same state back - every
+ * `proof.show.*` setting change reading the same state back - every
  * path renders through this one function so they can never diverge.
  */
 export function publishAnalysis(sinks: CoverageSinks, workspaceRoot: string, result: AnalysisResult): void {
@@ -640,7 +673,7 @@ export function publishAnalysis(sinks: CoverageSinks, workspaceRoot: string, res
 function toggleCoverage(sinks: CoverageSinks): void {
 	const state = getCoverageState();
 	if (!state?.fileCoverage) {
-		vscode.window.showInformationMessage('coverdict: henüz coverage verisi yok - önce "coverdict: Analiz Et" komutunu çalıştırın.');
+		vscode.window.showInformationMessage('Proof: no coverage data yet - run the "Proof: Analyze" command first.');
 		return;
 	}
 
@@ -657,10 +690,10 @@ function toggleCoverage(sinks: CoverageSinks): void {
 	sinks.runView.refresh();
 }
 
-async function runAnalyze(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
+async function runAnalyze(output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
-		vscode.window.showErrorMessage('coverdict: önce bir klasör açın.');
+		vscode.window.showErrorMessage('Proof: open a folder first.');
 		return;
 	}
 	const diffMode = readDiffMode(folder);
@@ -668,7 +701,7 @@ async function runAnalyze(context: vscode.ExtensionContext, output: vscode.Outpu
 		return;
 	}
 
-	const parsed = await runAnalyzeCore(context, output, folder, diffMode);
+	const parsed = await runAnalyzeCore(output, folder, diffMode);
 	if (!parsed) {
 		return;
 	}
@@ -680,10 +713,10 @@ async function runAnalyze(context: vscode.ExtensionContext, output: vscode.Outpu
  * tarafından reddedilir). Aynı fileCoverage verisiyle kapsamayı da boyar
  * (tek CLI çağrısı, üst küme koşu) ve panel için L2 kanıtını saklar.
  */
-async function runAnalyzePerTest(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
+async function runAnalyzePerTest(output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
-		vscode.window.showErrorMessage('coverdict: önce bir klasör açın.');
+		vscode.window.showErrorMessage('Proof: open a folder first.');
 		return;
 	}
 	const diffMode = readDiffMode(folder);
@@ -692,30 +725,39 @@ async function runAnalyzePerTest(context: vscode.ExtensionContext, output: vscod
 	}
 	if (diffMode.kind === 'no-vcs') {
 		vscode.window.showErrorMessage(
-			'coverdict: L2 kanıtı sadece değişen dosyaları hedefleyebilir; no-vcs\'te "değişen dosya" diye bir kavram yok, bu yüzden test bazlı analiz çalışmaz. '
-			+ 'coverdict.diffMode ayarını "uncommitted" veya "base" yapın.',
+			'Proof: L2 evidence can only target changed files; there is no "changed file" concept in no-vcs, so per-test analysis does not work. '
+			+ 'Set proof.diffMode to "uncommitted" or "base".',
 		);
 		return;
 	}
 
-	const parsed = await runAnalyzeCore(context, output, folder, diffMode, {
+	const parsed = await runAnalyzeCore(output, folder, diffMode, {
 		perTest: { timeoutSeconds: readPerTestTimeout(folder) },
-		progressTitle: 'coverdict: derin tarama',
+		progressTitle: 'proof-java: derin tarama',
 	});
 	if (!parsed) {
 		return;
 	}
 
 	publishAnalysis(sinks, folder.uri.fsPath, analysisResultFrom(parsed));
-	setPerTestState({ perTest: parsed.perTest, warnings: parsed.warnings });
+	const ranAtMs = Date.now();
+	// Faz 34: diff-scoped, same convention as runMutationForModule's own
+	// diff-scoped call - the CLI picks the targets, we never asked for a
+	// specific list, so an empty array means "diff-derived" to targetSummary().
+	setPerTestState({ perTest: parsed.perTest, warnings: parsed.warnings, targets: [], ranAt: ranAtMs });
 	if (parsed.perTest) {
 		// Faz 28 (§7.5b): yalnızca blok gerçekten varsa yazılır - sonraki bir
 		// Hızlı Tarama ya da Mutasyon Testi bu bloğu taşımayan bir
 		// verdict-current.json yazınca bu dosya etkilenmeden kalır.
-		const snapshot: PerTestSnapshot = { perTest: parsed.perTest, warnings: parsed.warnings };
-		await writeJsonSnapshot(context, output, PERTEST_STORAGE_FILE, snapshot, 'test bazlı kanıt');
+		const snapshot: PerTestSnapshot = { perTest: parsed.perTest, warnings: parsed.warnings, targets: [], ranAtMs };
+		await writeJsonSnapshot(folder, output, PERTEST_STORAGE_FILE, snapshot, 'per-test evidence');
+		// Faz 33: same reasoning as runMutation's extra refresh - the Run
+		// panel's Deep Scan row freshness text reads this file's mtime, and
+		// publishAnalysis() above already fired its own runView refresh
+		// before this write happened.
+		sinks.runView.refresh();
 	} else {
-		vscode.window.showWarningMessage('coverdict: bu koşuda test bazlı (per-test) kanıt yok - PER_TEST_* uyarıları için çıktı kanalını kontrol edin.');
+		vscode.window.showWarningMessage('Proof: no per-test evidence for this run - check the output channel for PER_TEST_* warnings.');
 	}
 	revealLineTestsView(sinks);
 }
@@ -729,15 +771,15 @@ async function runAnalyzePerTest(context: vscode.ExtensionContext, output: vscod
  * mod seçilirse seçilsin sonuç aynıdır, sadece "yeni kod" hesaplaması
  * etkilenir.
  */
-async function runPerTestForFile(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
+async function runPerTestForFile(output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
-		vscode.window.showErrorMessage('coverdict: önce bir klasör açın.');
+		vscode.window.showErrorMessage('Proof: open a folder first.');
 		return;
 	}
 	const editor = vscode.window.activeTextEditor;
 	if (editor?.document.languageId !== 'java') {
-		vscode.window.showErrorMessage('coverdict: bu sınıf için test bazlı kanıt toplamak üzere bir Java dosyası açın.');
+		vscode.window.showErrorMessage('Proof: open a Java file to collect per-test evidence for its class.');
 		return;
 	}
 	const diffMode = readDiffMode(folder);
@@ -747,21 +789,27 @@ async function runPerTestForFile(context: vscode.ExtensionContext, output: vscod
 
 	const fileName = path.basename(editor.document.fileName, '.java');
 	const className = detectClassName(editor.document.getText(), fileName);
-	const parsed = await runAnalyzeCore(context, output, folder, diffMode, {
+	const parsed = await runAnalyzeCore(output, folder, diffMode, {
 		perTest: { targets: [{ filePath: editor.document.fileName, fqcn: className }], timeoutSeconds: readPerTestTimeout(folder) },
-		progressTitle: `coverdict: ${className.split('.').pop()} için test kanıtı`,
+		progressTitle: `Proof: test evidence for ${className.split('.').pop()}`,
 	});
 	if (!parsed) {
 		return;
 	}
 
 	publishAnalysis(sinks, folder.uri.fsPath, analysisResultFrom(parsed));
-	setPerTestState({ perTest: parsed.perTest, warnings: parsed.warnings });
+	const ranAtMs = Date.now();
+	setPerTestState({ perTest: parsed.perTest, warnings: parsed.warnings, targets: [className], ranAt: ranAtMs });
 	if (parsed.perTest) {
-		const snapshot: PerTestSnapshot = { perTest: parsed.perTest, warnings: parsed.warnings };
-		await writeJsonSnapshot(context, output, PERTEST_STORAGE_FILE, snapshot, 'test bazlı kanıt');
+		const snapshot: PerTestSnapshot = { perTest: parsed.perTest, warnings: parsed.warnings, targets: [className], ranAtMs };
+		await writeJsonSnapshot(folder, output, PERTEST_STORAGE_FILE, snapshot, 'per-test evidence');
+		// Faz 33: same reasoning as runMutation's extra refresh - the Run
+		// panel's Deep Scan row freshness text reads this file's mtime, and
+		// publishAnalysis() above already fired its own runView refresh
+		// before this write happened.
+		sinks.runView.refresh();
 	} else {
-		vscode.window.showWarningMessage(`coverdict: ${className} için test bazlı kanıt yok - PER_TEST_* uyarıları için çıktı kanalını kontrol edin.`);
+		vscode.window.showWarningMessage(`Proof: no per-test evidence for ${className} - check the output channel for PER_TEST_* warnings.`);
 	}
 	revealLineTestsView(sinks);
 }
@@ -773,19 +821,19 @@ async function runPerTestForFile(context: vscode.ExtensionContext, output: vscod
  * ayrı bir komut ve ayrı bir onayın arkasında (`runMutationForModule`),
  * çünkü büyük bir modülde 70-90 dakikayı bulabiliyor.
  */
-async function runMutationForFile(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
+async function runMutationForFile(output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
-		vscode.window.showErrorMessage('coverdict: önce bir klasör açın.');
+		vscode.window.showErrorMessage('Proof: open a folder first.');
 		return;
 	}
 	const editor = vscode.window.activeTextEditor;
 	if (editor?.document.languageId !== 'java') {
-		vscode.window.showErrorMessage('coverdict: mutasyon testi çalıştırmak için bir Java dosyası açın.');
+		vscode.window.showErrorMessage('Proof: open a Java file to run mutation testing.');
 		return;
 	}
 	const className = detectClassName(editor.document.getText(), path.basename(editor.document.fileName, '.java'));
-	await runMutation(context, output, sinks, folder, [{ filePath: editor.document.fileName, fqcn: className }], `coverdict: ${className.split('.').pop()} mutasyon testi`);
+	await runMutation(output, sinks, folder, [{ filePath: editor.document.fileName, fqcn: className }], `proof-java: ${className.split('.').pop()} mutasyon testi`);
 }
 
 /**
@@ -794,26 +842,26 @@ async function runMutationForFile(context: vscode.ExtensionContext, output: vsco
  * bilerek girmeli. Onay metni bütçeyi de söyler, çünkü bütçe aşılırsa
  * sonuç kısmi kalır.
  */
-async function runMutationForModule(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
+async function runMutationForModule(output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
-		vscode.window.showErrorMessage('coverdict: önce bir klasör açın.');
+		vscode.window.showErrorMessage('Proof: open a folder first.');
 		return;
 	}
 	const timeout = readMutationTimeout(folder);
 	const choice = await vscode.window.showWarningMessage(
-		'Mutasyon testi tüm modül için çalıştırılacak.',
+		'Mutation testing will run for the entire module.',
 		{
 			modal: true,
-			detail: `Bu koşu uzun sürebilir - büyük bir modülde bir saati aşabilir. Modül başına zaman bütçesi ${timeout} saniye (coverdict.mutationTimeout); aşılırsa koşu durdurulur ve sonuç kısmi kalır.\n\nTek bir sınıf için genelde saniyeler yeterlidir: o dosyada sağ tık → "Bu Sınıf İçin Mutasyon Testi".`,
+			detail: `This run can take a while - potentially over an hour for a large module. The ${timeout}-second setting (proof.mutationTimeout) is not a total budget, it is an "idle" timeout: if this much time passes without a class finishing, the run is stopped; as long as classes keep finishing, it continues regardless of elapsed time. If it stops, results are still shown as partial.\n\nFor a single class, seconds are usually enough: right-click that file -> "Mutation Testing For This Class".`,
 		},
-		'Devam Et',
+		'Continue',
 	);
-	if (choice !== 'Devam Et') {
+	if (choice !== 'Continue') {
 		return;
 	}
-	// Hedef verilmiyor: CLI diff'teki değişen production sınıflarını hedefler.
-	await runMutation(context, output, sinks, folder, [], 'coverdict: mutasyon testi (modül)');
+	// No target given: the CLI targets the changed production classes in the diff.
+	await runMutation(output, sinks, folder, [], 'Proof: mutation testing (module)');
 }
 
 /**
@@ -842,20 +890,20 @@ export function allProductionTargets(state: NonNullable<ReturnType<typeof getCov
 }
 
 /** Faz 31: diff hiç hedef bulamadığında (`PER_TEST_NO_CHANGED_TARGETS`) Satır → Testler görünümünün sunduğu kurtarma eylemi - diff'ten bağımsız, modüldeki **her** production sınıfı hedeflenir. */
-async function runAnalyzePerTestAll(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
+async function runAnalyzePerTestAll(output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
-		vscode.window.showErrorMessage('coverdict: önce bir klasör açın.');
+		vscode.window.showErrorMessage('Proof: open a folder first.');
 		return;
 	}
 	const state = getCoverageState();
 	if (!state?.fileCoverage) {
-		vscode.window.showErrorMessage('coverdict: önce Hızlı Tara çalıştırın - tüm modülü diff\'siz taramak için production dosya listesi gerekiyor.');
+		vscode.window.showErrorMessage('Proof: run Quick Scan first - scanning the whole module without a diff needs the production file list.');
 		return;
 	}
 	const targets = allProductionTargets(state);
 	if (targets.length === 0) {
-		vscode.window.showErrorMessage('coverdict: bu modülde hedeflenebilecek bir production sınıfı bulunamadı.');
+		vscode.window.showErrorMessage('Proof: no targetable production class found in this module.');
 		return;
 	}
 	const diffMode = readDiffMode(folder);
@@ -863,61 +911,66 @@ async function runAnalyzePerTestAll(context: vscode.ExtensionContext, output: vs
 		return;
 	}
 
-	const parsed = await runAnalyzeCore(context, output, folder, diffMode, {
+	const parsed = await runAnalyzeCore(output, folder, diffMode, {
 		perTest: { targets, timeoutSeconds: readPerTestTimeout(folder) },
-		progressTitle: `coverdict: tüm modül için derin tarama (${targets.length} sınıf)`,
+		progressTitle: `Proof: deep scan for the whole module (${targets.length} classes)`,
 	});
 	if (!parsed) {
 		return;
 	}
 
 	publishAnalysis(sinks, folder.uri.fsPath, analysisResultFrom(parsed));
-	setPerTestState({ perTest: parsed.perTest, warnings: parsed.warnings });
+	const ranAtMs = Date.now();
+	setPerTestState({ perTest: parsed.perTest, warnings: parsed.warnings, targets: targets.map((t) => t.fqcn), ranAt: ranAtMs });
 	if (parsed.perTest) {
-		const snapshot: PerTestSnapshot = { perTest: parsed.perTest, warnings: parsed.warnings };
-		await writeJsonSnapshot(context, output, PERTEST_STORAGE_FILE, snapshot, 'test bazlı kanıt');
+		const snapshot: PerTestSnapshot = { perTest: parsed.perTest, warnings: parsed.warnings, targets: targets.map((t) => t.fqcn), ranAtMs };
+		await writeJsonSnapshot(folder, output, PERTEST_STORAGE_FILE, snapshot, 'per-test evidence');
+		// Faz 33: same reasoning as runMutation's extra refresh - the Run
+		// panel's Deep Scan row freshness text reads this file's mtime, and
+		// publishAnalysis() above already fired its own runView refresh
+		// before this write happened.
+		sinks.runView.refresh();
 	} else {
-		vscode.window.showWarningMessage('coverdict: bu koşuda test bazlı (per-test) kanıt yok - PER_TEST_* uyarıları için çıktı kanalını kontrol edin.');
+		vscode.window.showWarningMessage('Proof: no per-test evidence for this run - check the output channel for PER_TEST_* warnings.');
 	}
 	revealLineTestsView(sinks);
 }
 
 /** Faz 31: `runMutationForModule`'ün diff'siz karşılığı - diff hiç hedef bulamadığında (`MUTATION_NO_CHANGED_TARGETS`) Mutasyon görünümünün sunduğu kurtarma eylemi. Diff-tabanlı koşudan bile daha pahalı olabileceği için (değişmemiş sınıflar da dahil) aynı onay modalı, bütçe uyarısı zaten söylenerek. */
-async function runMutationForModuleAll(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
+async function runMutationForModuleAll(output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
-		vscode.window.showErrorMessage('coverdict: önce bir klasör açın.');
+		vscode.window.showErrorMessage('Proof: open a folder first.');
 		return;
 	}
 	const state = getCoverageState();
 	if (!state?.fileCoverage) {
-		vscode.window.showErrorMessage('coverdict: önce Hızlı Tara çalıştırın - tüm modülü diff\'siz taramak için production dosya listesi gerekiyor.');
+		vscode.window.showErrorMessage('Proof: run Quick Scan first - scanning the whole module without a diff needs the production file list.');
 		return;
 	}
 	const targets = allProductionTargets(state);
 	if (targets.length === 0) {
-		vscode.window.showErrorMessage('coverdict: bu modülde hedeflenebilecek bir production sınıfı bulunamadı.');
+		vscode.window.showErrorMessage('Proof: no targetable production class found in this module.');
 		return;
 	}
 
 	const timeout = readMutationTimeout(folder);
 	const choice = await vscode.window.showWarningMessage(
-		`Mutasyon testi TÜM modül için çalıştırılacak (${targets.length} sınıf, diff'ten bağımsız).`,
+		`Mutation testing will run for the ENTIRE module (${targets.length} classes, independent of the diff).`,
 		{
 			modal: true,
-			detail: `Bu koşu diff-tabanlı "modül geneli" koşudan bile daha uzun sürebilir - değişmemiş sınıflar da dahil. Sınıf başına zaman bütçesi ${timeout} saniye (coverdict.mutationTimeout); aşılırsa koşu durdurulur ve sonuç kısmi kalır.`,
+			detail: `This run can take even longer than the diff-based "whole module" run - unchanged classes are included too. Per-class time budget is ${timeout} seconds (proof.mutationTimeout); if exceeded, the run is stopped and results stay partial.`,
 		},
-		'Devam Et',
+		'Continue',
 	);
-	if (choice !== 'Devam Et') {
+	if (choice !== 'Continue') {
 		return;
 	}
-	await runMutation(context, output, sinks, folder, targets, `coverdict: mutasyon testi (tüm modül, ${targets.length} sınıf)`);
+	await runMutation(output, sinks, folder, targets, `Proof: mutation testing (whole module, ${targets.length} classes)`);
 }
 
 /** İki mutasyon girişinin ortak gövdesi. `targets` boşsa CLI diff'ten hedef türetir (bu durumda bir diff modu şart). */
 async function runMutation(
-	context: vscode.ExtensionContext,
 	output: vscode.OutputChannel,
 	sinks: CoverageSinks,
 	folder: vscode.WorkspaceFolder,
@@ -929,11 +982,11 @@ async function runMutation(
 		return;
 	}
 	if (targets.length === 0 && diffMode.kind === 'no-vcs') {
-		vscode.window.showErrorMessage('coverdict: modül geneli mutasyon bir diff gerektirir - coverdict.diffMode "no-vcs" iken hedeflenecek değişen sınıf yok. Tek bir sınıf için o dosyada sağ tık → "Bu Sınıf İçin Mutasyon Testi".');
+		vscode.window.showErrorMessage('Proof: whole-module mutation requires a diff - there is no changed class to target while proof.diffMode is "no-vcs". For a single class, right-click that file -> "Mutation Testing For This Class".');
 		return;
 	}
 
-	const parsed = await runAnalyzeCore(context, output, folder, diffMode, {
+	const parsed = await runAnalyzeCore(output, folder, diffMode, {
 		mutation: { targets, timeoutSeconds: readMutationTimeout(folder) },
 		progressTitle,
 	});
@@ -946,38 +999,43 @@ async function runMutation(
 	const targetFqcns = targets.map((t) => t.fqcn);
 	setMutationState({ mutation: parsed.mutation, warnings: parsed.warnings, targets: targetFqcns, ranAt: ranAtMs });
 	sinks.mutationView.refresh();
-	void vscode.commands.executeCommand('coverdict.mutationView.focus');
+	// Faz 33: the Run panel's own Mutation Testing row shows this same
+	// ranAt as a "last run: X ago" freshness text - it needs its own
+	// refresh, setMutationState() firing mutationView's event does not
+	// reach it.
+	sinks.runView.refresh();
+	void vscode.commands.executeCommand('proof.mutationView.focus');
 	// Faz 25: yalnızca blok gerçekten varsa yazılır - yoksa (bütçe aşıldı vb.)
 	// eski bir sonucu yeni ama boş bir "koşu" ile ezmemek için hiç dokunulmaz.
 	if (parsed.mutation) {
 		const snapshot: MutationSnapshot = { mutation: parsed.mutation, warnings: parsed.warnings, targets: targetFqcns, ranAtMs };
-		await writeJsonSnapshot(context, output, MUTATION_STORAGE_FILE, snapshot, 'mutasyon sonucu');
+		await writeJsonSnapshot(folder, output, MUTATION_STORAGE_FILE, snapshot, 'mutasyon sonucu');
 	}
 }
 
 function readMutationTimeout(folder: vscode.WorkspaceFolder): number {
-	return vscode.workspace.getConfiguration('coverdict', folder).get<number>('mutationTimeout') ?? 300;
+	return vscode.workspace.getConfiguration('proof', folder).get<number>('mutationTimeout') ?? 300;
 }
 
 /** Faz 31: `--per-test-timeout`'un varsayılanıyla aynı (120) - CLI'ın kendi varsayılanını burada tekrarlamak yerine ayarın kendi `default`ı (`package.json`) tek kaynak, burada yalnızca ayar hiç okunamazsa (teorik) bir yedek. */
 function readPerTestTimeout(folder: vscode.WorkspaceFolder): number {
-	return vscode.workspace.getConfiguration('coverdict', folder).get<number>('perTestTimeout') ?? 120;
+	return vscode.workspace.getConfiguration('proof', folder).get<number>('perTestTimeout') ?? 120;
 }
 
 /** Faz 15c/15e: yeni "Satır → Testler" kenar çubuğu görünümüne odaklanır - eski webview'in aksine, tıklanınca kendini boşaltmaz (o hatanın doğrudan dersi, bkz. `ui/treeViews/lineTestsView.ts`). */
 function revealLineTestsView(sinks: CoverageSinks): void {
 	sinks.lineTestsView.refresh();
-	void vscode.commands.executeCommand('coverdict.lineTestsView.focus');
+	void vscode.commands.executeCommand('proof.lineTestsView.focus');
 }
 
-/** `coverdict.diffMode` + (base modundaysa) `coverdict.baseRef`'i okur; base seçiliyken baseRef boşsa kullanıcıyı ayara yönlendirip `undefined` döner. */
+/** `proof.diffMode` + (base modundaysa) `proof.baseRef`'i okur; base seçiliyken baseRef boşsa kullanıcıyı ayara yönlendirip `undefined` döner. */
 function readDiffMode(folder: vscode.WorkspaceFolder): DiffMode | undefined {
-	const config = vscode.workspace.getConfiguration('coverdict', folder);
+	const config = vscode.workspace.getConfiguration('proof', folder);
 	const kind = config.get<string>('diffMode') ?? 'uncommitted';
 	if (kind === 'base') {
 		const ref = config.get<string>('baseRef')?.trim();
 		if (!ref) {
-			void offerToOpenSetting('coverdict: coverdict.diffMode "base" ayarlı ama coverdict.baseRef boş.', 'coverdict.baseRef');
+			void offerToOpenSetting('Proof: proof.diffMode is set to "base" but proof.baseRef is empty.', 'proof.baseRef');
 			return undefined;
 		}
 		return { kind: 'base', ref };
@@ -1056,14 +1114,13 @@ async function resolveEvidenceArg(
 	}
 	const targets = resolveTargets(folder, allModules, evidenceInput.targets);
 	if (evidenceInput.targets && evidenceInput.targets.length > 0 && targets.length === 0) {
-		vscode.window.showErrorMessage('coverdict: hedef sınıfın hangi modüle ait olduğu belirlenemedi - dosya bağlı modüllerden hiçbirinin kökü altında değil.');
+		vscode.window.showErrorMessage('Proof: could not determine which module the target class belongs to - the file is not under the root of any bound module.');
 		return undefined;
 	}
 	return { classpaths, targets: targets.length > 0 ? targets : undefined };
 }
 
 async function runAnalyzeCore(
-	context: vscode.ExtensionContext,
 	output: vscode.OutputChannel,
 	folder: vscode.WorkspaceFolder,
 	diffMode: DiffMode,
@@ -1071,11 +1128,11 @@ async function runAnalyzeCore(
 ): Promise<VerdictDocument | undefined> {
 	const jarPath = locateJar(folder);
 	if (!jarPath) {
-		void offerToOpenSetting('coverdict: coverdict.jar bulunamadı. coverdict.jarPath ayarını yapın veya coverdict-cli/target/coverdict.jar konumunda bir tane derleyin.', 'coverdict.jarPath');
+		void offerToOpenSetting('Proof: proof-java.jar not found. Set the proof.jarPath setting, or build one at proof-java-cli/target/proof-java.jar.', 'proof.jarPath');
 		return undefined;
 	}
 
-	const config = vscode.workspace.getConfiguration('coverdict', folder);
+	const config = vscode.workspace.getConfiguration('proof', folder);
 	const configuredReportPath = config.get<string>('reportPath') || 'target/site/jacoco/jacoco.xml';
 	const binding = await resolveReportBinding(folder, configuredReportPath, output);
 	if (!binding) {
@@ -1106,12 +1163,7 @@ async function runAnalyzeCore(
 		mutationArg = { ...resolved, timeoutSeconds: evidence.mutation.timeoutSeconds };
 	}
 
-	const storageRoot = context.storageUri;
-	if (!storageRoot) {
-		vscode.window.showErrorMessage('coverdict: bu pencerede workspace depolaması yok (bir klasör yerine tek dosya mı açık?) - sonuç kaydedilemez.');
-		return undefined;
-	}
-	await vscode.workspace.fs.createDirectory(storageRoot);
+	const storageRoot = await ensureStorageRoot(folder);
 	const outUri = vscode.Uri.joinPath(storageRoot, 'verdict-current.json');
 
 	const coverageExclusions = config.get<string[]>('coverageExclusions') ?? [];
@@ -1127,10 +1179,10 @@ async function runAnalyzeCore(
 		mutation: mutationArg,
 	});
 
-	output.appendLine(`coverdict: java -jar ${jarPath} ${args.join(' ')}`);
+	output.appendLine(`Proof: java -jar ${jarPath} ${args.join(' ')}`);
 
 	return vscode.window.withProgress(
-		{ location: vscode.ProgressLocation.Notification, title: evidence.progressTitle ?? 'coverdict: analiz ediliyor', cancellable: true },
+		{ location: vscode.ProgressLocation.Notification, title: evidence.progressTitle ?? 'proof-java: analiz ediliyor', cancellable: true },
 		async (progress, token) => {
 			// Faz 20: CLI'ın stderr ilerleme akışı nihayet tüketiliyor
 			// (`cli/progressParser.ts` - Faz 1'den beri yorumda söz verilmiş,
@@ -1172,7 +1224,7 @@ async function runAnalyzeCore(
 			try {
 				result = await handle.result;
 			} catch (e) {
-				vscode.window.showErrorMessage(`coverdict: "${javaExecutable}" çalıştırılamadı: ${(e as Error).message}`);
+				vscode.window.showErrorMessage(`Proof: couldn't run "${javaExecutable}": ${(e as Error).message}`);
 				return undefined;
 			}
 			output.appendLine(result.stdout);
@@ -1184,7 +1236,7 @@ async function runAnalyzeCore(
 			// exit 3 (incomplete) still writes a real document - read it rather
 			// than treating it as a failure (hard rule 3a, mirrored from the CLI).
 			if (result.exitCode !== 0 && result.exitCode !== 3) {
-				vscode.window.showErrorMessage(`coverdict: analiz başarısız oldu (çıkış kodu ${result.exitCode}).`);
+				vscode.window.showErrorMessage(`Proof: analysis failed (exit code ${result.exitCode}).`);
 				return undefined;
 			}
 
@@ -1192,13 +1244,13 @@ async function runAnalyzeCore(
 			try {
 				raw = await fs.promises.readFile(outUri.fsPath, 'utf8');
 			} catch (e) {
-				vscode.window.showErrorMessage(`coverdict: verdict dosyası okunamadı: ${(e as Error).message}`);
+				vscode.window.showErrorMessage(`Proof: could not read the verdict file: ${(e as Error).message}`);
 				return undefined;
 			}
 
 			const parsed = parseVerdict(raw);
 			if (!parsed.ok) {
-				vscode.window.showErrorMessage(`coverdict: verdict dosyası ayrıştırılamadı: ${parsed.error}`);
+				vscode.window.showErrorMessage(`Proof: could not parse the verdict file: ${parsed.error}`);
 				return undefined;
 			}
 
@@ -1208,7 +1260,7 @@ async function runAnalyzeCore(
 			// açmak sadece dikkat dağıtıyordu. `analysis.status` "incomplete"
 			// ise gerçekten bir şey söylenmesi gerekir; o hâlâ uyarılıyor.
 			if (parsed.value.analysis.status === 'incomplete') {
-				vscode.window.showWarningMessage('coverdict: analiz eksik tamamlandı - Coverage görünümündeki "Uyarılar" bölümüne bakın.');
+				vscode.window.showWarningMessage('Proof: analysis completed incompletely - see the "Warnings" section in the Coverage view.');
 			}
 
 			return parsed.value;
@@ -1216,13 +1268,13 @@ async function runAnalyzeCore(
 	);
 }
 
-/** `coverdict.badgeMetric`'i tekli okuma noktası - durum çubuğu başlığı, rozetler ve gutter aynı ayarı, aynı şekilde okur (madde 2). */
+/** `proof.badgeMetric`'i tekli okuma noktası - durum çubuğu başlığı, rozetler ve gutter aynı ayarı, aynı şekilde okur (madde 2). */
 function readBadgeMetric(workspaceRoot: string): BadgeMetric {
-	return vscode.workspace.getConfiguration('coverdict', vscode.Uri.file(workspaceRoot)).get<BadgeMetric>('badgeMetric') ?? 'sonar-compatible';
+	return vscode.workspace.getConfiguration('proof', vscode.Uri.file(workspaceRoot)).get<BadgeMetric>('badgeMetric') ?? 'sonar-compatible';
 }
 
 /**
- * `coverdict.show.explorerBadges` ve `coverdict.show.lineGutter` birbirinden
+ * `proof.show.explorerBadges` ve `proof.show.lineGutter` birbirinden
  * tamamen bağımsız - ikisi de kendi çizim yolumuzdan geliyor (Faz 9), native
  * API'nin "ikisini birlikte üretir" kısıtı yok. `isGutterVisible()` (F4'ün
  * genel aç/kapa'sı) `false` ise ikisi de hiç çağrılmaz.
@@ -1234,7 +1286,7 @@ function paintCoverage(sinks: CoverageSinks, workspaceRoot: string, fileCoverage
 		return;
 	}
 
-	const config = vscode.workspace.getConfiguration('coverdict', vscode.Uri.file(workspaceRoot));
+	const config = vscode.workspace.getConfiguration('proof', vscode.Uri.file(workspaceRoot));
 	const showExplorerBadges = config.get<boolean>('show.explorerBadges') ?? true;
 	const showLineGutter = config.get<boolean>('show.lineGutter') ?? true;
 	const showOraclelessLines = config.get<boolean>('show.oraclelessLines') ?? true;
