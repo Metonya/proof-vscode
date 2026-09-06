@@ -190,7 +190,7 @@
       {
         "command": "proof.qualityView.filter",
         "title": "proof-java: Filter Findings",
-        "icon": "$(filter)"
+        "icon": "media/icons/filter.svg"
       },
       {
         "command": "proof.qualityView.toggleGrouping",
@@ -200,7 +200,7 @@
       {
         "command": "proof.lineTestsView.toggleProblemsOnly",
         "title": "proof-java: Problem Lines Only",
-        "icon": "$(filter)"
+        "icon": "media/icons/filter.svg"
       },
       {
         "command": "proof.mutationForFile",
@@ -217,7 +217,7 @@
       {
         "command": "proof.mutationView.toggleSurvivorsOnly",
         "title": "proof-java: Survived Mutants Only",
-        "icon": "$(filter)"
+        "icon": "media/icons/filter.svg"
       },
       {
         "command": "proof.qualityView.showInMutation",
@@ -344,23 +344,28 @@
       "proof-java": [
         {
           "id": "proof.runView",
-          "name": "Run"
+          "name": "Run",
+          "icon": "media/icons/runbook-page.svg"
         },
         {
           "id": "proof.coverageView",
-          "name": "Coverage"
+          "name": "Coverage",
+          "icon": "media/icons/covering-index.svg"
         },
         {
           "id": "proof.qualityView",
-          "name": "Test Quality"
+          "name": "Test Quality",
+          "icon": "media/icons/bug-play.svg"
         },
         {
           "id": "proof.lineTestsView",
-          "name": "Line → Tests"
+          "name": "Line → Tests",
+          "icon": "media/icons/focused-test.svg"
         },
         {
           "id": "proof.mutationView",
-          "name": "Mutation"
+          "name": "Mutation",
+          "icon": "media/icons/mutation-test.svg"
         }
       ]
     }
