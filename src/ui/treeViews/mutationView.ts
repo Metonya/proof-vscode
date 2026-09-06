@@ -26,9 +26,6 @@ import { locateTestFile } from '../testFileLocator';
  */
 export type MutationNode =
 	| { kind: 'empty'; message: string }
-	| { kind: 'runHint' }
-	/** Faz 31: diff hiç değişen sınıf bulamadığında ("ben değişiklik yapmadan tüm repoda tarama yapabilmeliyim") - diff'ten bağımsız, modüldeki her production sınıfını hedefleyen kurtarma eylemi. */
-	| { kind: 'scanAllHint' }
 	/** Faz 22: "bu sonuç neyin, ne zaman?" - dosyadan dosyaya geçince panel değişmediği için hangi koşuya baktığı belli değildi. */
 	| { kind: 'header'; text: string }
 	| { kind: 'class'; className: string; methods: readonly MutatedMethod[] }
@@ -74,10 +71,6 @@ export class MutationTreeProvider implements vscode.TreeDataProvider<MutationNod
 		switch (node.kind) {
 			case 'empty':
 				return leaf(node.message, 'info');
-			case 'runHint':
-				return runHintItem();
-			case 'scanAllHint':
-				return scanAllHintItem();
 			case 'header':
 				return headerItem(node.text);
 			case 'class':
@@ -112,17 +105,10 @@ export class MutationTreeProvider implements vscode.TreeDataProvider<MutationNod
 	private rootChildren(): MutationNode[] {
 		const state = getMutationState();
 		if (!state) {
-			return [
-				{ kind: 'empty', message: 'No mutation test has run yet.' },
-				{ kind: 'runHint' },
-			];
+			return [{ kind: 'empty', message: 'No mutation test has run yet. Use the Run view, or right-click a Java file → "Mutation Test This Class".' }];
 		}
 		if (!state.mutation) {
-			const nodes: MutationNode[] = [{ kind: 'empty', message: noMutationEvidenceMessage() }, { kind: 'runHint' }];
-			if (hasNoChangedTargetsWarning(state)) {
-				nodes.push({ kind: 'scanAllHint' });
-			}
-			return nodes;
+			return [{ kind: 'empty', message: noMutationEvidenceMessage() }];
 		}
 
 		const header: MutationNode = { kind: 'header', text: headerText(state) };
@@ -137,36 +123,15 @@ export class MutationTreeProvider implements vscode.TreeDataProvider<MutationNod
 					message: 'No surviving mutants - every generated mutant was caught by at least one test. (Click the title-bar filter to remove this filter.)',
 				}];
 			}
-			// Faz 31 düzeltmesi: CLI, MUTATION_NO_CHANGED_TARGETS'ta bile boş
-			// (ama null olmayan) bir mutation nesnesi döndürüyor - state.mutation
-			// bu yüzden burada "var" görünüyor ve yukarıdaki !state.mutation dalı
-			// hiç çalışmıyor, "Tüm Modülü Tara" düğmesi gerçek bir sebep varken
-			// bile hiç görünmüyordu (gson dogfood'unda yakalandı). Aynı uyarı
-			// kontrolü burada da yapılmalı. `runHint` da eksikti - bir koşu zaten
-			// olsa bile (boş de olsa) "aktif dosya için çalıştır" seçeneği hep
-			// anlamlı, `!state.mutation` dalıyla aynı davranış (kullanıcı isteği).
-			const nodes: MutationNode[] = [header, {
+			return [header, {
 				kind: 'empty',
 				message: hasNoChangedTargetsWarning(state)
 					? noMutationEvidenceMessage()
 					: 'No mutants were generated for any production method in this run. The targeted classes may not contain mutable code. (Test classes\' own mutants are deliberately not shown.)',
-			}, { kind: 'runHint' }];
-			if (hasNoChangedTargetsWarning(state)) {
-				nodes.push({ kind: 'scanAllHint' });
-			}
-			return nodes;
+			}];
 		}
-		// Kullanıcı isteği: gerçek bir sonuç ekrandayken (ör. bir sınıfın
-		// mutasyon sonucuna bakılırken) başka bir dosyaya geçince "aktif
-		// dosya için çalıştır"/"tüm modülü tara" seçenekleri tamamen
-		// kayboluyordu - sadece boş sonuç durumlarında vardı. Artık her
-		// zaman görünürler - başlığın hemen altında, sınıf sonuçlarının
-		// üstünde (kullanıcı isteği: uzun bir listeyi kaydırmadan
-		// erişilebilir olsunlar).
 		return [
 			header,
-			{ kind: 'runHint' },
-			{ kind: 'scanAllHint' },
 			...classes.map((c): MutationNode => ({ kind: 'class', className: c.className, methods: c.methods })),
 		];
 	}
@@ -210,7 +175,7 @@ function noMutationEvidenceMessage(): string {
 		return 'No classpath list is bound for mutation. Re-run the command; the extension will offer to generate the list with Maven.';
 	}
 	if (warningFor('MUTATION_NO_CHANGED_TARGETS')) {
-		return 'No production class changed in this run, so there\'s no target to mutate. To run this for a single class: right-click that file → "Mutation Test This Class", or use the button below to scan the whole module regardless of the diff.';
+		return 'No production class changed in this run, so there\'s no target to mutate. Right-click a file → "Mutation Test This Class", or use the Run view\'s "no diff" button to scan the whole module regardless.';
 	}
 	if (warningFor('MUTATION_TRUNCATED')) {
 		return 'Mutant records hit their upper limit - what\'s shown is incomplete. Re-run with a narrower target.';
@@ -236,23 +201,6 @@ function headerItem(text: string): vscode.TreeItem {
 	const item = new vscode.TreeItem(text, vscode.TreeItemCollapsibleState.None);
 	item.iconPath = new vscode.ThemeIcon('history');
 	item.contextValue = 'proof.mutationHeader';
-	return item;
-}
-
-function runHintItem(): vscode.TreeItem {
-	const item = new vscode.TreeItem('Run Mutation Testing', vscode.TreeItemCollapsibleState.None);
-	item.iconPath = new vscode.ThemeIcon('play');
-	item.command = { command: 'proof.mutationForFile', title: 'Run Mutation Testing' };
-	item.tooltip = 'Runs mutation testing for the class in the open Java file (a single class: usually seconds). For a module-wide run, use the Mutation Testing item in the Run view.';
-	return item;
-}
-
-/** User request: "I should be able to scan the whole repo without making a change" - the recovery action offered when the diff finds no target at all, `proof.mutationForModuleAll`. Sits behind its own confirmation since it can be more expensive than the diff-based run. */
-function scanAllHintItem(): vscode.TreeItem {
-	const item = new vscode.TreeItem('Scan Whole Module Anyway (no diff)', vscode.TreeItemCollapsibleState.None);
-	item.iconPath = new vscode.ThemeIcon('play');
-	item.command = { command: 'proof.mutationForModuleAll', title: 'Scan Whole Module' };
-	item.tooltip = 'Targets every production class in this module regardless of the diff - can take longer than the diff-based "whole module" run since it includes unchanged classes too.';
 	return item;
 }
 

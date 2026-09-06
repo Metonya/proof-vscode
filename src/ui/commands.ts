@@ -737,6 +737,11 @@ async function runAnalyzePerTest(output: vscode.OutputChannel, sinks: CoverageSi
 		// verdict-current.json yazınca bu dosya etkilenmeden kalır.
 		const snapshot: PerTestSnapshot = { perTest: parsed.perTest, warnings: parsed.warnings };
 		await writeJsonSnapshot(folder, output, PERTEST_STORAGE_FILE, snapshot, 'per-test evidence');
+		// Faz 33: same reasoning as runMutation's extra refresh - the Run
+		// panel's Deep Scan row freshness text reads this file's mtime, and
+		// publishAnalysis() above already fired its own runView refresh
+		// before this write happened.
+		sinks.runView.refresh();
 	} else {
 		vscode.window.showWarningMessage('Proof: no per-test evidence for this run - check the output channel for PER_TEST_* warnings.');
 	}
@@ -783,6 +788,11 @@ async function runPerTestForFile(output: vscode.OutputChannel, sinks: CoverageSi
 	if (parsed.perTest) {
 		const snapshot: PerTestSnapshot = { perTest: parsed.perTest, warnings: parsed.warnings };
 		await writeJsonSnapshot(folder, output, PERTEST_STORAGE_FILE, snapshot, 'per-test evidence');
+		// Faz 33: same reasoning as runMutation's extra refresh - the Run
+		// panel's Deep Scan row freshness text reads this file's mtime, and
+		// publishAnalysis() above already fired its own runView refresh
+		// before this write happened.
+		sinks.runView.refresh();
 	} else {
 		vscode.window.showWarningMessage(`Proof: no per-test evidence for ${className} - check the output channel for PER_TEST_* warnings.`);
 	}
@@ -899,6 +909,11 @@ async function runAnalyzePerTestAll(output: vscode.OutputChannel, sinks: Coverag
 	if (parsed.perTest) {
 		const snapshot: PerTestSnapshot = { perTest: parsed.perTest, warnings: parsed.warnings };
 		await writeJsonSnapshot(folder, output, PERTEST_STORAGE_FILE, snapshot, 'per-test evidence');
+		// Faz 33: same reasoning as runMutation's extra refresh - the Run
+		// panel's Deep Scan row freshness text reads this file's mtime, and
+		// publishAnalysis() above already fired its own runView refresh
+		// before this write happened.
+		sinks.runView.refresh();
 	} else {
 		vscode.window.showWarningMessage('Proof: no per-test evidence for this run - check the output channel for PER_TEST_* warnings.');
 	}

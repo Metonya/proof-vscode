@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 
 import { formatRelativeTime } from '../../model/mutationModel';
 import { getMutationState, isGutterVisible } from '../../model/store';
+import { PERTEST_STORAGE_FILE, resolveStorageRoot } from '../commands';
 
 /**
  * Faz 11b: "proof-java: Çalıştır" - komut paletine gitmeden analiz
@@ -58,7 +59,7 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 			),
 			new RunItem(
 				'Quick Scan (overall + new code)',
-				`coverage + bad test findings · new code: ${scopeText}`,
+				`coverage + bad test findings · new code: ${scopeText} · ${quickScanFreshnessText(folder)}`,
 				'proof.analyze',
 				'play',
 				`Takes seconds. Computes:\n· Overall coverage (whole repo)\n· New code coverage (${scopeText})\n· Test quality findings (tests with no or weak assertions)`,
@@ -74,7 +75,7 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 		items.push(noVcs
 			? new RunItem(
 				'Deep Scan (whole module, no diff)',
-				'everything Quick Scan has + which test covers which line',
+				`everything Quick Scan has + which test covers which line · ${deepScanFreshnessText(folder)}`,
 				'proof.perTestForModuleAll',
 				'beaker',
 				'DEEP SCAN IS NOT MUTATION TESTING - mutation is its own separate item below.\n\n'
@@ -82,7 +83,7 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 			)
 			: new RunItem(
 				'Deep Scan (+ line→test map)',
-				'everything Quick Scan has + which test covers which line',
+				`everything Quick Scan has + which test covers which line · ${deepScanFreshnessText(folder)}`,
 				'proof.analyzePerTest',
 				'beaker',
 				'DEEP SCAN IS NOT MUTATION TESTING - mutation is its own separate item below.\n\n'
@@ -145,6 +146,26 @@ function reportFreshnessText(folder: vscode.WorkspaceFolder): string {
 function mutationFreshnessText(): string {
 	const ranAt = getMutationState()?.ranAt;
 	return ranAt === undefined ? 'never run' : `last run: ${formatRelativeTime(ranAt, Date.now())}`;
+}
+
+/** Faz 33 (user request): same freshness signal for Quick Scan, using `.proof/verdict-current.json`'s own mtime - that file is written fresh on every `proof.analyze` run, so its mtime is exactly "when did Quick Scan (or Deep Scan, a superset) last run" without needing a new state field. */
+function quickScanFreshnessText(folder: vscode.WorkspaceFolder): string {
+	try {
+		const stat = fs.statSync(path.join(resolveStorageRoot(folder).fsPath, 'verdict-current.json'));
+		return `last run: ${formatRelativeTime(stat.mtimeMs, Date.now())}`;
+	} catch {
+		return 'never run';
+	}
+}
+
+/** Faz 33: same idea as `quickScanFreshnessText`, but reads `.proof/pertest-current.json`'s mtime specifically - that file is only ever written when per-test evidence was actually collected (Deep Scan's own step), so it does not go stale just because a plain Quick Scan ran afterward. */
+function deepScanFreshnessText(folder: vscode.WorkspaceFolder): string {
+	try {
+		const stat = fs.statSync(path.join(resolveStorageRoot(folder).fsPath, PERTEST_STORAGE_FILE));
+		return `last run: ${formatRelativeTime(stat.mtimeMs, Date.now())}`;
+	} catch {
+		return 'never run';
+	}
 }
 
 function diffModeText(diffMode: string, baseRef: string | undefined): string {

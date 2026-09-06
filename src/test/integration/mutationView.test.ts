@@ -81,13 +81,15 @@ function classNodes(provider: MutationTreeProvider) {
 }
 
 suite('Mutation view (Faz 20)', () => {
-	test('with no run at all, offers to run rather than claiming there is nothing to find', async () => {
+	test('with no run at all, explains where to start rather than claiming there is nothing to find', async () => {
 		const provider = new MutationTreeProvider();
 		const roots = provider.getChildren();
-		assert.equal(roots.length, 2);
+		assert.equal(roots.length, 1);
 		assert.equal(roots[0].kind, 'empty');
-		assert.equal(roots[1].kind, 'runHint');
-		await assert.doesNotReject(async () => provider.getTreeItem(roots[1]));
+		if (roots[0].kind === 'empty') {
+			assert.match(roots[0].message, /Run view/, 'points at the Run panel - own run buttons were removed here as duplicates (Faz 33)');
+		}
+		await assert.doesNotReject(async () => provider.getTreeItem(roots[0]));
 	});
 
 	/** Hard rule 3a: "the run failed" and "the run found nothing" must not look identical. No mutation block -> no header either, there is nothing to date-stamp. */
@@ -99,7 +101,7 @@ suite('Mutation view (Faz 20)', () => {
 		});
 		const provider = new MutationTreeProvider();
 		const roots = provider.getChildren();
-		assert.equal(roots.length, 2, 'no header when there is no result to date-stamp');
+		assert.equal(roots.length, 1, 'no header when there is no result to date-stamp');
 		assert.equal(roots[0].kind, 'empty');
 		if (roots[0].kind === 'empty') {
 			assert.match(roots[0].message, /budget/i);
@@ -111,12 +113,9 @@ suite('Mutation view (Faz 20)', () => {
 	 * Faz 31 düzeltmesi, gerçek gson dogfood'unda yakalandı: CLI, diff hiç
 	 * hedef bulamadığında bile `mutation` alanını (boş `modules` ile) çıktıya
 	 * koyuyor - `state.mutation` bu yüzden burada "var" görünür ve
-	 * `!state.mutation` dalı hiç çalışmaz. "Tüm Modülü Tara" düğmesi tam
-	 * burada, gerçek bir açıklaması varken bile hiç görünmüyordu. Aynı
-	 * sebeple aktif dosya için çalıştırma düğmesi de (`runHint`) hiç
-	 * görünmüyordu - kullanıcının kendi isteğiyle eklendi.
+	 * `!state.mutation` dalı hiç çalışmaz.
 	 */
-	test('mutation present but empty (real MUTATION_NO_CHANGED_TARGETS shape) still offers both recovery actions', () => {
+	test('mutation present but empty (real MUTATION_NO_CHANGED_TARGETS shape) names the real reason', () => {
 		setCoverageState(STATE);
 		setMutationState({
 			mutation: { engine: 'pitest', engineVersion: '1.15.8', modules: [] },
@@ -130,8 +129,7 @@ suite('Mutation view (Faz 20)', () => {
 		if (roots[1].kind === 'empty') {
 			assert.match(roots[1].message, /No production class changed/, 'the real reason, not the generic "no mutable code" guess');
 		}
-		assert.equal(roots[2]?.kind, 'runHint', 'running for the active file is still a valid recovery, not just scanning everything');
-		assert.equal(roots[3]?.kind, 'scanAllHint', 'the module-wide recovery action must also be offered, not silently dropped');
+		assert.equal(roots.length, 2, 'Faz 33: no own run-hint items here anymore - the Run panel already has both actions');
 	});
 
 	/**
@@ -152,23 +150,20 @@ suite('Mutation view (Faz 20)', () => {
 	});
 
 	/**
-	 * Kullanıcı isteği: bir sınıfın gerçek sonucuna bakarken başka bir
-	 * dosyaya geçmek "aktif dosya için çalıştır"/"tüm modülü tara"
-	 * seçeneklerini tamamen kaybettiriyordu - sadece boş sonuç
-	 * durumlarında vardı. Artık gerçek bir sonuç gösterilirken de - hem de
-	 * uzun bir sınıf listesini kaydırmaya gerek kalmadan, başlığın hemen
-	 * altında - duruyorlar.
+	 * Faz 33 (user request): the tree's own "Run Mutation Testing"/"Scan
+	 * Whole Module Anyway (no diff)" hints were removed as duplicates of
+	 * the Run panel's Mutation Testing row (main click + its "no diff"
+	 * inline icon) - a real result's roots go straight from the header
+	 * into the class list, no hint items in between.
 	 */
-	test('a real, non-empty result still offers both recovery actions, right under the header', () => {
+	test('a real, non-empty result goes straight from the header into the class list, no hint items', () => {
 		setCoverageState(STATE);
 		setMutationState({ mutation: MUTATION, warnings: [], targets: ['dev.proofjava.playground.Calculator'], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
 		const roots = provider.getChildren();
-		assert.ok(roots.some((n) => n.kind === 'class'), 'sanity: this is the real-result branch, not an empty one');
 		assert.equal(roots[0].kind, 'header');
-		assert.equal(roots[1].kind, 'runHint');
-		assert.equal(roots[2].kind, 'scanAllHint');
+		assert.equal(roots[1].kind, 'class');
 	});
 
 	/** A result restored from disk (extension.ts on window reload) has no `ranAt` - the header must say so, not guess a time. */
