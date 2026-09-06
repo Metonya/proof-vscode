@@ -63,10 +63,21 @@ export async function downloadLatestJar(fetchText = httpsGetText, fetchBuffer = 
 	return { content, version: json.tag_name };
 }
 
-/** `SHA-256SUMS` format (coreutils `sha256sum` binary-mode output): `<hex digest> *<filename>` per line. */
+/**
+ * `SHA-256SUMS` format (coreutils `sha256sum` output): `<hex digest> *<filename>`
+ * in binary mode, `<hex digest>  <filename>` in text mode, one per line.
+ *
+ * The filename group requires a leading non-space on purpose (SonarQube
+ * typescript:S5852). `(.+)\s*$` after `\s+` is an ambiguous pattern - `.`
+ * matches whitespace too, so the engine has many ways to split the same run
+ * of spaces between the three parts, which is the shape that turns
+ * super-linear. Anchoring the group to a real filename character leaves
+ * exactly one way to match, and the trailing `\s*` was dead weight anyway
+ * since every line is trimmed before it gets here.
+ */
 function parseSha256Sums(raw: string, fileName: string): string | undefined {
 	for (const line of raw.split('\n')) {
-		const match = /^([0-9a-f]{64})\s+\*?(.+)\s*$/.exec(line.trim());
+		const match = /^([0-9a-f]{64})\s+\*?(\S.*)$/.exec(line.trim());
 		if (match?.[2] === fileName) {
 			return match[1];
 		}

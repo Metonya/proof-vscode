@@ -107,6 +107,115 @@ export function discoverModuleRootsFromPoms(repoRelativePomPaths: readonly strin
 	return assignIds(repoRelativePomPaths.map((pomPath) => describeModuleForPom(pomPath).root));
 }
 
+/**
+ * Matches `include` and any same-purpose wrapper function whose name starts
+ * with it (`includeProject(...)`), excluding real Gradle APIs that are not
+ * subprojects of this build:
+ *
+ * - `includeBuild` - a composite build, a separate Gradle root with its own
+ *   lifecycle.
+ * - `includeFlat` - a project whose directory is a *sibling* of the root
+ *   (`../name`), which a repo-relative path cannot express at all.
+ * - `includeGroup`/`includeModule`/`includeVersion` (and their `ByRegex` /
+ *   `AndSubgroups` variants) - `RepositoryContentDescriptor` methods used
+ *   inside `repositories { content { } }` to filter which artifacts a
+ *   repository may serve. Google's own Now in Android settings file has
+ *   `includeGroupByRegex("com\\.android.*")`, which this read as a project
+ *   until it did not.
+ *
+ * The first two exclusions are prefix-exact (the trailing `\b` keeps a user
+ * wrapper like `includeFlattenedModules(...)` matched); the content-filter
+ * names are matched more broadly, since every real variant continues the
+ * word.
+ *
+ * Deliberately identical to `GradleProjectScanner.java`'s own INCLUDE_KEYWORD
+ * in the CLI: the two run on the same settings files and must agree about
+ * which modules exist. Matched per line rather than over the whole text (a
+ * repeated group over an unbounded string is the catastrophic-backtracking
+ * shape both sides avoid).
+ */
+const GRADLE_INCLUDE_KEYWORD = /\binclude(?!Build\b)(?!Flat\b)(?!Group)(?!Module)(?!Version)[A-Za-z]*\b/;
+const GRADLE_QUOTED_ARG = /['"]([^'"]+)['"]/g;
+
+/**
+ * Raw Gradle project paths (`:core`, `:modules:service-a`) as they are
+ * literally written in a `settings.gradle(.kts)`. A wrapper function's own
+ * *definition* line (`fun includeProject(name: String, ...)`) carries no
+ * quoted argument, so it contributes nothing - only real call sites do.
+ * Anything computed rather than written literally is invisible here, the
+ * same best-effort posture the CLI's scanner documents.
+ */
+export function parseSettingsGradleProjectPaths(settingsText: string): readonly string[] {
+	const paths: string[] = [];
+	for (const line of settingsText.split('\n')) {
+		if (!GRADLE_INCLUDE_KEYWORD.test(line)) {
+			continue;
+		}
+		for (const match of line.matchAll(GRADLE_QUOTED_ARG)) {
+			paths.push(match[1]);
+		}
+	}
+	return paths;
+}
+
+/**
+ * The `settings.gradle(.kts)` counterpart to `discoverModuleRootsFromPoms` -
+ * same id-assignment rule, different discovery input.
+ *
+ * Gradle's root project is not declared by an `include(...)` at all, and
+ * whether it is a real module worth running tests in is a filesystem fact
+ * (does it have test sources of its own?) this pure function cannot see -
+ * hence `includeRootProject`, decided by `ui/preflight.ts`. Passing it here
+ * rather than prepending afterwards keeps every id coming from one
+ * assignment pass, so a subproject literally named `root` still collides
+ * safely into `root-2` instead of shadowing the root project.
+ */
+export function discoverModuleRootsFromSettingsGradle(settingsText: string, includeRootProject = false): readonly { id: string; root: string }[] {
+	const roots: string[] = includeRootProject ? ['.'] : [];
+	for (const gradlePath of parseSettingsGradleProjectPaths(settingsText)) {
+		const root = (gradlePath.startsWith(':') ? gradlePath.slice(1) : gradlePath).replaceAll(':', '/');
+		if (root.length === 0 || isEscapingRepoRoot(root) || !isPlausibleDirectoryPath(root) || roots.includes(root)) {
+			continue;
+		}
+		roots.push(root);
+	}
+	return assignIds(roots);
+}
+
+/**
+ * A quoted string on an `include`-ish line is not automatically a directory
+ * name: a glob or regex character means the line was something else (a
+ * dependency filter, a version pattern), and those characters are not even
+ * legal in a Windows path. The CLI's own scanner carries the identical
+ * check - there it stops an `InvalidPathException` from killing the whole
+ * `doctor` run, here it stops a nonsense row appearing in the module picker.
+ */
+function isPlausibleDirectoryPath(candidate: string): boolean {
+	return !/[*?"<>|]/.test(candidate) && ![...candidate].some((c) => (c.codePointAt(0) ?? 0) < 0x20);
+}
+
+/** Pure segment check, the TypeScript twin of the CLI's `RepoPaths.isEscapingRepoRoot` - an absolute path, or one that climbs above the repo root once `.`/`..` collapse, is never a module of this repo. */
+function isEscapingRepoRoot(normalizedPath: string): boolean {
+	if (normalizedPath.startsWith('/') || /^[A-Za-z]:/.test(normalizedPath)) {
+		return true;
+	}
+	let depth = 0;
+	for (const segment of normalizedPath.split('/')) {
+		if (segment === '' || segment === '.') {
+			continue;
+		}
+		if (segment === '..') {
+			depth--;
+			if (depth < 0) {
+				return true;
+			}
+		} else {
+			depth++;
+		}
+	}
+	return false;
+}
+
 /** Shared by `bindModules`/`discoverModuleRootsFromPoms`: base id from the root's own last path segment, a numeric suffix on a real collision rather than silently merging two modules. */
 function assignIds(roots: readonly string[]): readonly { id: string; root: string }[] {
 	const usedIds = new Set<string>();

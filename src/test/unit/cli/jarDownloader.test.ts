@@ -39,6 +39,36 @@ test('downloadLatestJar: verifies the download against a real SHA-256SUMS asset 
 	assert.deepEqual(result.content, jarBytes);
 });
 
+/**
+ * The checksum line is parsed with a deliberately unambiguous regex
+ * (typescript:S5852 - see `parseSha256Sums`). These two pin the shapes that
+ * regex still has to accept: coreutils' text mode writes two spaces and no
+ * `*`, and a real downloaded file can carry CR or trailing spaces.
+ */
+test('downloadLatestJar: coreutils text-mode lines (two spaces, no asterisk) verify too', async () => {
+	const jarBytes = Buffer.from('fake jar bytes');
+	const digest = crypto.createHash('sha256').update(jarBytes).digest('hex');
+	const sums = `${digest}  proof-java.jar\n`;
+
+	const result = await downloadLatestJar(
+		async (url) => (url.includes('SHA-256SUMS') ? sums : fakeReleaseResponse(['proof-java.jar', 'SHA-256SUMS'])),
+		async () => jarBytes,
+	);
+	assert.deepEqual(result.content, jarBytes);
+});
+
+test('downloadLatestJar: trailing whitespace and CRLF line endings still verify', async () => {
+	const jarBytes = Buffer.from('fake jar bytes');
+	const digest = crypto.createHash('sha256').update(jarBytes).digest('hex');
+	const sums = `${digest} *proof-java.jar   \r\n`;
+
+	const result = await downloadLatestJar(
+		async (url) => (url.includes('SHA-256SUMS') ? sums : fakeReleaseResponse(['proof-java.jar', 'SHA-256SUMS'])),
+		async () => jarBytes,
+	);
+	assert.deepEqual(result.content, jarBytes);
+});
+
 test('downloadLatestJar: a checksum mismatch is a hard failure, not a silent install', async () => {
 	const jarBytes = Buffer.from('fake jar bytes');
 	const sums = `${'deadbeef'.repeat(8)} *proof-java.jar\n`;
