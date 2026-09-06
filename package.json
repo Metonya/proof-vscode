@@ -4,7 +4,7 @@
   "description": "Runs the proof CLI (currently proof-java) and renders its verdict: inline coverage gutter, per-line test evidence, and mutation findings.",
   "icon": "media/icon.png",
   "version": "0.0.1",
-  "publisher": "proof",
+  "publisher": "metonya",
   "private": true,
   "repository": {
     "type": "git",

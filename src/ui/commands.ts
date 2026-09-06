@@ -249,7 +249,7 @@ export function registerExportReportCommand(context: vscode.ExtensionContext, ou
 /** Çalıştır panelinin başlık çubuğundaki dişli ikonu - `proof.*` ayarlarına, Ayarlar sekmesinde "proof-java" ile filtrelenmiş halde götürür. Kullanıcının kendi klasörüne özgü ayarları görmesi için workspace scope'unda açılır. */
 export function registerOpenSettingsCommand(): vscode.Disposable {
 	return vscode.commands.registerCommand('proof.openSettings', () => {
-		void vscode.commands.executeCommand('workbench.action.openSettings', '@ext:proof.proof-vscode');
+		void vscode.commands.executeCommand('workbench.action.openSettings', '@ext:metonya.proof-vscode');
 	});
 }
 

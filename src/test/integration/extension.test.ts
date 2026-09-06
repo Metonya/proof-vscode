@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 
 suite('Extension activation', () => {
 	test('activates without throwing and shows no UI on its own (only registers the analyze command)', async () => {
-		const ext = vscode.extensions.getExtension('proof.proof-vscode');
+		const ext = vscode.extensions.getExtension('metonya.proof-vscode');
 		assert.ok(ext, 'expected the extension to be discoverable by id');
 
 		await ext.activate();
