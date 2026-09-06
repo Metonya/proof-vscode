@@ -425,7 +425,7 @@ suite('Mutation view (Faz 20)', () => {
 
 	test('a SURVIVED mutant whose line has real perTest coverage gets the bridge contextValue and tooltip note', async () => {
 		setCoverageState(STATE);
-		setPerTestState({ perTest: SQUARE_PER_TEST, warnings: [] });
+		setPerTestState({ perTest: SQUARE_PER_TEST, warnings: [], targets: [], ranAt: undefined });
 		setMutationState({ mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
@@ -438,7 +438,7 @@ suite('Mutation view (Faz 20)', () => {
 
 	test('a mutant whose line has no perTest record at all gets the plain contextValue, no fabricated bridge', async () => {
 		setCoverageState(STATE);
-		setPerTestState({ perTest: SQUARE_PER_TEST, warnings: [] });
+		setPerTestState({ perTest: SQUARE_PER_TEST, warnings: [], targets: [], ranAt: undefined });
 		setMutationState({ mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 
@@ -450,7 +450,7 @@ suite('Mutation view (Faz 20)', () => {
 
 	test('no perTest data collected at all - every mutant gets the plain contextValue', async () => {
 		setCoverageState(STATE);
-		setPerTestState({ perTest: undefined, warnings: [] });
+		setPerTestState({ perTest: undefined, warnings: [], targets: [], ranAt: undefined });
 		setMutationState({ mutation: MUTATION, warnings: [], targets: [], ranAt: Date.now() });
 		const provider = new MutationTreeProvider();
 

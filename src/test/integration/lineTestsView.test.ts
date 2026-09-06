@@ -5,8 +5,13 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 
 import { setCoverageState, setMutationState, setPerTestState, type CoverageState } from '../../model/store';
-import { LineTestsTreeProvider } from '../../ui/treeViews/lineTestsView';
+import { LineTestsTreeProvider, type LineTestsNode } from '../../ui/treeViews/lineTestsView';
 import type { FileCoverageBlock, Finding, MetricSet, ModuleInput, MutationBlock, PerTestBlock } from '../../verdict/types';
+
+/** Skips the "Target: ... · X ago" header (Faz 34) that now leads every root list with real perTest evidence - same convention as mutationView.test.ts's own classNodes(). A no-op when there is no header (empty/hint-only states). */
+function rootsOf(provider: LineTestsTreeProvider): LineTestsNode[] {
+	return provider.getChildren().filter((n) => n.kind !== 'header');
+}
 
 const METRIC = { numeratorName: 'a', numerator: 1, denominatorName: 'b', denominator: 1, percent: 100 };
 const METRIC_SET: MetricSet = { 'jacoco-line': METRIC, 'strict-line': METRIC, 'sonar-compatible': METRIC };
@@ -85,20 +90,20 @@ async function openTestFile(className: string) {
 suite('Line tests view (Faz 15c)', () => {
 	test('before any Java file is active, shows the empty state', () => {
 		const provider = new LineTestsTreeProvider();
-		const roots = provider.getChildren();
+		const roots = rootsOf(provider);
 		assert.equal(roots.length, 1);
 		assert.equal(roots[0].kind, 'empty');
 	});
 
 	test('production file: line node -> test leaf -> getParent round-trip', async () => {
-		setPerTestState({ perTest: PER_TEST, warnings: [] });
+		setPerTestState({ perTest: PER_TEST, warnings: [], targets: [], ranAt: undefined });
 		const { document, workspaceRoot } = await openProductionFile('Calculator');
 		setCoverageState({ ...STATE, workspaceRoot });
 
 		const provider = new LineTestsTreeProvider();
 		provider.setActiveDocument(document);
 
-		const roots = provider.getChildren();
+		const roots = rootsOf(provider);
 		assert.equal(roots.length, 1);
 		assert.equal(roots[0].kind, 'prodLine');
 		assert.doesNotThrow(() => provider.getTreeItem(roots[0]));
@@ -131,11 +136,11 @@ suite('Line tests view (Faz 15c)', () => {
 				ambient: [],
 			}],
 		};
-		setPerTestState({ perTest: twoClasses, warnings: [] });
+		setPerTestState({ perTest: twoClasses, warnings: [], targets: [], ranAt: undefined });
 		setCoverageState({ ...STATE, workspaceRoot: 'C:/repo', findings: [] });
 
 		const provider = new LineTestsTreeProvider();
-		const roots = provider.getChildren();
+		const roots = rootsOf(provider);
 		assert.deepEqual(roots.map((r) => r.kind), ['class', 'class']);
 		assert.deepEqual(roots.map((r) => (r.kind === 'class' ? r.className : '')), ['dev.proofjava.playground.Calculator', 'dev.proofjava.playground.Multiplier']);
 
@@ -166,7 +171,7 @@ suite('Line tests view (Faz 15c)', () => {
 				ambient: [],
 			}],
 		};
-		setPerTestState({ perTest, warnings: [] });
+		setPerTestState({ perTest, warnings: [], targets: [], ranAt: undefined });
 		const { document, workspaceRoot } = await openProductionFile('Calculator');
 		setCoverageState({ ...STATE, workspaceRoot, findings: [] }); // no findings anywhere - this test is 'ok'
 
@@ -178,7 +183,7 @@ suite('Line tests view (Faz 15c)', () => {
 		const provider = new LineTestsTreeProvider();
 		provider.setActiveDocument(document);
 
-		const line = provider.getChildren()[0];
+		const line = rootsOf(provider)[0];
 		const prodTest = provider.getChildren(line)[0];
 		assert.equal(prodTest.kind, 'prodTest');
 		if (prodTest.kind === 'prodTest') {
@@ -216,14 +221,14 @@ suite('Line tests view (Faz 15c)', () => {
 				ambient: [],
 			}],
 		};
-		setPerTestState({ perTest: constructorPerTest, warnings: [] });
+		setPerTestState({ perTest: constructorPerTest, warnings: [], targets: [], ranAt: undefined });
 		const { document, workspaceRoot } = await openProductionFile('Calculator');
 		setCoverageState({ ...STATE, workspaceRoot, findings: [] });
 
 		const provider = new LineTestsTreeProvider();
 		provider.setActiveDocument(document);
 
-		const roots = provider.getChildren();
+		const roots = rootsOf(provider);
 		assert.equal(roots.length, 1);
 		assert.equal(roots[0].kind, 'prodLine');
 		if (roots[0].kind === 'prodLine') {
@@ -258,14 +263,14 @@ suite('Line tests view (Faz 15c)', () => {
 				ambient: [],
 			}],
 		};
-		setPerTestState({ perTest: notifyingCalculatorPerTest, warnings: [] });
+		setPerTestState({ perTest: notifyingCalculatorPerTest, warnings: [], targets: [], ranAt: undefined });
 		const { document, workspaceRoot } = await openProductionFile('NotifyingCalculator');
 		setCoverageState({ ...STATE, workspaceRoot, findings: [] });
 
 		const provider = new LineTestsTreeProvider();
 		provider.setActiveDocument(document);
 
-		const roots = provider.getChildren();
+		const roots = rootsOf(provider);
 		assert.equal(roots.length, 2, 'two contiguous runs (9-11 and 14-16), not six separate line nodes');
 		assert.equal(roots[0].kind, 'prodLine');
 		if (roots[0].kind === 'prodLine') {
@@ -305,18 +310,18 @@ suite('Line tests view (Faz 15c)', () => {
 				ambient: [],
 			}],
 		};
-		setPerTestState({ perTest: mixedPerTest, warnings: [] });
+		setPerTestState({ perTest: mixedPerTest, warnings: [], targets: [], ranAt: undefined });
 		const { document, workspaceRoot } = await openProductionFile('Calculator');
 		setCoverageState({ ...STATE, workspaceRoot });
 
 		const provider = new LineTestsTreeProvider();
 		provider.setActiveDocument(document);
 
-		assert.equal(provider.getChildren().length, 2, 'both lines are visible while the filter is off');
+		assert.equal(rootsOf(provider).length, 2, 'both lines are visible while the filter is off');
 		assert.equal(provider.isProblemsOnly(), false, 'default: nothing is hidden');
 
 		assert.equal(provider.toggleProblemsOnly(), true);
-		const filtered = provider.getChildren();
+		const filtered = rootsOf(provider);
 		assert.equal(filtered.length, 1, 'the line covered by the test with an assertion is hidden');
 		assert.equal(filtered[0].kind, 'prodLine');
 		if (filtered[0].kind === 'prodLine') {
@@ -324,18 +329,18 @@ suite('Line tests view (Faz 15c)', () => {
 		}
 
 		provider.toggleProblemsOnly();
-		assert.equal(provider.getChildren().length, 2, 'everything comes back when toggled off again');
+		assert.equal(rootsOf(provider).length, 2, 'everything comes back when toggled off again');
 	});
 
 	test('test file (reverse direction): test-method node -> production-line leaf', async () => {
-		setPerTestState({ perTest: PER_TEST, warnings: [] });
+		setPerTestState({ perTest: PER_TEST, warnings: [], targets: [], ranAt: undefined });
 		const { document, workspaceRoot } = await openTestFile('CalculatorPseudoTestedTest');
 		setCoverageState({ ...STATE, workspaceRoot });
 
 		const provider = new LineTestsTreeProvider();
 		provider.setActiveDocument(document);
 
-		const roots = provider.getChildren();
+		const roots = rootsOf(provider);
 		assert.equal(roots.length, 1);
 		assert.equal(roots[0].kind, 'testMethod');
 		assert.doesNotThrow(() => provider.getTreeItem(roots[0]));
@@ -387,7 +392,7 @@ suite('Line tests view (Faz 15c)', () => {
 				ambient: [],
 			}],
 		};
-		setPerTestState({ perTest: realPerTest, warnings: [] });
+		setPerTestState({ perTest: realPerTest, warnings: [], targets: [], ranAt: undefined });
 		const { document, workspaceRoot } = await openTestFile('CalculatorPseudoTestedTest');
 		// A real run always carries fileCoverage (the extension passes
 		// --file-coverage on every scan) - it is the authoritative listing of
@@ -398,7 +403,7 @@ suite('Line tests view (Faz 15c)', () => {
 		const provider = new LineTestsTreeProvider();
 		provider.setActiveDocument(document);
 
-		const roots = provider.getChildren();
+		const roots = rootsOf(provider);
 		assert.ok(roots.every((n) => n.kind !== 'prodLine'), 'a test file must never render production-direction "Line N" nodes');
 		assert.equal(roots.length, 1);
 		assert.equal(roots[0].kind, 'testMethod');
@@ -415,27 +420,27 @@ suite('Line tests view (Faz 15c)', () => {
 
 	/** The same fixture from the other side: opening the production class must still give the forward direction. */
 	test('production file under sourceRoots renders the production direction even when test classes are in entries', async () => {
-		setPerTestState({ perTest: PER_TEST, warnings: [] });
+		setPerTestState({ perTest: PER_TEST, warnings: [], targets: [], ranAt: undefined });
 		const { document, workspaceRoot } = await openProductionFile('Calculator');
 		setCoverageState({ ...STATE, workspaceRoot });
 
 		const provider = new LineTestsTreeProvider();
 		provider.setActiveDocument(document);
 
-		const roots = provider.getChildren();
+		const roots = rootsOf(provider);
 		assert.equal(roots.length, 1);
 		assert.equal(roots[0].kind, 'prodLine');
 	});
 
 	test('a Java file with no per-test evidence at all shows the collect hint, not a bare empty message', async () => {
-		setPerTestState({ perTest: PER_TEST, warnings: [] });
+		setPerTestState({ perTest: PER_TEST, warnings: [], targets: [], ranAt: undefined });
 		const { document, workspaceRoot } = await openProductionFile('Untouched');
 		setCoverageState({ ...STATE, workspaceRoot });
 
 		const provider = new LineTestsTreeProvider();
 		provider.setActiveDocument(document);
 
-		const roots = provider.getChildren();
+		const roots = rootsOf(provider);
 		assert.equal(roots.length, 2);
 		assert.equal(roots[0].kind, 'empty');
 		assert.equal(roots[1].kind, 'collectHint');
@@ -478,7 +483,7 @@ suite('Line tests view (Faz 15c)', () => {
 			}],
 		};
 
-		setPerTestState({ perTest: addPerTest, warnings: [] });
+		setPerTestState({ perTest: addPerTest, warnings: [], targets: [], ranAt: undefined });
 		setMutationState({ mutation: addMutation, warnings: [], targets: [], ranAt: Date.now() });
 		const { document, workspaceRoot } = await openProductionFile('Calculator');
 		setCoverageState({ ...STATE, workspaceRoot, findings: [inconclusiveFinding] });
@@ -486,7 +491,7 @@ suite('Line tests view (Faz 15c)', () => {
 		const provider = new LineTestsTreeProvider();
 		provider.setActiveDocument(document);
 
-		const line = provider.getChildren()[0];
+		const line = rootsOf(provider)[0];
 		assert.equal(line.kind, 'prodLine');
 		const prodTest = provider.getChildren(line)[0];
 		assert.equal(prodTest.kind, 'prodTest');
@@ -502,7 +507,7 @@ suite('Line tests view (Faz 15c)', () => {
 	});
 
 	test('an INCONCLUSIVE test that never killed anything gets the plain contextValue, no fabricated contradiction', async () => {
-		setPerTestState({ perTest: PER_TEST, warnings: [] });
+		setPerTestState({ perTest: PER_TEST, warnings: [], targets: [], ranAt: undefined });
 		const inconclusiveFinding: Finding = { ...FINDINGS[0], confidence: 'INCONCLUSIVE' };
 		const { document, workspaceRoot } = await openProductionFile('Calculator');
 		setCoverageState({ ...STATE, workspaceRoot, findings: [inconclusiveFinding] });
@@ -511,7 +516,7 @@ suite('Line tests view (Faz 15c)', () => {
 		const provider = new LineTestsTreeProvider();
 		provider.setActiveDocument(document);
 
-		const line = provider.getChildren()[0];
+		const line = rootsOf(provider)[0];
 		const prodTest = provider.getChildren(line)[0];
 		const item = await provider.getTreeItem(prodTest);
 		assert.equal(item.contextValue, 'proof.prodTest', 'no mutation evidence at all - must not claim a contradiction');

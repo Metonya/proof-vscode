@@ -79,6 +79,8 @@ export const PERTEST_STORAGE_FILE = 'pertest-current.json';
 export interface PerTestSnapshot {
 	perTest: PerTestBlock;
 	warnings: readonly Reason[];
+	targets: readonly string[];
+	ranAtMs: number;
 }
 
 /**
@@ -730,12 +732,16 @@ async function runAnalyzePerTest(output: vscode.OutputChannel, sinks: CoverageSi
 	}
 
 	publishAnalysis(sinks, folder.uri.fsPath, analysisResultFrom(parsed));
-	setPerTestState({ perTest: parsed.perTest, warnings: parsed.warnings });
+	const ranAtMs = Date.now();
+	// Faz 34: diff-scoped, same convention as runMutationForModule's own
+	// diff-scoped call - the CLI picks the targets, we never asked for a
+	// specific list, so an empty array means "diff-derived" to targetSummary().
+	setPerTestState({ perTest: parsed.perTest, warnings: parsed.warnings, targets: [], ranAt: ranAtMs });
 	if (parsed.perTest) {
 		// Faz 28 (§7.5b): yalnızca blok gerçekten varsa yazılır - sonraki bir
 		// Hızlı Tarama ya da Mutasyon Testi bu bloğu taşımayan bir
 		// verdict-current.json yazınca bu dosya etkilenmeden kalır.
-		const snapshot: PerTestSnapshot = { perTest: parsed.perTest, warnings: parsed.warnings };
+		const snapshot: PerTestSnapshot = { perTest: parsed.perTest, warnings: parsed.warnings, targets: [], ranAtMs };
 		await writeJsonSnapshot(folder, output, PERTEST_STORAGE_FILE, snapshot, 'per-test evidence');
 		// Faz 33: same reasoning as runMutation's extra refresh - the Run
 		// panel's Deep Scan row freshness text reads this file's mtime, and
@@ -784,9 +790,10 @@ async function runPerTestForFile(output: vscode.OutputChannel, sinks: CoverageSi
 	}
 
 	publishAnalysis(sinks, folder.uri.fsPath, analysisResultFrom(parsed));
-	setPerTestState({ perTest: parsed.perTest, warnings: parsed.warnings });
+	const ranAtMs = Date.now();
+	setPerTestState({ perTest: parsed.perTest, warnings: parsed.warnings, targets: [className], ranAt: ranAtMs });
 	if (parsed.perTest) {
-		const snapshot: PerTestSnapshot = { perTest: parsed.perTest, warnings: parsed.warnings };
+		const snapshot: PerTestSnapshot = { perTest: parsed.perTest, warnings: parsed.warnings, targets: [className], ranAtMs };
 		await writeJsonSnapshot(folder, output, PERTEST_STORAGE_FILE, snapshot, 'per-test evidence');
 		// Faz 33: same reasoning as runMutation's extra refresh - the Run
 		// panel's Deep Scan row freshness text reads this file's mtime, and
@@ -905,9 +912,10 @@ async function runAnalyzePerTestAll(output: vscode.OutputChannel, sinks: Coverag
 	}
 
 	publishAnalysis(sinks, folder.uri.fsPath, analysisResultFrom(parsed));
-	setPerTestState({ perTest: parsed.perTest, warnings: parsed.warnings });
+	const ranAtMs = Date.now();
+	setPerTestState({ perTest: parsed.perTest, warnings: parsed.warnings, targets: targets.map((t) => t.fqcn), ranAt: ranAtMs });
 	if (parsed.perTest) {
-		const snapshot: PerTestSnapshot = { perTest: parsed.perTest, warnings: parsed.warnings };
+		const snapshot: PerTestSnapshot = { perTest: parsed.perTest, warnings: parsed.warnings, targets: targets.map((t) => t.fqcn), ranAtMs };
 		await writeJsonSnapshot(folder, output, PERTEST_STORAGE_FILE, snapshot, 'per-test evidence');
 		// Faz 33: same reasoning as runMutation's extra refresh - the Run
 		// panel's Deep Scan row freshness text reads this file's mtime, and

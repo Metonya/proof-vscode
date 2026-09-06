@@ -114,6 +114,8 @@ function realPerTestSnapshot(): PerTestSnapshot {
 			}],
 		},
 		warnings: [],
+		targets: [],
+		ranAtMs: Date.now(),
 	};
 }
 
@@ -181,7 +183,7 @@ suite('extension.restoreLastCoverageFrom (Faz 23/25 - pencere yenileme)', () => 
 		// A second, later refresh() (post-fix) is what makes it redraw again
 		// with the now-populated perTest data.
 		assert.ok(lineTestsSnapshots.length > 0, 'lineTestsView.refresh() must fire on restore');
-		assert.equal(lineTestsSnapshots.at(-1)![0]?.kind, 'prodLine', 'the last redraw lineTestsView would have done must show the restored per-test data, not the pre-setPerTestState empty state');
+		assert.equal(lineTestsSnapshots.at(-1)!.find((n) => n.kind !== 'header')?.kind, 'prodLine', 'the last redraw lineTestsView would have done must show the restored per-test data, not the pre-setPerTestState empty state');
 
 		// Faz 25: mutation-current.json carries our own real timestamp, so a
 		// restored result must say "N dakika önce", not "kaydedilmiş sonuç -
@@ -294,7 +296,7 @@ suite('extension.restoreLastCoverageFrom (Faz 23/25 - pencere yenileme)', () => 
 		await restoreLastCoverageFrom(storageDir, workspaceRoot, sinks);
 
 		assert.ok(lineTestsSnapshots.length > 0, 'perTest must restore independently of verdict-current.json having no perTest block');
-		assert.equal(lineTestsSnapshots.at(-1)![0]?.kind, 'prodLine', 'must show the restored per-test data, not the no-per-test-evidence message');
+		assert.equal(lineTestsSnapshots.at(-1)!.find((n) => n.kind !== 'header')?.kind, 'prodLine', 'must show the restored per-test data, not the no-per-test-evidence message');
 	});
 
 	test('a missing pertest-current.json (never ran Derin Tarama) falls back to verdict-current.json\'s own perTest block, unchanged behavior', async () => {
@@ -315,7 +317,7 @@ suite('extension.restoreLastCoverageFrom (Faz 23/25 - pencere yenileme)', () => 
 		await restoreLastCoverageFrom(storageDir, workspaceRoot, sinks);
 
 		const roots = sinks.lineTestsView.getChildren();
-		assert.equal(roots[0]?.kind, 'prodLine', 'falls back to verdict-current.json\'s own perTest block when no dedicated snapshot exists');
+		assert.equal(roots.find((n) => n.kind !== 'header')?.kind, 'prodLine', 'falls back to verdict-current.json\'s own perTest block when no dedicated snapshot exists');
 	});
 
 	test('a corrupted pertest-current.json is ignored, falls back to verdict-current.json\'s own perTest block', async () => {
@@ -335,6 +337,6 @@ suite('extension.restoreLastCoverageFrom (Faz 23/25 - pencere yenileme)', () => 
 
 		await assert.doesNotReject(restoreLastCoverageFrom(storageDir, workspaceRoot, sinks));
 		const roots = sinks.lineTestsView.getChildren();
-		assert.equal(roots[0]?.kind, 'prodLine', 'a corrupted snapshot must not block the verdict-current.json fallback');
+		assert.equal(roots.find((n) => n.kind !== 'header')?.kind, 'prodLine', 'a corrupted snapshot must not block the verdict-current.json fallback');
 	});
 });

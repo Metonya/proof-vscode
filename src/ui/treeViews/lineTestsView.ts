@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 
 import { detectClassName } from '../../model/classNameDetector';
 import { allClasses, groupConsecutiveLines, testsForClass, testsToLines, type TestLineRef } from '../../model/lineIndex';
-import { findKillContribution, type KillContribution } from '../../model/mutationModel';
+import { findKillContribution, formatRelativeTime, targetSummary, type KillContribution } from '../../model/mutationModel';
 import { classifySourcePath, toAbsolutePath, toRepoRelativePath, type SourceKind } from '../../model/pathIndex';
 import { buildProductionClassIndex, productionSourceRoots, testSourceRoots } from '../../model/productionClassIndex';
 import { getCoverageState, getMutationState, getPerTestState } from '../../model/store';
@@ -33,6 +33,8 @@ export type LineTestsNode =
 	| { kind: 'collectHint' }
 	/** Faz 31: diff hiç değişen sınıf bulamadığında ("ben değişiklik yapmadan tüm repoda tarama yapabilmeliyim") - diff'ten bağımsız, modüldeki her production sınıfını hedefleyen kurtarma eylemi. */
 	| { kind: 'scanAllHint' }
+	/** Faz 34 (user request): same "which scope, when" answer as the Mutation view's own header - this run could have come from the diff-scoped Deep Scan, a single right-clicked class, or the whole-module no-diff command, and that distinction matters. */
+	| { kind: 'header'; text: string }
 	/** Faz 31: root shown when no Java file is active - mirrors the mutation view's "always show the whole run" landing. */
 	| { kind: 'class'; className: string; linesToTests: ReadonlyMap<number, readonly string[]>; linesToMethod: ReadonlyMap<number, string> }
 	| { kind: 'prodLine'; startLine: number; endLine: number; tests: readonly string[]; methodName: string | undefined; className?: string }
@@ -93,6 +95,8 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 				return collectHintItem();
 			case 'scanAllHint':
 				return scanAllHintItem();
+			case 'header':
+				return headerItem(node.text);
 			case 'class':
 				return classItem(node);
 			case 'prodLine':
@@ -182,6 +186,7 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 			}
 			return nodes;
 		}
+		const header = this.perTestHeaderNode();
 		if (view.kind === 'production') {
 			const findingsByTestMethod = indexFindingsByTestMethod(getCoverageState()?.findings ?? []);
 			const groups = groupConsecutiveLines(view.linesToTests, view.linesToMethod)
@@ -189,7 +194,10 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 			if (groups.length === 0) {
 				return [{ kind: 'empty', message: this.problemsOnly ? 'No problem lines in this file - every covering test has an assertion. (Click the title-bar filter to remove this filter.)' : 'No line records for this class.' }];
 			}
-			return groups.map((group): LineTestsNode => ({ kind: 'prodLine', startLine: group.startLine, endLine: group.endLine, tests: group.tests, methodName: group.methodName }));
+			return [
+				...(header ? [header] : []),
+				...groups.map((group): LineTestsNode => ({ kind: 'prodLine', startLine: group.startLine, endLine: group.endLine, tests: group.tests, methodName: group.methodName })),
+			];
 		}
 		// test file: group the reverse index's flat refs back into per-method nodes for this class
 		const methods = [...view.reverse.entries()]
@@ -197,7 +205,13 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 			.map(([key, refs]): LineTestsNode => ({ kind: 'testMethod', methodName: key.slice(view.className.length + 1, -2), refs }));
 		return methods.length === 0
 			? [{ kind: 'empty', message: 'No test method in this class ran the production code targeted in this run.' }]
-			: methods;
+			: [...(header ? [header] : []), ...methods];
+	}
+
+	/** Faz 34 (user request): shared by every branch that renders real perTest evidence - `undefined` when there is no run to date-stamp yet. */
+	private perTestHeaderNode(): LineTestsNode | undefined {
+		const state = getPerTestState();
+		return state?.perTest ? { kind: 'header', text: perTestHeaderText(state) } : undefined;
 	}
 
 	/**
@@ -220,15 +234,22 @@ export class LineTestsTreeProvider implements vscode.TreeDataProvider<LineTestsN
 		const findingsByTestMethod = indexFindingsByTestMethod(getCoverageState()?.findings ?? []);
 		const classes = allClasses(perTest, productionClassFilter())
 			.filter((c) => groupConsecutiveLines(c.linesToTests, c.linesToMethod).some((g) => !this.problemsOnly || hasProblem(g.tests, findingsByTestMethod)));
+		const header = this.perTestHeaderNode();
 		if (classes.length === 0) {
-			return [{
-				kind: 'empty',
-				message: this.problemsOnly
-					? 'No problem lines - every covering test has an assertion. (Click the title-bar filter to remove this filter.)'
-					: 'No line records for any class in this run.',
-			}];
+			return [
+				...(header ? [header] : []),
+				{
+					kind: 'empty',
+					message: this.problemsOnly
+						? 'No problem lines - every covering test has an assertion. (Click the title-bar filter to remove this filter.)'
+						: 'No line records for any class in this run.',
+				},
+			];
 		}
-		return classes.map((c): LineTestsNode => ({ kind: 'class', className: c.className, linesToTests: c.linesToTests, linesToMethod: c.linesToMethod }));
+		return [
+			...(header ? [header] : []),
+			...classes.map((c): LineTestsNode => ({ kind: 'class', className: c.className, linesToTests: c.linesToTests, linesToMethod: c.linesToMethod })),
+		];
 	}
 
 	/**
@@ -335,6 +356,20 @@ function collectHintItem(): vscode.TreeItem {
 	const item = new vscode.TreeItem('Collect For This Class', vscode.TreeItemCollapsibleState.None);
 	item.iconPath = new vscode.ThemeIcon('play');
 	item.command = { command: 'proof.perTestForFile', title: 'Collect For This Class' };
+	return item;
+}
+
+/** Faz 34 (user request): same shape/wording as `mutationView.ts`'s own header - "Target: N class(es) · X ago". */
+function perTestHeaderText(state: NonNullable<ReturnType<typeof getPerTestState>>): string {
+	const target = targetSummary(state.targets);
+	const when = state.ranAt === undefined ? 'saved result - when it ran in this window is unknown' : formatRelativeTime(state.ranAt, Date.now());
+	return `Target: ${target} · ${when}`;
+}
+
+function headerItem(text: string): vscode.TreeItem {
+	const item = new vscode.TreeItem(text, vscode.TreeItemCollapsibleState.None);
+	item.iconPath = new vscode.ThemeIcon('history');
+	item.contextValue = 'proof.lineTestsHeader';
 	return item;
 }
 

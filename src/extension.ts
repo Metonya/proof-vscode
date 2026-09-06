@@ -243,7 +243,11 @@ export async function restoreLastCoverageFrom(storageDir: string, workspaceRoot:
 	// tekrar `setPerTestState` çağırıp onu `verdict-current.json`'ın
 	// (muhtemelen perTest'siz) haliyle ezmiyoruz - hangisi varsa o kalır.
 	if (!perTestRestored) {
-		setPerTestState({ perTest: parsed.value.perTest, warnings: parsed.value.warnings });
+		// verdict-current.json carries neither the requested targets nor a
+		// timestamp (D-xx, same reason mutation/perTest snapshots exist as
+		// their own files) - empty/undefined here means exactly that,
+		// mirroring how a restored MutationState with no ranAt is handled.
+		setPerTestState({ perTest: parsed.value.perTest, warnings: parsed.value.warnings, targets: [], ranAt: undefined });
 	}
 	// Faz 23: publishAnalysis kendi refresh()'ini setPerTestState çağrılmadan
 	// ÖNCE tetikliyor (bu fonksiyonun içinde), yani TreeView eski/boş
@@ -325,7 +329,7 @@ async function restorePerTestSnapshot(storageDir: string, sinks: CoverageSinks):
 	if (!snapshot) {
 		return false;
 	}
-	setPerTestState({ perTest: snapshot.perTest, warnings: snapshot.warnings });
+	setPerTestState({ perTest: snapshot.perTest, warnings: snapshot.warnings, targets: snapshot.targets, ranAt: snapshot.ranAtMs });
 	// verdict-current.json bağımsız olarak eksik/bozuk olabilir (§7.5/§7.5b
 	// aynı gerekçe) - bu yenileme onun varlığına bağlı olmamalı.
 	sinks.lineTestsView.refresh();
@@ -344,6 +348,8 @@ function parsePerTestSnapshot(raw: string): PerTestSnapshot | undefined {
 		typeof json !== 'object' || json === null
 		|| !('perTest' in json) || !isPerTestBlock(json.perTest)
 		|| !('warnings' in json) || !Array.isArray(json.warnings)
+		|| !('targets' in json) || !Array.isArray(json.targets) || !json.targets.every((t) => typeof t === 'string')
+		|| !('ranAtMs' in json) || typeof json.ranAtMs !== 'number'
 	) {
 		return undefined;
 	}
