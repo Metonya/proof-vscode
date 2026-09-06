@@ -31,8 +31,9 @@ import type { ChangedFile, FileCoverageBlock, Finding, MetricSet, ModuleInput, M
 import { publishFindings } from './diagnostics';
 import type { ExplorerBadgeProvider } from './explorerBadges';
 import { applyGutterCoverage, clearGutterCoverage, type GutterDecorationTypes } from './gutterRenderer';
+import { runGradleTestsTask } from './gradleTestTask';
 import { runTestsTask } from './mavenTestTask';
-import { offerToDownloadJar, offerToOpenSetting, resolveEvidenceClasspaths, resolveReportBinding, resolveRunTestsModuleScope, type ClasspathKind } from './preflight';
+import { detectRunTestsBuildTool, offerToDownloadJar, offerToOpenSetting, resolveEvidenceClasspaths, resolveReportBinding, resolveRunTestsModuleScope, type ClasspathKind } from './preflight';
 import { showCoverageSummary, showNoFileCoverageWarning } from './statusBar';
 import type { CoverageTreeProvider } from './treeViews/coverageView';
 import type { LineTestsNode, LineTestsTreeProvider } from './treeViews/lineTestsView';
@@ -182,6 +183,17 @@ export function registerRunTestsCommand(output: vscode.OutputChannel, sinks: Cov
 		// (`resolveRunTestsModuleScope`), so the button is scoped correctly
 		// from its very first click too, not only after this window's own
 		// first successful scan.
+		if (detectRunTestsBuildTool(folder) === 'gradle') {
+			const gradleResult = await runGradleTestsTask(folder, output);
+			if (gradleResult?.success) {
+				await runAnalyze(output, sinks);
+			} else if (gradleResult && !gradleResult.success) {
+				vscode.window.showErrorMessage('Proof: Gradle failed. See the terminal output for detail.');
+			}
+			sinks.runView.refresh();
+			return;
+		}
+
 		const boundModules = getCoverageState()?.modules;
 		let moduleRoots: readonly string[] | undefined;
 		if (boundModules) {

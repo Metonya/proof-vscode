@@ -5,6 +5,7 @@ import * as vscode from 'vscode';
 import { formatRelativeTime } from '../../model/mutationModel';
 import { getMutationState, isGutterVisible } from '../../model/store';
 import { PERTEST_STORAGE_FILE, resolveStorageRoot } from '../commands';
+import { detectRunTestsBuildTool } from '../preflight';
 
 /**
  * Faz 11b: "proof-java: Çalıştır" - komut paletine gitmeden analiz
@@ -103,13 +104,7 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 			// Faz 30 (§7.8): the user's explicit ask for an "easy re-run
 			// button" - always available, without having to wait for a full
 			// analyze run just because the report is missing.
-			new RunItem(
-				'Run Tests (Maven + JaCoCo)',
-				reportFreshnessText(folder),
-				'proof.runTests',
-				'run-all',
-				'Runs the tests under JaCoCo via Maven (in a visible terminal) and refreshes the report. Adds the JaCoCo plugin from the command line if the pom doesn\'t declare one - never a permanent pom change. Quick Scan runs automatically when it finishes.',
-			),
+			runTestsItem(folder),
 			new RunItem(
 				'Quick Scan (overall + new code)',
 				`coverage + bad test findings · new code: ${scopeText} · ${quickScanFreshnessText(folder)}`,
@@ -146,9 +141,34 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 	}
 }
 
-/** Best-effort: the configured report's own mtime, the same "is this stale?" signal `--file-coverage`-driven staleness already relies on elsewhere. A missing report is not an error here, just its own "not yet" state (hard rule 3a: absence gets its own state, not a guess). */
+/** Faz "Gradle support" G2: the button's own label used to hardcode "Maven" - stale now that Run Tests also runs a real Gradle build (via its own committed wrapper) on a Gradle workspace. Mirrors detectRunTestsBuildTool's own priority so this never disagrees with what actually runs when clicked. */
+function runTestsItem(folder: vscode.WorkspaceFolder): RunItem {
+	const buildTool = detectRunTestsBuildTool(folder);
+	const label = buildTool === 'gradle' ? 'Run Tests (Gradle + JaCoCo)' : 'Run Tests (Maven + JaCoCo)';
+	const tooltip = buildTool === 'gradle'
+		? 'Runs "gradlew test jacocoTestReport" (in a visible terminal) and refreshes the report - only ever the workspace\'s own committed wrapper, never a bare \'gradle\' on PATH. Quick Scan runs automatically when it finishes.'
+		: 'Runs the tests under JaCoCo via Maven (in a visible terminal) and refreshes the report. Adds the JaCoCo plugin from the command line if the pom doesn\'t declare one - never a permanent pom change. Quick Scan runs automatically when it finishes.';
+	return new RunItem(label, reportFreshnessText(folder), 'proof.runTests', 'run-all', tooltip);
+}
+
+/**
+ * Best-effort: the configured report's own mtime, the same "is this
+ * stale?" signal `--file-coverage`-driven staleness already relies on
+ * elsewhere. A missing report is not an error here, just its own "not yet"
+ * state (hard rule 3a: absence gets its own state, not a guess).
+ *
+ * The unconfigured default used to be Maven's `target/site/jacoco/jacoco.xml`
+ * unconditionally - on a Gradle workspace (report actually at `build/
+ * reports/jacoco/test/jacocoTestReport.xml`) that always missed, so this
+ * kept saying "not yet generated" right after a real, successful Gradle
+ * build had just written the report. Same class of bug `resolveEvidenceClasspaths`
+ * had for its own target/ vs build/ default (Faz "Gradle support" G2).
+ */
 function reportFreshnessText(folder: vscode.WorkspaceFolder): string {
-	const reportPath = vscode.workspace.getConfiguration('proof', folder).get<string>('reportPath') || 'target/site/jacoco/jacoco.xml';
+	const configured = vscode.workspace.getConfiguration('proof', folder).get<string>('reportPath');
+	const buildTool = detectRunTestsBuildTool(folder);
+	const defaultPath = buildTool === 'gradle' ? 'build/reports/jacoco/test/jacocoTestReport.xml' : 'target/site/jacoco/jacoco.xml';
+	const reportPath = configured || defaultPath;
 	try {
 		const stat = fs.statSync(path.join(folder.uri.fsPath, reportPath));
 		return `report: ${formatRelativeTime(stat.mtimeMs, Date.now())}`;

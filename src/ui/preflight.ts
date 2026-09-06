@@ -7,6 +7,7 @@ import { type DoctorResult, runDoctor } from '../cli/doctorRunner';
 import { interpretMavenFailure } from '../cli/mavenErrorInterpreter';
 import { parseDoctorProgressLine } from '../cli/progressParser';
 import { bindModules, describeSiblingProjects, discoverModuleRootsFromPoms, isProjectRoot, moduleForPath, PROJECT_ROOT_MARKER_FILES, toRepoRelativePosix } from '../cli/reportDiscovery';
+import { resolveGradleWrapper, runGradleTestsTask } from './gradleTestTask';
 import { runMavenInstallTask, runTestsTask } from './mavenTestTask';
 import { resolveWorkspaceEnv } from './workspaceEnv';
 
@@ -32,6 +33,25 @@ export interface ReportBinding {
 /** Impure: a plain existence check against `PROJECT_ROOT_MARKER_FILES` (the pure definition lives in `reportDiscovery.ts` so both this check and its test share one list). */
 function projectMarkersPresentAt(dir: string): boolean {
 	return PROJECT_ROOT_MARKER_FILES.some((marker) => fs.existsSync(path.join(dir, marker)));
+}
+
+/**
+ * Which "Run Tests" flow applies to this workspace - same priority the CLI's
+ * own `DoctorCommand.discoverModules` uses (Maven first, Gradle only when no
+ * root `pom.xml` exists): a root `pom.xml` means the existing Maven-only
+ * flow (`mavenTestTask.ts`, pom-inspection, module scoping) applies
+ * unchanged; otherwise a committed Gradle wrapper at the root means
+ * `gradleTestTask.ts` applies; neither means there is nothing this command
+ * can run (falls through to the pre-existing Maven error path, unchanged).
+ */
+export function detectRunTestsBuildTool(folder: vscode.WorkspaceFolder): 'maven' | 'gradle' | undefined {
+	if (fs.existsSync(path.join(folder.uri.fsPath, 'pom.xml'))) {
+		return 'maven';
+	}
+	if (resolveGradleWrapper(folder)) {
+		return 'gradle';
+	}
+	return undefined;
 }
 
 /** A directory "looks like a project" for sibling-detection purposes if it has a build-system marker of its own, or is simply a separate git checkout (a repo that has not been built with proof-java's supported build tools yet is still a real, distinct project - listing it by name costs nothing and is more honest than silently skipping it). */
@@ -143,14 +163,25 @@ export async function resolveRunTestsModuleScope(folder: vscode.WorkspaceFolder)
  * have already shown their own message.
  */
 async function offerToRunTestsNow(folder: vscode.WorkspaceFolder, output: vscode.OutputChannel): Promise<boolean> {
+	const buildTool = detectRunTestsBuildTool(folder);
+	const toolLabel = buildTool === 'gradle' ? 'Gradle' : 'Maven';
 	const choice = await vscode.window.showInformationMessage(
-		'Proof: this project has no JaCoCo report yet. Run the tests with JaCoCo now? Maven will run in its own terminal, you\'ll see its output.',
+		`Proof: this project has no JaCoCo report yet. Run the tests with JaCoCo now? ${toolLabel} will run in its own terminal, you'll see its output.`,
 		'Run Tests',
 		'Cancel',
 	);
 	if (choice !== 'Run Tests') {
 		return false;
 	}
+
+	if (buildTool === 'gradle') {
+		const gradleResult = await runGradleTestsTask(folder, output);
+		if (gradleResult && !gradleResult.success) {
+			vscode.window.showErrorMessage('Proof: Gradle failed. See the terminal output for detail. Scan not started.');
+		}
+		return gradleResult?.success === true;
+	}
+
 	const scope = await resolveRunTestsModuleScope(folder);
 	if (!scope) {
 		return false;
@@ -185,7 +216,10 @@ export async function resolveReportBinding(folder: vscode.WorkspaceFolder, confi
 	// Past this point the workspace root is itself a real (single- or
 	// multi-module) project, so every jacoco.xml found below genuinely
 	// belongs to it - a gson-shaped case, not a coverdict-corpus-shaped one.
-	const found = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, '**/target/site/jacoco/jacoco.xml'), '**/node_modules/**', 50);
+	// Faz "Gradle support" G1: searches both Maven's and (plain Java)
+	// Gradle's default JaCoCo XML locations - see reportDiscovery.ts's
+	// KNOWN_REPORT_SUFFIXES for why Android's variant-named path isn't here.
+	const found = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, '**/{target/site/jacoco/jacoco.xml,build/reports/jacoco/test/jacocoTestReport.xml}'), '**/node_modules/**', 50);
 	if (found.length === 0) {
 		if (!alreadyOfferedRunTests && await offerToRunTestsNow(folder, output)) {
 			return resolveReportBinding(folder, configuredReportPath, output, true);
@@ -234,8 +268,10 @@ async function runDoctorFixWithProgress(javaExecutable: string, jarPath: string,
 
 export type ClasspathKind = 'perTest' | 'mutation';
 
-function classpathRelPath(root: string, kind: ClasspathKind): string {
-	const file = kind === 'perTest' ? 'target/proof-per-test-classpath.txt' : 'target/proof-mutation-classpath.txt';
+/** `GradleClasspathFixer.java`'s own file names (`build/proof-*-classpath.txt`) mirror `ClasspathFixer.java`'s Maven ones (`target/proof-*-classpath.txt`) exactly except for the build-output directory - the one fact this extension needs to know to look in the right place. */
+function classpathRelPath(root: string, kind: ClasspathKind, buildTool: 'maven' | 'gradle'): string {
+	const dir = buildTool === 'gradle' ? 'build' : 'target';
+	const file = `${dir}/proof-${kind === 'perTest' ? 'per-test' : 'mutation'}-classpath.txt`;
 	return root === '.' ? file : `${root}/${file}`;
 }
 
@@ -250,13 +286,13 @@ interface ClasspathCheck {
  * from before Faz 30) only applies when there is exactly one bound module,
  * since a single scalar path cannot meaningfully override N modules' files.
  */
-function checkClasspaths(workspaceRoot: string, modules: readonly { id: string; root: string }[], kind: ClasspathKind, escapeHatchPath: string): ClasspathCheck {
+function checkClasspaths(workspaceRoot: string, modules: readonly { id: string; root: string }[], kind: ClasspathKind, escapeHatchPath: string, buildTool: 'maven' | 'gradle'): ClasspathCheck {
 	const classpaths: { moduleId: string; path: string }[] = [];
 	const missingModuleRoots: string[] = [];
 	for (const m of modules) {
 		const relPath = modules.length === 1 && fs.existsSync(path.join(workspaceRoot, escapeHatchPath))
 			? escapeHatchPath
-			: classpathRelPath(m.root, kind);
+			: classpathRelPath(m.root, kind, buildTool);
 		if (fs.existsSync(path.join(workspaceRoot, relPath))) {
 			classpaths.push({ moduleId: m.id, path: relPath });
 		} else {
@@ -290,21 +326,23 @@ export async function resolveEvidenceClasspaths(
 ): Promise<readonly { moduleId: string; path: string }[] | undefined> {
 	const workspaceRoot = folder.uri.fsPath;
 	const escapeHatchPath = vscode.workspace.getConfiguration('proof', folder).get<string>('perTestClasspathPath') || 'target/proof-classpath.txt';
+	const buildTool = detectRunTestsBuildTool(folder) ?? 'maven';
 
-	let check = checkClasspaths(workspaceRoot, modules, kind, escapeHatchPath);
+	let check = checkClasspaths(workspaceRoot, modules, kind, escapeHatchPath, buildTool);
 	if (check.missingModuleRoots.length === 0) {
 		return check.classpaths;
 	}
 
 	if (!projectMarkersPresentAt(workspaceRoot)) {
 		vscode.window.showErrorMessage(
-			`Proof: Deep Scan can't run without a classpath list - the scan was never started. This folder isn't a Maven project, and automatic generation only works with Maven. Point ${escapeHatchPath} at a list you've generated by hand.`,
+			`Proof: Deep Scan can't run without a classpath list - the scan was never started. This folder isn't a Maven or Gradle project, and automatic generation only works with those. Point ${escapeHatchPath} at a list you've generated by hand.`,
 		);
 		return undefined;
 	}
 
+	const toolLabel = buildTool === 'gradle' ? 'Gradle' : 'Maven';
 	const choice = await vscode.window.showInformationMessage(
-		`Proof: Deep Scan needs a classpath list (missing for ${check.missingModuleRoots.length} module(s): ${check.missingModuleRoots.join(', ')}). Generate it with Maven now?`,
+		`Proof: Deep Scan needs a classpath list (missing for ${check.missingModuleRoots.length} module(s): ${check.missingModuleRoots.join(', ')}). Generate it with ${toolLabel} now?`,
 		'Generate',
 		'Cancel',
 	);
@@ -316,9 +354,9 @@ export async function resolveEvidenceClasspaths(
 	const doctorResult = await runDoctorFixWithProgress(javaExecutable, jarPath, folder, output, modules.length);
 	output.appendLine(doctorResult.stdout);
 
-	check = checkClasspaths(workspaceRoot, modules, kind, escapeHatchPath);
+	check = checkClasspaths(workspaceRoot, modules, kind, escapeHatchPath, buildTool);
 	if (check.classpaths.length === 0) {
-		return handleClasspathGenerationFailure({ folder, jarPath, javaExecutable, output, modules, kind, escapeHatchPath }, doctorResult.stdout + doctorResult.stderr);
+		return handleClasspathGenerationFailure({ folder, jarPath, javaExecutable, output, modules, kind, escapeHatchPath, buildTool }, doctorResult.stdout + doctorResult.stderr);
 	}
 	if (check.missingModuleRoots.length > 0) {
 		vscode.window.showWarningMessage(`Proof: deep evidence won't be collected for these modules (classpath couldn't be generated): ${check.missingModuleRoots.join(', ')}. Coverage will still be computed.`);
@@ -336,6 +374,7 @@ interface ClasspathGenerationContext {
 	modules: readonly { id: string; root: string }[];
 	kind: ClasspathKind;
 	escapeHatchPath: string;
+	buildTool: 'maven' | 'gradle';
 }
 
 /**
@@ -365,7 +404,7 @@ async function handleClasspathGenerationFailure(ctx: ClasspathGenerationContext,
 	const retried = await runDoctorFixWithProgress(javaExecutable, jarPath, folder, output, modules.length);
 	output.appendLine(retried.stdout);
 
-	const check = checkClasspaths(workspaceRoot, modules, kind, escapeHatchPath);
+	const check = checkClasspaths(workspaceRoot, modules, kind, escapeHatchPath, ctx.buildTool);
 	if (check.classpaths.length === 0) {
 		const retryInterpretation = interpretMavenFailure(retried.stdout + retried.stderr);
 		const retryReasonSuffix = retryInterpretation ? ` Reason: ${retryInterpretation.detail}` : ' See the Output → proof-java channel for detail.';
