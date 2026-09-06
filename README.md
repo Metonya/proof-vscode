@@ -57,8 +57,7 @@ the Problems panel.
 - **HTML export** — a single, offline HTML report of the current results,
   for sharing outside the editor.
 - Every number comes from the CLI's own JSON. The extension never parses
-  coverage XML, runs git, or computes a percentage itself — see
-  [`docs/PLAN.md`](docs/PLAN.md) if you want the reasoning.
+  coverage XML, runs git, or computes a percentage itself.
 
 ## Screenshots
 
@@ -140,8 +139,6 @@ full list):
 
 ## Documentation
 
-- [`docs/PLAN.md`](docs/PLAN.md) — architecture, the CLI contract, and
-  current open work.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — building, running, and testing
   the extension itself.
 - [proof-java](https://github.com/Metonya/proof-java) — the CLI this extension runs, and

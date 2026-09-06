@@ -1,10 +1,7 @@
 # Contributing
 
 This covers building, running, and testing the extension itself. For what
-it does and how to use it, see [`README.md`](README.md). For architecture,
-the CLI contract, and current open work, see [`docs/PLAN.md`](docs/PLAN.md)
-— that's the real handoff document and the required reading before making
-non-trivial changes.
+it does and how to use it, see [`README.md`](README.md).
 
 ## Layout
 

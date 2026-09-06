@@ -46,15 +46,21 @@ const COLORBLIND_PALETTE = {
 } as const;
 
 /**
- * User report: the default `charts.green` theme color was too dark/muted
- * to tell apart from `charts.yellow`/`charts.red` at a glance on a 3px
- * border, forcing colorblindMode on just to get a distinguishable color -
- * not what that setting is for. A bright, fixed green (not theme-derived)
- * fixes the default palette directly instead. Raw hex, same reasoning as
- * COLORBLIND_PALETTE: chosen for visibility on both light and dark editor
- * backgrounds, not to track the active color theme.
+ * User report: the default `charts.*` theme colors were too close to each
+ * other to tell apart at a glance on a 3px border (`charts.red` and
+ * `charts.orange` in particular render nearly identically in several
+ * built-in themes), forcing colorblindMode on just to get distinguishable
+ * colors - not what that setting is for. A fixed, high-contrast palette
+ * (not theme-derived) fixes the default directly instead, same reasoning
+ * as COLORBLIND_PALETTE: chosen for mutual distinguishability on both
+ * light and dark editor backgrounds, not to track the active color theme.
  */
-const DEFAULT_COVERED_COLOR = '#4ADE80';
+const DEFAULT_PALETTE = {
+	covered: '#4ADE80', // green
+	partial: '#FACC15', // yellow
+	uncovered: '#F87171', // red
+	oracleless: '#FB923C', // orange
+} as const;
 
 /**
  * Called at activation and again, live, whenever `proof.colorblindMode`
@@ -63,9 +69,9 @@ const DEFAULT_COVERED_COLOR = '#4ADE80';
  */
 export function createGutterDecorationTypes(colorblindMode = false): GutterDecorationTypes {
 	return {
-		covered: borderDecoration(colorblindMode ? COLORBLIND_PALETTE.covered : DEFAULT_COVERED_COLOR),
-		partial: borderDecoration(colorblindMode ? COLORBLIND_PALETTE.partial : new vscode.ThemeColor('charts.yellow')),
-		uncovered: borderDecoration(colorblindMode ? COLORBLIND_PALETTE.uncovered : new vscode.ThemeColor('charts.red')),
+		covered: borderDecoration(colorblindMode ? COLORBLIND_PALETTE.covered : DEFAULT_PALETTE.covered),
+		partial: borderDecoration(colorblindMode ? COLORBLIND_PALETTE.partial : DEFAULT_PALETTE.partial),
+		uncovered: borderDecoration(colorblindMode ? COLORBLIND_PALETTE.uncovered : DEFAULT_PALETTE.uncovered),
 		excluded: vscode.window.createTextEditorDecorationType({
 			isWholeLine: true,
 			backgroundColor: new vscode.ThemeColor('editorInactiveSelection.background'),
@@ -92,7 +98,7 @@ export function createGutterDecorationTypes(colorblindMode = false): GutterDecor
 				margin: '0 0 0 1em',
 			},
 		}),
-		oracleless: borderDecoration(colorblindMode ? COLORBLIND_PALETTE.oracleless : new vscode.ThemeColor('charts.orange')),
+		oracleless: borderDecoration(colorblindMode ? COLORBLIND_PALETTE.oracleless : DEFAULT_PALETTE.oracleless),
 	};
 }
 
