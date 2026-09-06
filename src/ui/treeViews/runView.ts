@@ -127,6 +127,16 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 			isGutterVisible() ? 'eye' : 'eye-closed',
 			'Toggles the editor line colors and Explorer badges together. Does not rerun the scan.',
 		));
+
+		// Faz 34 (user request): a one-time setup action, not a scan - kept
+		// separate from the run-a-scan rows above.
+		items.push(new RunItem(
+			'Install Skill for AI Agent',
+			'Claude Code, Windsurf, Antigravity, or the portable .agents/skills',
+			'proof.installSkill',
+			'cloud-download',
+			'Fetches the current proof-java skill from GitHub and installs it for the AI coding agent of your choice, at either workspace or user scope. Always pulls the latest version - nothing is bundled with this extension.',
+		));
 		return items;
 	}
 }

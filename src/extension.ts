@@ -29,6 +29,7 @@ import { createDiagnosticCollection } from './ui/diagnostics';
 import { ExplorerBadgeProvider } from './ui/explorerBadges';
 import { applyGutterCoverage, createGutterDecorationTypes } from './ui/gutterRenderer';
 import { registerHoverProvider } from './ui/hoverProvider';
+import { registerInstallSkillCommand } from './ui/skillInstaller';
 import { createStatusBarItem } from './ui/statusBar';
 import { CoverageTreeProvider } from './ui/treeViews/coverageView';
 import { LineTestsTreeProvider, type LineTestsNode } from './ui/treeViews/lineTestsView';
@@ -95,6 +96,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		registerAnalyzePerTestCommand(output, sinks),
 		registerExportReportCommand(output),
 		registerOpenSettingsCommand(),
+		registerInstallSkillCommand(),
 		registerPerTestForFileCommand(output, sinks),
 		registerPerTestForModuleAllCommand(output, sinks),
 		registerToggleCoverageCommand(sinks),

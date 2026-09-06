@@ -176,6 +176,11 @@
         "icon": "$(gear)"
       },
       {
+        "command": "proof.installSkill",
+        "title": "Proof: Install Skill for AI Agent",
+        "icon": "$(cloud-download)"
+      },
+      {
         "command": "proof.perTestForFile",
         "title": "Proof: Which Test Covers Which Line For This Class"
       },
