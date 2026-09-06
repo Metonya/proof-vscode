@@ -112,6 +112,7 @@ export async function runGradleTestsTask(folder: vscode.WorkspaceFolder, output:
 		vscode.window.showWarningMessage(`Proof: running the whole Gradle build - ${unsafe.join(', ')} cannot be passed as a task path safely.`);
 	}
 
-	const args = buildGradleTestArgs({ moduleRoots });
+	const coverageTask = vscode.workspace.getConfiguration('proof', folder).get<string>('gradleCoverageTask');
+	const args = buildGradleTestArgs({ moduleRoots, coverageTask });
 	return runVisibleGradleTask(folder, output, wrapper, 'runTests', 'Run Tests (Gradle + JaCoCo)', args);
 }

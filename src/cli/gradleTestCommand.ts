@@ -25,10 +25,22 @@ export interface GradleTestCommandInput {
 	 * verified end to end against a real single-module Gradle project.
 	 */
 	moduleRoots?: readonly string[];
+	/**
+	 * The task that writes the JaCoCo report, when it is not Gradle's own
+	 * default. `jacocoTestReport` is only the default *of the `jacoco`
+	 * plugin*, and plenty of real builds have no task by that name:
+	 * measured on Google's Now in Android, `:core:common` (a plain JVM
+	 * module that never applies `jacoco`) has no coverage task at all, and
+	 * `:core:data` (an Android library) has variant-named ones instead
+	 * (`createDemoDebugUnitTestCoverageReport`, and five siblings). Asking
+	 * for a task that does not exist fails the whole build at selection
+	 * time, before anything runs - hence `proof.gradleCoverageTask`.
+	 */
+	coverageTask?: string;
 }
 
 const TEST_TASK = 'test';
-const JACOCO_REPORT_TASK = 'jacocoTestReport';
+export const DEFAULT_COVERAGE_TASK = 'jacocoTestReport';
 
 /**
  * `cli/runner.ts` spawns the wrapper with `shell: true` (Windows `.bat`
@@ -59,11 +71,12 @@ function taskPathFor(moduleRoot: string, taskName: string): string {
  * should say so with `unsafeModuleRoots` first.
  */
 export function buildGradleTestArgs(input: GradleTestCommandInput): string[] {
+	const coverageTask = input.coverageTask?.trim() || DEFAULT_COVERAGE_TASK;
 	const roots = input.moduleRoots ?? [];
 	if (roots.length === 0 || roots.some((root) => !isShellSafeModuleRoot(root))) {
-		return [TEST_TASK, JACOCO_REPORT_TASK];
+		return [TEST_TASK, coverageTask];
 	}
-	return roots.flatMap((root) => [taskPathFor(root, TEST_TASK), taskPathFor(root, JACOCO_REPORT_TASK)]);
+	return roots.flatMap((root) => [taskPathFor(root, TEST_TASK), taskPathFor(root, coverageTask)]);
 }
 
 /** The roots `buildGradleTestArgs` would refuse to scope to - so a caller can name them in a warning instead of silently running the whole build. */

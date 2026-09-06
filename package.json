@@ -3,7 +3,7 @@
   "displayName": "Proof",
   "description": "Runs the proof CLI (currently proof-java) and renders its verdict: inline coverage gutter, per-line test evidence, and mutation findings.",
   "icon": "media/icon.png",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "metonya",
   "license": "Apache-2.0",
   "repository": {
@@ -44,6 +44,11 @@
           "type": "string",
           "default": "",
           "description": "The Maven command used to generate a missing classpath list for Deep Scan. If left empty, \"mvn.cmd\" is used on Windows and \"mvn\" elsewhere. Set the full path if Maven isn't on PATH."
+        },
+        "proof.gradleCoverageTask": {
+          "type": "string",
+          "default": "",
+          "description": "The Gradle task that writes the JaCoCo XML report, used by Run Tests. Empty means \"jacocoTestReport\", which is the default task name of Gradle's jacoco plugin. Many builds have no task by that name: an Android module never does (AGP names coverage tasks per variant, e.g. \"createDemoDebugUnitTestCoverageReport\"), and a plain JVM module only has it if it applies the jacoco plugin. Run \"gradlew <module>:tasks --all\" to see what your build actually has. You will usually want to set proof.reportPath as well, since a non-default task writes its report somewhere Quick Scan does not look."
         },
         "proof.coverageExclusions": {
           "type": "array",
