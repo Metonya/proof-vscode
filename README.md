@@ -86,13 +86,18 @@ with live progress on a run.
 
 ## Requirements
 
-- A Maven project with a JaCoCo report (`mvn verify` produces one by
-  default at `target/site/jacoco/jacoco.xml`).
+- A Maven or Gradle project with a JaCoCo report. Quick Scan finds either
+  `target/site/jacoco/jacoco.xml` (Maven) or
+  `build/reports/jacoco/test/jacocoTestReport.xml` (Gradle) automatically.
+  Gradle support is coverage-only today: the **Run Tests** button, Deep
+  Scan, and Mutation Testing still assume Maven. See
+  [`proof-java`](https://github.com/Metonya/proof-java)'s own README for
+  the full build-tool support matrix (including Android/Kotlin gaps).
 - `proof-java.jar`: the CLI this extension runs. See
-  [`proof-java`](https://github.com/Metonya/proof-java) for what it does,
-  how it works, and its own Java version support matrix. The extension
-  can fetch the jar for you (see Usage below); you never need to clone or
-  build that repository yourself just to use this extension.
+  [`proof-java`](https://github.com/Metonya/proof-java) for what it does
+  and how it works. The extension can fetch the jar for you (see Usage
+  below); you never need to clone or build that repository yourself just
+  to use this extension.
 
 ## Installation
 

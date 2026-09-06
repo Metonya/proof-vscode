@@ -28,6 +28,32 @@ test('a report at an unfamiliar layout falls back to the repo root rather than g
 	assert.equal(module.reportPath, 'some/other/coverage/jacoco.xml');
 });
 
+/** Faz "Gradle support" G1: Gradle's own jacocoTestReport task default (XML must be turned on by hand - see docs/CLI-REFERENCE.md/the doctor hint), plain Java module shape only. */
+test('a Gradle jacocoTestReport at the workspace root needs no module binding', () => {
+	const module = describeModuleForReport('build/reports/jacoco/test/jacocoTestReport.xml');
+	assert.equal(module.id, 'root');
+	assert.equal(module.root, '.');
+	assert.equal(module.reportPath, 'build/reports/jacoco/test/jacocoTestReport.xml');
+});
+
+test('a Gradle jacocoTestReport under a subproject directory is bound to that subproject root', () => {
+	const module = describeModuleForReport('core/build/reports/jacoco/test/jacocoTestReport.xml');
+	assert.equal(module.root, 'core');
+	assert.equal(module.reportPath, 'core/build/reports/jacoco/test/jacocoTestReport.xml');
+});
+
+test('nested Gradle subproject paths keep every segment in the root', () => {
+	const module = describeModuleForReport('modules/service-a/build/reports/jacoco/test/jacocoTestReport.xml');
+	assert.equal(module.root, 'modules/service-a');
+});
+
+test('a Maven report and a Gradle report never collide on the same repo root binding', () => {
+	const maven = describeModuleForReport('gson/target/site/jacoco/jacoco.xml');
+	const gradle = describeModuleForReport('gson/build/reports/jacoco/test/jacocoTestReport.xml');
+	assert.equal(maven.root, 'gson');
+	assert.equal(gradle.root, 'gson');
+});
+
 test('toRepoRelativePosix strips the repo root and normalizes backslashes', () => {
 	const rel = toRepoRelativePosix('C:\\repo\\gson\\target\\site\\jacoco\\jacoco.xml', 'C:\\repo');
 	assert.equal(rel, 'gson/target/site/jacoco/jacoco.xml');

@@ -37,6 +37,39 @@ async function openJavaFile(root: string, relativeDir: string, packageName: stri
 	return vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
 }
 
+/**
+ * Faz "Gradle support" G1: `resolveReportBinding`'s own `findFiles` glob
+ * (`**\/{target/site/jacoco/jacoco.xml,build/reports/jacoco/test/jacocoTestReport.xml}`)
+ * is the one part of this change that isn't provable by a plain unit test -
+ * VS Code's own glob engine has to actually honor the `{a,b}` brace syntax
+ * against a real Extension Host filesystem. This proves that directly,
+ * independent of `resolveReportBinding`'s own (larger, unrelated) UI flow.
+ */
+suite('Gradle jacocoTestReport.xml discovery glob (Faz "Gradle support" G1)', () => {
+	test('the brace-expansion glob finds both a Maven jacoco.xml and a Gradle jacocoTestReport.xml in the same workspace', async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-gradle-glob-'));
+		const mavenReport = path.join(root, 'target', 'site', 'jacoco', 'jacoco.xml');
+		const gradleReport = path.join(root, 'core', 'build', 'reports', 'jacoco', 'test', 'jacocoTestReport.xml');
+		fs.mkdirSync(path.dirname(mavenReport), { recursive: true });
+		fs.mkdirSync(path.dirname(gradleReport), { recursive: true });
+		fs.writeFileSync(mavenReport, '<report/>', 'utf8');
+		fs.writeFileSync(gradleReport, '<report/>', 'utf8');
+
+		const found = await vscode.workspace.findFiles(
+			new vscode.RelativePattern(makeWorkspaceFolder(root), '**/{target/site/jacoco/jacoco.xml,build/reports/jacoco/test/jacocoTestReport.xml}'),
+			'**/node_modules/**',
+			50,
+		);
+		// Windows drive letters can come back from VS Code's own URI handling
+		// in either case (a harness quirk, not a glob-matching one) - lower
+		// both sides so the comparison is about which files were found, not
+		// which case a drive letter happened to render in this run.
+		const normalize = (p: string) => p.toLowerCase();
+		const foundPaths = found.map((uri) => normalize(uri.fsPath)).sort();
+		assert.deepEqual(foundPaths, [mavenReport, gradleReport].map(normalize).sort());
+	});
+});
+
 suite('resolveRunTestsModuleScope (Faz 31)', () => {
 	test('a single pom.xml (no real scoping decision) never prompts, returns undefined moduleRoots', async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-preflight-single-'));

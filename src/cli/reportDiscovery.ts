@@ -20,8 +20,24 @@
  * if picking among them were a real choice.
  */
 
-const JACOCO_SUFFIX = '/target/site/jacoco/jacoco.xml';
+/**
+ * Faz "Gradle support" G1: every known "report path ends here" convention
+ * this extension can attribute to a module root, tried in order. Maven's
+ * own default report goal always lands at the first path; Gradle's
+ * `jacocoTestReport` task (XML off by default - see `docs/CLI-REFERENCE.md`
+ * or the Gradle hint in `doctor`) lands at the second, for a plain Java
+ * module using the task's own default name. Deliberately not attempting
+ * Android/AGP's variant-named paths (`build/reports/coverage/test/<variant>/...`)
+ * here - the variant segment makes a single fixed suffix meaningless, and a
+ * wrong guess would silently bind the wrong module; `proof.reportPath` set
+ * by hand is still the correct path there.
+ */
+const KNOWN_REPORT_SUFFIXES = [
+	'/target/site/jacoco/jacoco.xml',
+	'/build/reports/jacoco/test/jacocoTestReport.xml',
+] as const;
 const JACOCO_AT_ROOT = 'target/site/jacoco/jacoco.xml';
+const GRADLE_JACOCO_AT_ROOT = 'build/reports/jacoco/test/jacocoTestReport.xml';
 
 export interface DiscoveredModule {
 	/**
@@ -47,10 +63,14 @@ export interface DiscoveredModule {
  * rather than guessing at an unfamiliar layout.
  */
 export function describeModuleForReport(repoRelativeReportPath: string): DiscoveredModule {
-	if (repoRelativeReportPath === JACOCO_AT_ROOT || !repoRelativeReportPath.endsWith(JACOCO_SUFFIX)) {
+	if (repoRelativeReportPath === JACOCO_AT_ROOT || repoRelativeReportPath === GRADLE_JACOCO_AT_ROOT) {
 		return { id: 'root', root: '.', reportPath: repoRelativeReportPath };
 	}
-	const root = repoRelativeReportPath.slice(0, -JACOCO_SUFFIX.length);
+	const suffix = KNOWN_REPORT_SUFFIXES.find((s) => repoRelativeReportPath.endsWith(s));
+	if (!suffix) {
+		return { id: 'root', root: '.', reportPath: repoRelativeReportPath };
+	}
+	const root = repoRelativeReportPath.slice(0, -suffix.length);
 	return { id: 'root', root, reportPath: repoRelativeReportPath };
 }
 

@@ -185,7 +185,10 @@ export async function resolveReportBinding(folder: vscode.WorkspaceFolder, confi
 	// Past this point the workspace root is itself a real (single- or
 	// multi-module) project, so every jacoco.xml found below genuinely
 	// belongs to it - a gson-shaped case, not a coverdict-corpus-shaped one.
-	const found = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, '**/target/site/jacoco/jacoco.xml'), '**/node_modules/**', 50);
+	// Faz "Gradle support" G1: searches both Maven's and (plain Java)
+	// Gradle's default JaCoCo XML locations - see reportDiscovery.ts's
+	// KNOWN_REPORT_SUFFIXES for why Android's variant-named path isn't here.
+	const found = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, '**/{target/site/jacoco/jacoco.xml,build/reports/jacoco/test/jacocoTestReport.xml}'), '**/node_modules/**', 50);
 	if (found.length === 0) {
 		if (!alreadyOfferedRunTests && await offerToRunTestsNow(folder, output)) {
 			return resolveReportBinding(folder, configuredReportPath, output, true);
