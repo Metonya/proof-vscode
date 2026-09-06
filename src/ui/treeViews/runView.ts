@@ -151,9 +151,24 @@ function runTestsItem(folder: vscode.WorkspaceFolder): RunItem {
 	return new RunItem(label, reportFreshnessText(folder), 'proof.runTests', 'run-all', tooltip);
 }
 
-/** Best-effort: the configured report's own mtime, the same "is this stale?" signal `--file-coverage`-driven staleness already relies on elsewhere. A missing report is not an error here, just its own "not yet" state (hard rule 3a: absence gets its own state, not a guess). */
+/**
+ * Best-effort: the configured report's own mtime, the same "is this
+ * stale?" signal `--file-coverage`-driven staleness already relies on
+ * elsewhere. A missing report is not an error here, just its own "not yet"
+ * state (hard rule 3a: absence gets its own state, not a guess).
+ *
+ * The unconfigured default used to be Maven's `target/site/jacoco/jacoco.xml`
+ * unconditionally - on a Gradle workspace (report actually at `build/
+ * reports/jacoco/test/jacocoTestReport.xml`) that always missed, so this
+ * kept saying "not yet generated" right after a real, successful Gradle
+ * build had just written the report. Same class of bug `resolveEvidenceClasspaths`
+ * had for its own target/ vs build/ default (Faz "Gradle support" G2).
+ */
 function reportFreshnessText(folder: vscode.WorkspaceFolder): string {
-	const reportPath = vscode.workspace.getConfiguration('proof', folder).get<string>('reportPath') || 'target/site/jacoco/jacoco.xml';
+	const configured = vscode.workspace.getConfiguration('proof', folder).get<string>('reportPath');
+	const buildTool = detectRunTestsBuildTool(folder);
+	const defaultPath = buildTool === 'gradle' ? 'build/reports/jacoco/test/jacocoTestReport.xml' : 'target/site/jacoco/jacoco.xml';
+	const reportPath = configured || defaultPath;
 	try {
 		const stat = fs.statSync(path.join(folder.uri.fsPath, reportPath));
 		return `report: ${formatRelativeTime(stat.mtimeMs, Date.now())}`;
