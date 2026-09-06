@@ -29,7 +29,7 @@ import { parseVerdict } from '../../../verdict/parse';
  * bug in the fixture or in the extension.
  */
 const PLAYGROUND_ROOT = path.resolve(__dirname, '../../../../../proof-java-playground');
-const JAR_PATH = path.resolve(__dirname, '../../../../../coverdict/proof-java-cli/target/proof-java.jar');
+const JAR_PATH = path.resolve(__dirname, '../../../../../proof-java/proof-java-cli/target/proof-java.jar');
 const REPORT_PATH = path.join(PLAYGROUND_ROOT, 'target', 'site', 'jacoco', 'jacoco.xml');
 const CLASSPATH_PATH = path.join(PLAYGROUND_ROOT, 'target', 'proof-classpath.txt');
 

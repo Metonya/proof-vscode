@@ -21,7 +21,7 @@ import { parseVerdict } from '../../../verdict/parse';
  * - this is a real, private dev-machine layout assumption (Desktop/proof-java
  * next to Desktop/proof-vscode), not something every clone will have.
  */
-const CLI_REPO_ROOT = path.resolve(__dirname, '../../../../../coverdict/proof-java-cli');
+const CLI_REPO_ROOT = path.resolve(__dirname, '../../../../../proof-java/proof-java-cli');
 const JAR_PATH = path.join(CLI_REPO_ROOT, 'target', 'proof-java.jar');
 const REPORT_PATH = path.join(CLI_REPO_ROOT, 'target', 'site', 'jacoco', 'jacoco.xml');
 const FIXTURES_PRESENT = fs.existsSync(JAR_PATH) && fs.existsSync(REPORT_PATH);

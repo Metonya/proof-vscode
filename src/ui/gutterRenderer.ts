@@ -46,13 +46,24 @@ const COLORBLIND_PALETTE = {
 } as const;
 
 /**
+ * User report: the default `charts.green` theme color was too dark/muted
+ * to tell apart from `charts.yellow`/`charts.red` at a glance on a 3px
+ * border, forcing colorblindMode on just to get a distinguishable color -
+ * not what that setting is for. A bright, fixed green (not theme-derived)
+ * fixes the default palette directly instead. Raw hex, same reasoning as
+ * COLORBLIND_PALETTE: chosen for visibility on both light and dark editor
+ * backgrounds, not to track the active color theme.
+ */
+const DEFAULT_COVERED_COLOR = '#4ADE80';
+
+/**
  * Called at activation and again, live, whenever `proof.colorblindMode`
  * changes (`extension.ts`'s own `onDidChangeConfiguration` handler disposes
  * the old types and swaps in a fresh set) - no window reload needed.
  */
 export function createGutterDecorationTypes(colorblindMode = false): GutterDecorationTypes {
 	return {
-		covered: borderDecoration(colorblindMode ? COLORBLIND_PALETTE.covered : new vscode.ThemeColor('charts.green')),
+		covered: borderDecoration(colorblindMode ? COLORBLIND_PALETTE.covered : DEFAULT_COVERED_COLOR),
 		partial: borderDecoration(colorblindMode ? COLORBLIND_PALETTE.partial : new vscode.ThemeColor('charts.yellow')),
 		uncovered: borderDecoration(colorblindMode ? COLORBLIND_PALETTE.uncovered : new vscode.ThemeColor('charts.red')),
 		excluded: vscode.window.createTextEditorDecorationType({
