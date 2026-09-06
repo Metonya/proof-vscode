@@ -3,9 +3,9 @@
   "displayName": "Proof",
   "description": "Runs the proof CLI (currently proof-java) and renders its verdict: inline coverage gutter, per-line test evidence, and mutation findings.",
   "icon": "media/icon.png",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "metonya",
-  "private": true,
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/Metonya/proof-vscode"
@@ -14,6 +14,8 @@
     "vscode": "^1.88.0"
   },
   "categories": [
+    "Testing",
+    "Linters",
     "Other"
   ],
   "extensionKind": [
@@ -422,5 +424,15 @@
     "npm-run-all": "^4.1.5",
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.39.0"
-  }
+  },
+  "keywords": [
+    "java",
+    "coverage",
+    "jacoco",
+    "testing",
+    "mutation testing",
+    "test quality",
+    "maven",
+    "gradle"
+  ]
 }
