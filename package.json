@@ -109,7 +109,7 @@
           "type": "number",
           "default": 300,
           "minimum": 1,
-          "description": "Time budget, in seconds, for one module in mutation testing (--mutation-timeout). If exceeded, the run stops and the result is partial - the partial result is still shown, never silently dropped. Single-class runs are usually seconds long; you may need to raise this for module-wide runs."
+          "description": "Idle timeout, in seconds, for one module in mutation testing (--mutation-timeout): the run is stopped once no class has completed for this long - not a total budget, so a run that keeps completing classes keeps going however long it takes. When it does trigger, the result is partial and still shown, never silently dropped. Single-class runs are usually seconds long; you may need to raise this if one class legitimately needs longer than the default between completions."
         },
         "proof.perTestTimeout": {
           "type": "number",

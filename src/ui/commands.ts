@@ -805,7 +805,7 @@ async function runMutationForModule(context: vscode.ExtensionContext, output: vs
 		'Mutasyon testi tüm modül için çalıştırılacak.',
 		{
 			modal: true,
-			detail: `Bu koşu uzun sürebilir - büyük bir modülde bir saati aşabilir. Modül başına zaman bütçesi ${timeout} saniye (proof.mutationTimeout); aşılırsa koşu durdurulur ve sonuç kısmi kalır.\n\nTek bir sınıf için genelde saniyeler yeterlidir: o dosyada sağ tık → "Bu Sınıf İçin Mutasyon Testi".`,
+			detail: `Bu koşu uzun sürebilir - büyük bir modülde bir saati aşabilir. ${timeout} saniyelik ayar (proof.mutationTimeout) toplam bir bütçe değil, bir "boşta kalma" süresi: bir sınıf tamamlanmadan bu kadar süre geçerse koşu durdurulur, sınıflar tamamlanmaya devam ettiği sürece süre ne olursa olsun devam eder. Durursa sonuç yine de kısmi olarak gösterilir.\n\nTek bir sınıf için genelde saniyeler yeterlidir: o dosyada sağ tık → "Bu Sınıf İçin Mutasyon Testi".`,
 		},
 		'Devam Et',
 	);
