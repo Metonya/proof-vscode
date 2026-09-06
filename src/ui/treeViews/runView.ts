@@ -43,20 +43,21 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 		const config = vscode.workspace.getConfiguration('proof', folder);
 		const diffMode = config.get<string>('diffMode') ?? 'uncommitted';
 		const scopeText = diffModeText(diffMode, config.get<string>('baseRef'));
+		const noVcs = diffMode === 'no-vcs';
 
 		const items = [
 			// Faz 30 (§7.8): the user's explicit ask for an "easy re-run
 			// button" - always available, without having to wait for a full
 			// analyze run just because the report is missing.
 			new RunItem(
-				'Run Tests',
+				'Run Tests (Maven + JaCoCo)',
 				reportFreshnessText(folder),
 				'proof.runTests',
 				'run-all',
 				'Runs the tests under JaCoCo via Maven (in a visible terminal) and refreshes the report. Adds the JaCoCo plugin from the command line if the pom doesn\'t declare one - never a permanent pom change. Quick Scan runs automatically when it finishes.',
 			),
 			new RunItem(
-				'Quick Scan',
+				'Quick Scan (overall + new code)',
 				`coverage + bad test findings · new code: ${scopeText}`,
 				'proof.analyze',
 				'play',
@@ -64,53 +65,67 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 			),
 		];
 
-		if (diffMode === 'no-vcs') {
-			items.push(new RunItem(
-				'Deep Scan',
-				'unavailable in no-vcs mode - requires a diff',
-				undefined,
-				'circle-slash',
-				'Deep Scan can only collect which test runs which line for classes that changed in a diff; in "no-vcs" mode there\'s no concept of a changed file, so there\'s nothing to target.\n\nTo collect this for a single class without a diff: right-click that file → "Which Test Covers Which Line For This Class".',
-			));
-		} else {
-			items.push(new RunItem(
-				'Deep Scan',
+		// Faz 33 (user request): "no-vcs" used to disable this item entirely,
+		// pointing only at the single-class right-click. But the whole-module,
+		// diff-independent command (`perTestForModuleAll`) never needed a diff
+		// in the first place - it lists every production class directly - so
+		// there is no real reason to disable the row here; it just needs to
+		// run that command instead of the diff-scoped one.
+		items.push(noVcs
+			? new RunItem(
+				'Deep Scan (whole module, no diff)',
+				'everything Quick Scan has + which test covers which line',
+				'proof.perTestForModuleAll',
+				'beaker',
+				'DEEP SCAN IS NOT MUTATION TESTING - mutation is its own separate item below.\n\n'
+				+ 'Can take minutes (reruns the tests under the PIT engine, but only to record which test touches which line - it does not mutate the code).\n\nOn top of everything Quick Scan does:\n· Which tests execute each line ("Line → Tests" view)\n· "Falsely green" lines - covered, but none of the covering tests has a real assertion\n\nScope: every production class in the module - "no-vcs" mode has no concept of a changed file, so there\'s no diff to scope to.',
+			)
+			: new RunItem(
+				'Deep Scan (+ line→test map)',
 				'everything Quick Scan has + which test covers which line',
 				'proof.analyzePerTest',
 				'beaker',
 				'DEEP SCAN IS NOT MUTATION TESTING - mutation is its own separate item below.\n\n'
-				+ `Can take minutes (reruns the tests under the PIT engine, but only to record which test touches which line - it does not mutate the code).\n\nOn top of everything Quick Scan does:\n· Which tests execute each line ("Line → Tests" view)\n· "Falsely green" lines - covered, but none of the covering tests has a real assertion\n\nScope: classes changed within ${scopeText}.`,
+				+ `Can take minutes (reruns the tests under the PIT engine, but only to record which test touches which line - it does not mutate the code).\n\nOn top of everything Quick Scan does:\n· Which tests execute each line ("Line → Tests" view)\n· "Falsely green" lines - covered, but none of the covering tests has a real assertion\n\nScope: classes changed within ${scopeText}. Use the button on the right to scan the whole module regardless of the diff instead.`,
+				'proof.runItem.deepScan',
 			));
-		}
 
 		// Faz 20: mutation is its own item. Never auto-triggered, and the
 		// module-wide run sits behind a confirmation dialog - a single
 		// class takes seconds, a large module can take over an hour.
-		items.push(diffMode === 'no-vcs'
+		// Faz 33: same no-vcs fix as Deep Scan above - `mutationForModuleAll`
+		// needs no diff either, so it replaces the diff-scoped command here
+		// instead of disabling the row.
+		items.push(noVcs
 			? new RunItem(
-				'Mutation Testing',
-				'module-wide is unavailable in no-vcs mode - right-click for a single class',
-				undefined,
-				'circle-slash',
-				'Module-wide mutation derives its targets from production classes that changed in a diff; in "no-vcs" mode there\'s no concept of a changed file, so there\'s no target.\n\nThis still works for a single class in this mode: right-click that file → "Mutation Test This Class".',
+				'Mutation Testing (whole module, no diff)',
+				'deliberately break the code, find where no test notices',
+				'proof.mutationForModuleAll',
+				'zap',
+				'REAL MUTATION TESTING (different from Deep Scan).\n\n'
+				+ 'Generates small variants ("mutants") of the code and reruns the tests. If a mutant survives, we broke the code and no test noticed - meaning an assertion verifying that behavior is missing.\n\n'
+				+ 'TAKES A WHILE: can exceed an hour on a large module, so this asks for confirmation. A single class is usually seconds - right-click that file → "Mutation Test This Class".\n\n'
+				+ 'Scope: every production class in the module - "no-vcs" mode has no concept of a changed file, so there\'s no diff to scope to. Results appear in the "Mutation" view.',
 			)
 			: new RunItem(
-				'Mutation Testing',
+				'Mutation Testing (diff-scoped)',
 				'deliberately break the code, find where no test notices',
 				'proof.mutationForModule',
 				'zap',
 				'REAL MUTATION TESTING (different from Deep Scan).\n\n'
 				+ 'Generates small variants ("mutants") of the code and reruns the tests. If a mutant survives, we broke the code and no test noticed - meaning an assertion verifying that behavior is missing.\n\n'
 				+ 'TAKES A WHILE: can exceed an hour on a large module, so this asks for confirmation. A single class is usually seconds - right-click that file → "Mutation Test This Class".\n\n'
-				+ `Scope: classes changed within ${scopeText}. Results appear in the "Mutation" view.`,
-			),
-			new RunItem(
-				'Coverage View',
-				isGutterVisible() ? 'on - click to hide' : 'off - click to show',
-				'proof.toggleCoverage',
-				isGutterVisible() ? 'eye' : 'eye-closed',
-				'Toggles the editor line colors and Explorer badges together. Does not rerun the scan.',
+				+ `Scope: classes changed within ${scopeText}. Results appear in the "Mutation" view. Use the button on the right to scan the whole module regardless of the diff instead.`,
+				'proof.runItem.mutation',
 			));
+
+		items.push(new RunItem(
+			'Coverage View',
+			isGutterVisible() ? 'on - click to hide' : 'off - click to show',
+			'proof.toggleCoverage',
+			isGutterVisible() ? 'eye' : 'eye-closed',
+			'Toggles the editor line colors and Explorer badges together. Does not rerun the scan.',
+		));
 		return items;
 	}
 }
@@ -137,11 +152,13 @@ function diffModeText(diffMode: string, baseRef: string | undefined): string {
 }
 
 class RunItem extends vscode.TreeItem {
-	constructor(label: string, description: string | undefined, commandId: string | undefined, icon: string, tooltip?: string) {
+	/** `contextValue` (Faz 33) drives `package.json`'s `view/item/context` inline-icon menus - only Deep Scan/Mutation Testing's diff-scoped rows set one, for the "run this for the whole module instead" shortcut. */
+	constructor(label: string, description: string | undefined, commandId: string | undefined, icon: string, tooltip?: string, contextValue?: string) {
 		super(label, vscode.TreeItemCollapsibleState.None);
 		this.description = description;
 		this.iconPath = new vscode.ThemeIcon(icon);
 		this.tooltip = tooltip;
+		this.contextValue = contextValue;
 		if (commandId) {
 			this.command = { command: commandId, title: label };
 		}

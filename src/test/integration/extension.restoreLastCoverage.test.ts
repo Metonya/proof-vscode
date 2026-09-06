@@ -119,7 +119,6 @@ function realPerTestSnapshot(): PerTestSnapshot {
 
 function buildSinks(): CoverageSinks {
 	return {
-		context: {} as vscode.ExtensionContext,
 		gutterTypes: createGutterDecorationTypes(),
 		explorerBadges: new ExplorerBadgeProvider(),
 		statusBarItem: createStatusBarItem(),

@@ -81,14 +81,42 @@ export interface PerTestSnapshot {
 	warnings: readonly Reason[];
 }
 
-/** Best-effort: bir koşunun test bazlı/mutasyon sonucunu diske yazamamak koşunun kendisini başarısız saymaz - sonuç zaten ekranda, yalnızca bir sonraki pencere yenilemesinde kaybolur. Sebep Output kanalına gider, kullanıcıyı bir hata diyaloğuyla kesmez. */
-async function writeJsonSnapshot(context: vscode.ExtensionContext, output: vscode.OutputChannel, fileName: string, data: unknown, failureNoun: string): Promise<void> {
-	const storageRoot = context.storageUri;
-	if (!storageRoot) {
-		return;
-	}
+/**
+ * Faz 33 (user request): moved off `context.storageUri` (VS Code's own
+ * hidden, per-workspace storage - not visible in the repo, not something
+ * `ls`/`git status` shows) to a plain, repo-local, gitignored `.proof/`
+ * directory. `context.storageUri` already survived a window
+ * reload/reopen (`extension.ts`'s `restoreLastCoverage` on activation) -
+ * that was never the problem this solves. This is about visibility: the
+ * user can see the file exists, read it directly, or delete it by hand.
+ */
+export const STORAGE_DIR_NAME = '.proof';
+
+export function resolveStorageRoot(folder: vscode.WorkspaceFolder): vscode.Uri {
+	return vscode.Uri.joinPath(folder.uri, STORAGE_DIR_NAME);
+}
+
+/**
+ * Creates `.proof/` if missing and drops a `*` `.gitignore` inside it the
+ * first time - the directory ignores itself, so this never touches (or
+ * even needs to know about) the workspace's own `.gitignore`.
+ */
+async function ensureStorageRoot(folder: vscode.WorkspaceFolder): Promise<vscode.Uri> {
+	const storageRoot = resolveStorageRoot(folder);
+	await vscode.workspace.fs.createDirectory(storageRoot);
+	const gitignoreUri = vscode.Uri.joinPath(storageRoot, '.gitignore');
 	try {
-		await vscode.workspace.fs.createDirectory(storageRoot);
+		await vscode.workspace.fs.stat(gitignoreUri);
+	} catch {
+		await vscode.workspace.fs.writeFile(gitignoreUri, Buffer.from('*\n', 'utf8'));
+	}
+	return storageRoot;
+}
+
+/** Best-effort: bir koşunun test bazlı/mutasyon sonucunu diske yazamamak koşunun kendisini başarısız saymaz - sonuç zaten ekranda, yalnızca bir sonraki pencere yenilemesinde kaybolur. Sebep Output kanalına gider, kullanıcıyı bir hata diyaloğuyla kesmez. */
+async function writeJsonSnapshot(folder: vscode.WorkspaceFolder, output: vscode.OutputChannel, fileName: string, data: unknown, failureNoun: string): Promise<void> {
+	try {
+		const storageRoot = await ensureStorageRoot(folder);
 		const outUri = vscode.Uri.joinPath(storageRoot, fileName);
 		await fs.promises.writeFile(outUri.fsPath, JSON.stringify(data), 'utf8');
 	} catch (e) {
@@ -105,7 +133,6 @@ async function writeJsonSnapshot(context: vscode.ExtensionContext, output: vscod
  * açılıp kapanıyor.
  */
 export interface CoverageSinks {
-	context: vscode.ExtensionContext;
 	gutterTypes: GutterDecorationTypes;
 	explorerBadges: ExplorerBadgeProvider;
 	statusBarItem: vscode.StatusBarItem;
@@ -124,12 +151,12 @@ export interface CoverageSinks {
 	mutationTreeView: vscode.TreeView<MutationNode>;
 }
 
-export function registerAnalyzeCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
-	return vscode.commands.registerCommand('proof.analyze', () => runAnalyze(context, output, sinks));
+export function registerAnalyzeCommand(output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
+	return vscode.commands.registerCommand('proof.analyze', () => runAnalyze(output, sinks));
 }
 
 /** Faz 30 (§7.8): kullanıcının "kolay tekrar koş" isteği - her zaman erişilebilir, `runAnalyzeCore`'un içindeki "rapor yok, testleri koşalım mı?" teklifinden bağımsız olarak. Maven başarılıysa Hızlı Tarama'yı otomatik tetikler - tek eylem gibi hissettiren şey bu. */
-export function registerRunTestsCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
+export function registerRunTestsCommand(output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
 	return vscode.commands.registerCommand('proof.runTests', async () => {
 		const folder = vscode.workspace.workspaceFolders?.[0];
 		if (!folder) {
@@ -166,7 +193,7 @@ export function registerRunTestsCommand(context: vscode.ExtensionContext, output
 		}
 		const result = await runTestsTask(folder, output, moduleRoots);
 		if (result?.success) {
-			await runAnalyze(context, output, sinks);
+			await runAnalyze(output, sinks);
 		} else if (result && !result.success) {
 			const interpretation = interpretMavenFailure(result.capturedOutput);
 			const reasonSuffix = interpretation ? ` Reason: ${interpretation.detail}` : ' See the terminal output for detail.';
@@ -192,8 +219,8 @@ export function moduleRootsFromBoundModules(boundModules: readonly { root: strin
 }
 
 /** F3: a diff-mode run with --per-test-report, superset of the plain scan (still paints coverage with the same fileCoverage data). */
-export function registerAnalyzePerTestCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
-	return vscode.commands.registerCommand('proof.analyzePerTest', () => runAnalyzePerTest(context, output, sinks));
+export function registerAnalyzePerTestCommand(output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
+	return vscode.commands.registerCommand('proof.analyzePerTest', () => runAnalyzePerTest(output, sinks));
 }
 
 /** F4: toggles both surfaces together for the last analyze run's data - no re-scan, just republish or clear what is already in model/store. */
@@ -202,22 +229,22 @@ export function registerToggleCoverageCommand(sinks: CoverageSinks): vscode.Disp
 }
 
 /** Faz 14b: diff'siz L2 kanıtı, tek bir açık dosya için (`--per-test-target`, Faz 14a). */
-export function registerPerTestForFileCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
-	return vscode.commands.registerCommand('proof.perTestForFile', () => runPerTestForFile(context, output, sinks));
+export function registerPerTestForFileCommand(output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
+	return vscode.commands.registerCommand('proof.perTestForFile', () => runPerTestForFile(output, sinks));
 }
 
 /** Faz 31: diff hiç hedef bulamadığında Satır → Testler'in sunduğu "yine de tüm modülü tara" kurtarma eylemi. */
-export function registerPerTestForModuleAllCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
-	return vscode.commands.registerCommand('proof.perTestForModuleAll', () => runAnalyzePerTestAll(context, output, sinks));
+export function registerPerTestForModuleAllCommand(output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
+	return vscode.commands.registerCommand('proof.perTestForModuleAll', () => runAnalyzePerTestAll(output, sinks));
 }
 
 /** Faz 20: mutasyon testi - tek sınıf (önerilen) ve modül geneli (onay arkasında). */
-export function registerMutationCommands(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable[] {
+export function registerMutationCommands(output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable[] {
 	return [
-		vscode.commands.registerCommand('proof.mutationForFile', () => runMutationForFile(context, output, sinks)),
-		vscode.commands.registerCommand('proof.mutationForModule', () => runMutationForModule(context, output, sinks)),
+		vscode.commands.registerCommand('proof.mutationForFile', () => runMutationForFile(output, sinks)),
+		vscode.commands.registerCommand('proof.mutationForModule', () => runMutationForModule(output, sinks)),
 		// Faz 31: diff hiç hedef bulamadığında Mutasyon görünümünün sunduğu "yine de tüm modülü tara" kurtarma eylemi.
-		vscode.commands.registerCommand('proof.mutationForModuleAll', () => runMutationForModuleAll(context, output, sinks)),
+		vscode.commands.registerCommand('proof.mutationForModuleAll', () => runMutationForModuleAll(output, sinks)),
 		vscode.commands.registerCommand('proof.mutationView.toggleSurvivorsOnly', () => {
 			const on = sinks.mutationView.toggleSurvivorsOnly();
 			vscode.window.setStatusBarMessage(on ? 'Proof: survived mutants only' : 'Proof: all mutants', 2000);
@@ -242,8 +269,8 @@ export function registerMutationCommands(context: vscode.ExtensionContext, outpu
  * kenar çubuğu state'ine hiç dokunmuyor, sonuç kanıtlanabilir şekilde
  * ekranda zaten görünenin ta kendisi.
  */
-export function registerExportReportCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel): vscode.Disposable {
-	return vscode.commands.registerCommand('proof.exportReport', () => runExportReport(context, output));
+export function registerExportReportCommand(output: vscode.OutputChannel): vscode.Disposable {
+	return vscode.commands.registerCommand('proof.exportReport', () => runExportReport(output));
 }
 
 /** Çalıştır panelinin başlık çubuğundaki dişli ikonu - `proof.*` ayarlarına, Ayarlar sekmesinde "proof-java" ile filtrelenmiş halde götürür. Kullanıcının kendi klasörüne özgü ayarları görmesi için workspace scope'unda açılır. */
@@ -253,7 +280,7 @@ export function registerOpenSettingsCommand(): vscode.Disposable {
 	});
 }
 
-/** `context.storageUri` altındaki bir anlık görüntüyü okur; dosya yoksa (o kanıt hiç toplanmamış) veya bozuksa `undefined` döner - hangisi olduğu çağıranı ilgilendirmiyor, ikisinde de o blok birleştirilmeden atlanır. */
+/** `.proof/` altındaki bir anlık görüntüyü okur; dosya yoksa (o kanıt hiç toplanmamış) veya bozuksa `undefined` döner - hangisi olduğu çağıranı ilgilendirmiyor, ikisinde de o blok birleştirilmeden atlanır. */
 async function readJsonSnapshotIfPresent(storageRoot: vscode.Uri, fileName: string): Promise<Record<string, unknown> | undefined> {
 	try {
 		const raw = await fs.promises.readFile(vscode.Uri.joinPath(storageRoot, fileName).fsPath, 'utf8');
@@ -263,17 +290,13 @@ async function readJsonSnapshotIfPresent(storageRoot: vscode.Uri, fileName: stri
 	}
 }
 
-async function runExportReport(context: vscode.ExtensionContext, output: vscode.OutputChannel): Promise<void> {
+async function runExportReport(output: vscode.OutputChannel): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
 		vscode.window.showErrorMessage('Proof: open a folder first.');
 		return;
 	}
-	const storageRoot = context.storageUri;
-	if (!storageRoot) {
-		vscode.window.showErrorMessage('Proof: this window has no workspace storage (is a single file open instead of a folder?) - the report can\'t be exported.');
-		return;
-	}
+	const storageRoot = resolveStorageRoot(folder);
 
 	const verdict = await readJsonSnapshotIfPresent(storageRoot, 'verdict-current.json');
 	if (!verdict) {
@@ -657,7 +680,7 @@ function toggleCoverage(sinks: CoverageSinks): void {
 	sinks.runView.refresh();
 }
 
-async function runAnalyze(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
+async function runAnalyze(output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
 		vscode.window.showErrorMessage('Proof: open a folder first.');
@@ -668,7 +691,7 @@ async function runAnalyze(context: vscode.ExtensionContext, output: vscode.Outpu
 		return;
 	}
 
-	const parsed = await runAnalyzeCore(context, output, folder, diffMode);
+	const parsed = await runAnalyzeCore(output, folder, diffMode);
 	if (!parsed) {
 		return;
 	}
@@ -680,7 +703,7 @@ async function runAnalyze(context: vscode.ExtensionContext, output: vscode.Outpu
  * tarafından reddedilir). Aynı fileCoverage verisiyle kapsamayı da boyar
  * (tek CLI çağrısı, üst küme koşu) ve panel için L2 kanıtını saklar.
  */
-async function runAnalyzePerTest(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
+async function runAnalyzePerTest(output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
 		vscode.window.showErrorMessage('Proof: open a folder first.');
@@ -698,7 +721,7 @@ async function runAnalyzePerTest(context: vscode.ExtensionContext, output: vscod
 		return;
 	}
 
-	const parsed = await runAnalyzeCore(context, output, folder, diffMode, {
+	const parsed = await runAnalyzeCore(output, folder, diffMode, {
 		perTest: { timeoutSeconds: readPerTestTimeout(folder) },
 		progressTitle: 'proof-java: derin tarama',
 	});
@@ -713,7 +736,7 @@ async function runAnalyzePerTest(context: vscode.ExtensionContext, output: vscod
 		// Hızlı Tarama ya da Mutasyon Testi bu bloğu taşımayan bir
 		// verdict-current.json yazınca bu dosya etkilenmeden kalır.
 		const snapshot: PerTestSnapshot = { perTest: parsed.perTest, warnings: parsed.warnings };
-		await writeJsonSnapshot(context, output, PERTEST_STORAGE_FILE, snapshot, 'per-test evidence');
+		await writeJsonSnapshot(folder, output, PERTEST_STORAGE_FILE, snapshot, 'per-test evidence');
 	} else {
 		vscode.window.showWarningMessage('Proof: no per-test evidence for this run - check the output channel for PER_TEST_* warnings.');
 	}
@@ -729,7 +752,7 @@ async function runAnalyzePerTest(context: vscode.ExtensionContext, output: vscod
  * mod seçilirse seçilsin sonuç aynıdır, sadece "yeni kod" hesaplaması
  * etkilenir.
  */
-async function runPerTestForFile(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
+async function runPerTestForFile(output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
 		vscode.window.showErrorMessage('Proof: open a folder first.');
@@ -747,7 +770,7 @@ async function runPerTestForFile(context: vscode.ExtensionContext, output: vscod
 
 	const fileName = path.basename(editor.document.fileName, '.java');
 	const className = detectClassName(editor.document.getText(), fileName);
-	const parsed = await runAnalyzeCore(context, output, folder, diffMode, {
+	const parsed = await runAnalyzeCore(output, folder, diffMode, {
 		perTest: { targets: [{ filePath: editor.document.fileName, fqcn: className }], timeoutSeconds: readPerTestTimeout(folder) },
 		progressTitle: `Proof: test evidence for ${className.split('.').pop()}`,
 	});
@@ -759,7 +782,7 @@ async function runPerTestForFile(context: vscode.ExtensionContext, output: vscod
 	setPerTestState({ perTest: parsed.perTest, warnings: parsed.warnings });
 	if (parsed.perTest) {
 		const snapshot: PerTestSnapshot = { perTest: parsed.perTest, warnings: parsed.warnings };
-		await writeJsonSnapshot(context, output, PERTEST_STORAGE_FILE, snapshot, 'per-test evidence');
+		await writeJsonSnapshot(folder, output, PERTEST_STORAGE_FILE, snapshot, 'per-test evidence');
 	} else {
 		vscode.window.showWarningMessage(`Proof: no per-test evidence for ${className} - check the output channel for PER_TEST_* warnings.`);
 	}
@@ -773,7 +796,7 @@ async function runPerTestForFile(context: vscode.ExtensionContext, output: vscod
  * ayrı bir komut ve ayrı bir onayın arkasında (`runMutationForModule`),
  * çünkü büyük bir modülde 70-90 dakikayı bulabiliyor.
  */
-async function runMutationForFile(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
+async function runMutationForFile(output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
 		vscode.window.showErrorMessage('Proof: open a folder first.');
@@ -785,7 +808,7 @@ async function runMutationForFile(context: vscode.ExtensionContext, output: vsco
 		return;
 	}
 	const className = detectClassName(editor.document.getText(), path.basename(editor.document.fileName, '.java'));
-	await runMutation(context, output, sinks, folder, [{ filePath: editor.document.fileName, fqcn: className }], `proof-java: ${className.split('.').pop()} mutasyon testi`);
+	await runMutation(output, sinks, folder, [{ filePath: editor.document.fileName, fqcn: className }], `proof-java: ${className.split('.').pop()} mutasyon testi`);
 }
 
 /**
@@ -794,7 +817,7 @@ async function runMutationForFile(context: vscode.ExtensionContext, output: vsco
  * bilerek girmeli. Onay metni bütçeyi de söyler, çünkü bütçe aşılırsa
  * sonuç kısmi kalır.
  */
-async function runMutationForModule(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
+async function runMutationForModule(output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
 		vscode.window.showErrorMessage('Proof: open a folder first.');
@@ -813,7 +836,7 @@ async function runMutationForModule(context: vscode.ExtensionContext, output: vs
 		return;
 	}
 	// No target given: the CLI targets the changed production classes in the diff.
-	await runMutation(context, output, sinks, folder, [], 'Proof: mutation testing (module)');
+	await runMutation(output, sinks, folder, [], 'Proof: mutation testing (module)');
 }
 
 /**
@@ -842,7 +865,7 @@ export function allProductionTargets(state: NonNullable<ReturnType<typeof getCov
 }
 
 /** Faz 31: diff hiç hedef bulamadığında (`PER_TEST_NO_CHANGED_TARGETS`) Satır → Testler görünümünün sunduğu kurtarma eylemi - diff'ten bağımsız, modüldeki **her** production sınıfı hedeflenir. */
-async function runAnalyzePerTestAll(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
+async function runAnalyzePerTestAll(output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
 		vscode.window.showErrorMessage('Proof: open a folder first.');
@@ -863,7 +886,7 @@ async function runAnalyzePerTestAll(context: vscode.ExtensionContext, output: vs
 		return;
 	}
 
-	const parsed = await runAnalyzeCore(context, output, folder, diffMode, {
+	const parsed = await runAnalyzeCore(output, folder, diffMode, {
 		perTest: { targets, timeoutSeconds: readPerTestTimeout(folder) },
 		progressTitle: `Proof: deep scan for the whole module (${targets.length} classes)`,
 	});
@@ -875,7 +898,7 @@ async function runAnalyzePerTestAll(context: vscode.ExtensionContext, output: vs
 	setPerTestState({ perTest: parsed.perTest, warnings: parsed.warnings });
 	if (parsed.perTest) {
 		const snapshot: PerTestSnapshot = { perTest: parsed.perTest, warnings: parsed.warnings };
-		await writeJsonSnapshot(context, output, PERTEST_STORAGE_FILE, snapshot, 'per-test evidence');
+		await writeJsonSnapshot(folder, output, PERTEST_STORAGE_FILE, snapshot, 'per-test evidence');
 	} else {
 		vscode.window.showWarningMessage('Proof: no per-test evidence for this run - check the output channel for PER_TEST_* warnings.');
 	}
@@ -883,7 +906,7 @@ async function runAnalyzePerTestAll(context: vscode.ExtensionContext, output: vs
 }
 
 /** Faz 31: `runMutationForModule`'ün diff'siz karşılığı - diff hiç hedef bulamadığında (`MUTATION_NO_CHANGED_TARGETS`) Mutasyon görünümünün sunduğu kurtarma eylemi. Diff-tabanlı koşudan bile daha pahalı olabileceği için (değişmemiş sınıflar da dahil) aynı onay modalı, bütçe uyarısı zaten söylenerek. */
-async function runMutationForModuleAll(context: vscode.ExtensionContext, output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
+async function runMutationForModuleAll(output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
 		vscode.window.showErrorMessage('Proof: open a folder first.');
@@ -912,12 +935,11 @@ async function runMutationForModuleAll(context: vscode.ExtensionContext, output:
 	if (choice !== 'Continue') {
 		return;
 	}
-	await runMutation(context, output, sinks, folder, targets, `Proof: mutation testing (whole module, ${targets.length} classes)`);
+	await runMutation(output, sinks, folder, targets, `Proof: mutation testing (whole module, ${targets.length} classes)`);
 }
 
 /** İki mutasyon girişinin ortak gövdesi. `targets` boşsa CLI diff'ten hedef türetir (bu durumda bir diff modu şart). */
 async function runMutation(
-	context: vscode.ExtensionContext,
 	output: vscode.OutputChannel,
 	sinks: CoverageSinks,
 	folder: vscode.WorkspaceFolder,
@@ -933,7 +955,7 @@ async function runMutation(
 		return;
 	}
 
-	const parsed = await runAnalyzeCore(context, output, folder, diffMode, {
+	const parsed = await runAnalyzeCore(output, folder, diffMode, {
 		mutation: { targets, timeoutSeconds: readMutationTimeout(folder) },
 		progressTitle,
 	});
@@ -951,7 +973,7 @@ async function runMutation(
 	// eski bir sonucu yeni ama boş bir "koşu" ile ezmemek için hiç dokunulmaz.
 	if (parsed.mutation) {
 		const snapshot: MutationSnapshot = { mutation: parsed.mutation, warnings: parsed.warnings, targets: targetFqcns, ranAtMs };
-		await writeJsonSnapshot(context, output, MUTATION_STORAGE_FILE, snapshot, 'mutasyon sonucu');
+		await writeJsonSnapshot(folder, output, MUTATION_STORAGE_FILE, snapshot, 'mutasyon sonucu');
 	}
 }
 
@@ -1063,7 +1085,6 @@ async function resolveEvidenceArg(
 }
 
 async function runAnalyzeCore(
-	context: vscode.ExtensionContext,
 	output: vscode.OutputChannel,
 	folder: vscode.WorkspaceFolder,
 	diffMode: DiffMode,
@@ -1106,12 +1127,7 @@ async function runAnalyzeCore(
 		mutationArg = { ...resolved, timeoutSeconds: evidence.mutation.timeoutSeconds };
 	}
 
-	const storageRoot = context.storageUri;
-	if (!storageRoot) {
-		vscode.window.showErrorMessage('Proof: this window has no workspace storage (single file open instead of a folder?) - the result cannot be saved.');
-		return undefined;
-	}
-	await vscode.workspace.fs.createDirectory(storageRoot);
+	const storageRoot = await ensureStorageRoot(folder);
 	const outUri = vscode.Uri.joinPath(storageRoot, 'verdict-current.json');
 
 	const coverageExclusions = config.get<string[]>('coverageExclusions') ?? [];

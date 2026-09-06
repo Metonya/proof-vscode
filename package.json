@@ -181,7 +181,8 @@
       },
       {
         "command": "proof.perTestForModuleAll",
-        "title": "Proof: Deep Scan Whole Module (no diff)"
+        "title": "Proof: Deep Scan Whole Module (no diff)",
+        "icon": "$(globe)"
       },
       {
         "command": "proof.copyItem",
@@ -212,7 +213,8 @@
       },
       {
         "command": "proof.mutationForModuleAll",
-        "title": "Proof: Mutation Testing - Whole Module (no diff)"
+        "title": "Proof: Mutation Testing - Whole Module (no diff)",
+        "icon": "$(globe)"
       },
       {
         "command": "proof.mutationView.toggleSurvivorsOnly",
@@ -306,6 +308,16 @@
           "command": "proof.mutationView.showInLineTests",
           "when": "view == proof.mutationView && viewItem == proof.mutant.hasLineEvidence",
           "group": "proof-java@1"
+        },
+        {
+          "command": "proof.perTestForModuleAll",
+          "when": "view == proof.runView && viewItem == proof.runItem.deepScan",
+          "group": "inline"
+        },
+        {
+          "command": "proof.mutationForModuleAll",
+          "when": "view == proof.runView && viewItem == proof.runItem.mutation",
+          "group": "inline"
         }
       ],
       "commandPalette": [

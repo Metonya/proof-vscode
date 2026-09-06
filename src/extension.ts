@@ -20,6 +20,7 @@ import {
 	registerPerTestForModuleAllCommand,
 	registerQualityMutationBridgeCommands,
 	registerToggleCoverageCommand,
+	resolveStorageRoot,
 	type CoverageSinks,
 	type MutationSnapshot,
 	type PerTestSnapshot,
@@ -69,7 +70,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	const qualityTreeView = vscode.window.createTreeView('proof.qualityView', { treeDataProvider: qualityView, showCollapseAll: true });
 	const mutationTreeView = vscode.window.createTreeView('proof.mutationView', { treeDataProvider: mutationView, showCollapseAll: true });
 
-	const sinks: CoverageSinks = { context, gutterTypes, explorerBadges, statusBarItem, diagnostics, runView, coverageView, qualityView, qualityTreeView, lineTestsView, lineTestsTreeView, mutationView, mutationTreeView };
+	const sinks: CoverageSinks = { gutterTypes, explorerBadges, statusBarItem, diagnostics, runView, coverageView, qualityView, qualityTreeView, lineTestsView, lineTestsTreeView, mutationView, mutationTreeView };
 
 	context.subscriptions.push(
 		output,
@@ -89,16 +90,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		lineTestsTreeView,
 		mutationTreeView,
 		registerHoverProvider(),
-		registerAnalyzeCommand(context, output, sinks),
-		registerRunTestsCommand(context, output, sinks),
-		registerAnalyzePerTestCommand(context, output, sinks),
-		registerExportReportCommand(context, output),
+		registerAnalyzeCommand(output, sinks),
+		registerRunTestsCommand(output, sinks),
+		registerAnalyzePerTestCommand(output, sinks),
+		registerExportReportCommand(output),
 		registerOpenSettingsCommand(),
-		registerPerTestForFileCommand(context, output, sinks),
-		registerPerTestForModuleAllCommand(context, output, sinks),
+		registerPerTestForFileCommand(output, sinks),
+		registerPerTestForModuleAllCommand(output, sinks),
 		registerToggleCoverageCommand(sinks),
 		...registerCopyCommands(sinks),
-		...registerMutationCommands(context, output, sinks),
+		...registerMutationCommands(output, sinks),
 		...registerQualityMutationBridgeCommands(sinks),
 		// setDecorations is per-editor, not global - a newly-visible editor
 		// needs its gutter marks re-applied by hand (Faz 9: always our own
@@ -188,7 +189,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	// Awaited (not fire-and-forget) so `activate()` only resolves once this
 	// is done - otherwise a command dispatched right after activation could
 	// run against empty state and race the restore that was about to fill it.
-	await restoreLastCoverage(context, sinks);
+	await restoreLastCoverage(sinks);
 
 	// Faz 25: on a real window reload, VS Code has not always finished
 	// restoring the previously-active editor tab by the time this function
@@ -203,24 +204,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	lineTestsView.setActiveDocument(vscode.window.activeTextEditor?.document);
 }
 
-async function restoreLastCoverage(context: vscode.ExtensionContext, sinks: CoverageSinks): Promise<void> {
+async function restoreLastCoverage(sinks: CoverageSinks): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
-	// Deliberately not falling back to globalStorageUri: that storage is
-	// shared across every workspace, so a verdict saved there could belong
-	// to a different project entirely and get painted onto this one's files.
-	const storageRoot = context.storageUri;
-	if (!folder || !storageRoot) {
+	if (!folder) {
 		return;
 	}
-	await restoreLastCoverageFrom(storageRoot.fsPath, folder.uri.fsPath, sinks);
+	await restoreLastCoverageFrom(resolveStorageRoot(folder).fsPath, folder.uri.fsPath, sinks);
 }
 
 /**
- * The `vscode.workspace`/`vscode.ExtensionContext`-free half of the restore -
- * split out from `restoreLastCoverage` so a test can drive it with a plain
- * temp directory instead of a real open workspace folder (`context.storageUri`
- * only exists when one is open, which the integration test host does not
- * have by default).
+ * The `vscode.workspace`-free half of the restore - split out from
+ * `restoreLastCoverage` so a test can drive it with a plain temp directory
+ * instead of a real open workspace folder.
  */
 export async function restoreLastCoverageFrom(storageDir: string, workspaceRoot: string, sinks: CoverageSinks): Promise<void> {
 	// Faz 25/28 (§7.5, §7.5b): ikisi de kendi dosyasında yaşıyor artık,
