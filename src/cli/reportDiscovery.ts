@@ -191,7 +191,7 @@ export function discoverModuleRootsFromSettingsGradle(settingsText: string, incl
  * `doctor` run, here it stops a nonsense row appearing in the module picker.
  */
 function isPlausibleDirectoryPath(candidate: string): boolean {
-	return !/[*?"<>|]/.test(candidate) && ![...candidate].some((c) => c.charCodeAt(0) < 0x20);
+	return !/[*?"<>|]/.test(candidate) && ![...candidate].some((c) => (c.codePointAt(0) ?? 0) < 0x20);
 }
 
 /** Pure segment check, the TypeScript twin of the CLI's `RepoPaths.isEscapingRepoRoot` - an absolute path, or one that climbs above the repo root once `.`/`..` collapse, is never a module of this repo. */
