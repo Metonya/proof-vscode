@@ -4,9 +4,9 @@ import { test } from 'node:test';
 import { parseTestIdentity } from '../../../verdict/testIdentity';
 
 test('a JUnit5 UniqueId string is parsed into class and method, display uses the short class name', () => {
-	const raw = '[engine:junit-jupiter]/[class:dev.coverdict.playground.CalcTest]/[method:addsTwoNumbers()]';
+	const raw = '[engine:junit-jupiter]/[class:dev.proofjava.playground.CalcTest]/[method:addsTwoNumbers()]';
 	const result = parseTestIdentity(raw);
-	assert.equal(result.className, 'dev.coverdict.playground.CalcTest');
+	assert.equal(result.className, 'dev.proofjava.playground.CalcTest');
 	assert.equal(result.simpleClassName, 'CalcTest');
 	assert.equal(result.methodName, 'addsTwoNumbers');
 	assert.equal(result.invocation, null);
@@ -23,11 +23,11 @@ test('a JUnit5 UniqueId string is parsed into class and method, display uses the
  * exactly what made the panel unreadable.
  */
 test('a JUnit5 test-template-invocation (@ParameterizedTest) id is parsed, not mis-split on its own "#"', () => {
-	const raw = 'dev.coverdict.playground.CalculatorParameterizedTest.[engine:junit-jupiter]/'
-		+ '[class:dev.coverdict.playground.CalculatorParameterizedTest]/'
+	const raw = 'dev.proofjava.playground.CalculatorParameterizedTest.[engine:junit-jupiter]/'
+		+ '[class:dev.proofjava.playground.CalculatorParameterizedTest]/'
 		+ '[test-template:addProducesTheSumForEveryPair(int, int, int)]/[test-template-invocation:#1]';
 	const result = parseTestIdentity(raw);
-	assert.equal(result.className, 'dev.coverdict.playground.CalculatorParameterizedTest');
+	assert.equal(result.className, 'dev.proofjava.playground.CalculatorParameterizedTest');
 	assert.equal(result.simpleClassName, 'CalculatorParameterizedTest');
 	assert.equal(result.methodName, 'addProducesTheSumForEveryPair');
 	assert.equal(result.invocation, '1');
@@ -35,7 +35,7 @@ test('a JUnit5 test-template-invocation (@ParameterizedTest) id is parsed, not m
 });
 
 test('a test-template id with no invocation segment still parses the method, invocation stays null', () => {
-	const raw = '[class:dev.coverdict.playground.CalculatorParameterizedTest]/[test-template:addProducesTheSumForEveryPair(int, int, int)]';
+	const raw = '[class:dev.proofjava.playground.CalculatorParameterizedTest]/[test-template:addProducesTheSumForEveryPair(int, int, int)]';
 	const result = parseTestIdentity(raw);
 	assert.equal(result.methodName, 'addProducesTheSumForEveryPair');
 	assert.equal(result.invocation, null);
@@ -43,8 +43,8 @@ test('a test-template id with no invocation segment still parses the method, inv
 });
 
 test('a Class#method() shape is parsed directly, display uses the short class name', () => {
-	const result = parseTestIdentity('dev.coverdict.playground.CalcTest#addsTwoNumbers()');
-	assert.equal(result.className, 'dev.coverdict.playground.CalcTest');
+	const result = parseTestIdentity('dev.proofjava.playground.CalcTest#addsTwoNumbers()');
+	assert.equal(result.className, 'dev.proofjava.playground.CalcTest');
 	assert.equal(result.simpleClassName, 'CalcTest');
 	assert.equal(result.methodName, 'addsTwoNumbers');
 	assert.equal(result.display, 'CalcTest#addsTwoNumbers()');
@@ -67,7 +67,7 @@ test('an unrecognized shape is shown verbatim rather than guessed at (hard rule 
 });
 
 test('a [class:] UniqueId with neither [method:] nor [test-template:] falls back to the raw id (hard rule 3a)', () => {
-	const raw = '[engine:junit-jupiter]/[class:dev.coverdict.playground.CalcTest]';
+	const raw = '[engine:junit-jupiter]/[class:dev.proofjava.playground.CalcTest]';
 	const result = parseTestIdentity(raw);
 	assert.equal(result.className, null);
 	assert.equal(result.display, raw);

@@ -1,5 +1,5 @@
 /**
- * TypeScript shape of `schema/coverdict-verdict.schema.json` - grown field
+ * TypeScript shape of `schema/proof-verdict.schema.json` - grown field
  * by field as each feature needs it (F1 needs only the header: schema/tool
  * version, analysis status, and the overall MetricSet). Never `import
  * 'vscode'` here (Plan.md Bölüm 2's first invariant).
@@ -21,7 +21,7 @@ export interface MetricSet {
 
 export type NewCodeCoverage = MetricSet | { status: string };
 
-/** [line, missedInstructions, coveredInstructions, missedBranches, coveredBranches] - same order as coverdict's own LineCoverage (Faz 1). */
+/** [line, missedInstructions, coveredInstructions, missedBranches, coveredBranches] - same order as proof-java's own LineCoverage (Faz 1). */
 export type LineTuple = readonly [number, number, number, number, number];
 
 export interface FileCoverageEntry {

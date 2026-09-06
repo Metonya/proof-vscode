@@ -1,13 +1,13 @@
 {
-  "name": "coverdict-vscode",
-  "displayName": "coverdict",
-  "description": "coverdict CLI tarafından üretilen satır içi kapsama görünümü, satır bazlı test kanıtı ve mutasyon bulguları.",
+  "name": "proof-vscode",
+  "displayName": "proof-java",
+  "description": "proof-java CLI tarafından üretilen satır içi kapsama görünümü, satır bazlı test kanıtı ve mutasyon bulguları.",
   "version": "0.0.1",
-  "publisher": "coverdict",
+  "publisher": "proof-java",
   "private": true,
   "repository": {
     "type": "git",
-    "url": "https://github.com/Metonya/coverdict-vscode"
+    "url": "https://github.com/Metonya/proof-vscode"
   },
   "engines": {
     "vscode": "^1.88.0"
@@ -25,37 +25,37 @@
   "main": "./dist/extension.js",
   "contributes": {
     "configuration": {
-      "title": "coverdict",
+      "title": "proof-java",
       "properties": {
-        "coverdict.jarPath": {
+        "proof.jarPath": {
           "type": "string",
           "default": "",
-          "description": "coverdict.jar dosyasının yolu. Göreli yollar workspace kök dizinine göre çözülür. Varsayılan arama sırasını kullanmak için boş bırakın (önce coverdict-cli/target/coverdict.jar, sonra .coverdict/coverdict.jar)."
+          "description": "proof-java.jar dosyasının yolu. Göreli yollar workspace kök dizinine göre çözülür. Varsayılan arama sırasını kullanmak için boş bırakın (önce proof-java-cli/target/proof-java.jar, sonra .proof-java/proof-java.jar)."
         },
-        "coverdict.javaExecutable": {
+        "proof.javaExecutable": {
           "type": "string",
           "default": "java",
-          "description": "coverdict.jar'ı çalıştırmak için kullanılan Java çalıştırılabilir dosyası."
+          "description": "proof-java.jar'ı çalıştırmak için kullanılan Java çalıştırılabilir dosyası."
         },
-        "coverdict.mavenExecutable": {
+        "proof.mavenExecutable": {
           "type": "string",
           "default": "",
           "description": "Derin tarama için classpath listesi eksik olduğunda onu üretmekte kullanılacak Maven komutu. Boş bırakılırsa Windows'ta \"mvn.cmd\", diğer sistemlerde \"mvn\" kullanılır. Maven PATH'te değilse tam yolunu yazın."
         },
-        "coverdict.coverageExclusions": {
+        "proof.coverageExclusions": {
           "type": "array",
           "items": {
             "type": "string"
           },
           "default": [],
-          "description": "sonar.coverage.exclusions tarzı glob desenleri (SonarQube'a yapıştıracağınız sözdizimiyle aynı). Her analiz koşusuna --coverage-exclusions olarak geçirilir - tek, elle yazılmış bir liste (D-05), repo'nun kendi coverdict.config.json dosyasıyla asla birleştirilmez."
+          "description": "sonar.coverage.exclusions tarzı glob desenleri (SonarQube'a yapıştıracağınız sözdizimiyle aynı). Her analiz koşusuna --coverage-exclusions olarak geçirilir - tek, elle yazılmış bir liste (D-05), repo'nun kendi proof.config.json dosyasıyla asla birleştirilmez."
         },
-        "coverdict.reportPath": {
+        "proof.reportPath": {
           "type": "string",
           "default": "target/site/jacoco/jacoco.xml",
-          "description": "JaCoCo XML rapor dosyasının yolu (workspace köküne göre). \"coverdict: Analiz Et\" bu dosyayı okur - dosya yoksa size ayarı düzeltmeniz için bir uyarı gösterilir, her koşuda tekrar sorulmaz."
+          "description": "JaCoCo XML rapor dosyasının yolu (workspace köküne göre). \"proof-java: Analiz Et\" bu dosyayı okur - dosya yoksa size ayarı düzeltmeniz için bir uyarı gösterilir, her koşuda tekrar sorulmaz."
         },
-        "coverdict.diffMode": {
+        "proof.diffMode": {
           "type": "string",
           "enum": [
             "no-vcs",
@@ -63,39 +63,39 @@
             "base"
           ],
           "default": "uncommitted",
-          "description": "\"Yeni kod\" hangi değişikliklere göre hesaplansın. uncommitted (varsayılan): commit beklemekte olan her şey (staged + unstaged), yani şu an dosyada duran değişiklikler. base: coverdict.baseRef'te yazan commit/branch'ten bu yana yapılan değişiklikler (örn. bir feature branch'i main ile kıyaslamak). no-vcs: git hiç kullanılmaz, \"yeni kod\" hesaplanamaz - tüm repo tek bir kapsama olarak gösterilir. \"coverdict: Analiz Et (test bazlı)\" bu mod no-vcs iken çalışmaz, çünkü test bazlı kanıt bir diff gerektirir."
+          "description": "\"Yeni kod\" hangi değişikliklere göre hesaplansın. uncommitted (varsayılan): commit beklemekte olan her şey (staged + unstaged), yani şu an dosyada duran değişiklikler. base: proof.baseRef'te yazan commit/branch'ten bu yana yapılan değişiklikler (örn. bir feature branch'i main ile kıyaslamak). no-vcs: git hiç kullanılmaz, \"yeni kod\" hesaplanamaz - tüm repo tek bir kapsama olarak gösterilir. \"proof-java: Analiz Et (test bazlı)\" bu mod no-vcs iken çalışmaz, çünkü test bazlı kanıt bir diff gerektirir."
         },
-        "coverdict.baseRef": {
+        "proof.baseRef": {
           "type": "string",
           "default": "",
-          "description": "coverdict.diffMode \"base\" iken karşılaştırılacak commit, branch veya tag adı (örn. \"main\" veya \"origin/main\"). Diğer diffMode değerlerinde kullanılmaz. HEAD'in kendisini veya HEAD'in atası olmayan bir ref'i girerseniz diff boş çıkar - karşılaştıracak gerçek bir fark yoktur."
+          "description": "proof.diffMode \"base\" iken karşılaştırılacak commit, branch veya tag adı (örn. \"main\" veya \"origin/main\"). Diğer diffMode değerlerinde kullanılmaz. HEAD'in kendisini veya HEAD'in atası olmayan bir ref'i girerseniz diff boş çıkar - karşılaştıracak gerçek bir fark yoktur."
         },
-        "coverdict.perTestClasspathPath": {
+        "proof.perTestClasspathPath": {
           "type": "string",
-          "default": "target/coverdict-classpath.txt",
-          "description": "\"coverdict: Analiz Et (test bazlı)\" komutunun kullanacağı classpath liste dosyasının yolu (workspace köküne göre, satır başına bir jar/çıktı-dizini). Genelde \"mvn dependency:build-classpath\" ile üretilir - coverdict-playground'daki run.ps1 örneğine bakın."
+          "default": "target/proof-classpath.txt",
+          "description": "\"proof-java: Analiz Et (test bazlı)\" komutunun kullanacağı classpath liste dosyasının yolu (workspace köküne göre, satır başına bir jar/çıktı-dizini). Genelde \"mvn dependency:build-classpath\" ile üretilir - coverdict-playground'daki run.ps1 örneğine bakın."
         },
-        "coverdict.show.explorerBadges": {
+        "proof.show.explorerBadges": {
           "type": "boolean",
           "default": true,
-          "description": "Dosya Gezgini'nde her dosyanın ve klasörün yanında kapsama yüzdesini bir rozet olarak göster (örn. Calculator.java'nın yanında \"85\"). coverdict.show.lineGutter'dan bağımsızdır: bunu kapatırsanız sadece rozetler gider, editördeki satır renkleri etkilenmez."
+          "description": "Dosya Gezgini'nde her dosyanın ve klasörün yanında kapsama yüzdesini bir rozet olarak göster (örn. Calculator.java'nın yanında \"85\"). proof.show.lineGutter'dan bağımsızdır: bunu kapatırsanız sadece rozetler gider, editördeki satır renkleri etkilenmez."
         },
-        "coverdict.show.lineGutter": {
+        "proof.show.lineGutter": {
           "type": "boolean",
           "default": true,
-          "description": "Açık bir dosyada, her satırın solunda o satırın kapsanıp kapsanmadığını gösteren renkli bir çizgi çiz (yeşil: kapsandı, sarı: kısmen, kırmızı: kapsanmadı - coverdict.colorblindMode açıkken farklı bir palet kullanılır). coverdict.show.explorerBadges'ten bağımsızdır: bunu kapatırsanız sadece bu çizgiler gider, Dosya Gezgini'ndeki yüzde rozetleri etkilenmez."
+          "description": "Açık bir dosyada, her satırın solunda o satırın kapsanıp kapsanmadığını gösteren renkli bir çizgi çiz (yeşil: kapsandı, sarı: kısmen, kırmızı: kapsanmadı - proof.colorblindMode açıkken farklı bir palet kullanılır). proof.show.explorerBadges'ten bağımsızdır: bunu kapatırsanız sadece bu çizgiler gider, Dosya Gezgini'ndeki yüzde rozetleri etkilenmez."
         },
-        "coverdict.colorblindMode": {
+        "proof.colorblindMode": {
           "type": "boolean",
           "default": false,
-          "description": "Satır kapsama çizgilerinde (coverdict.show.lineGutter) kırmızı/yeşili kullanmak yerine, üç tip renk körlüğü altında da (protanopi, döteranopi, tritanopi) birbirinden ayrılabilir kalan bir palet kullan (Okabe-Ito paleti: mavi=kapsandı, sarı=kısmen, vermilyon=kapsanmadı, mor=\"yalancı yeşil\"). Değiştirir değiştirmez açık editörlere hemen yansır, pencere yenilemeye gerek yok."
+          "description": "Satır kapsama çizgilerinde (proof.show.lineGutter) kırmızı/yeşili kullanmak yerine, üç tip renk körlüğü altında da (protanopi, döteranopi, tritanopi) birbirinden ayrılabilir kalan bir palet kullan (Okabe-Ito paleti: mavi=kapsandı, sarı=kısmen, vermilyon=kapsanmadı, mor=\"yalancı yeşil\"). Değiştirir değiştirmez açık editörlere hemen yansır, pencere yenilemeye gerek yok."
         },
-        "coverdict.show.oraclelessLines": {
+        "proof.show.oraclelessLines": {
           "type": "boolean",
           "default": true,
-          "description": "Bir satır JaCoCo'ya göre kapsanmış olsa bile, onu kapsayan HİÇBİR testin gerçek bir doğrulaması (oracle'ı) yoksa - hepsi NO_RECOGNIZED_ORACLE/TAUTOLOGICAL_ORACLE/CATCH_ORACLE_WITHOUT_FAIL bulgularından biriyse - o satırı yeşil yerine turuncu göster (\"yalancı yeşil\"). Test bazlı kanıt (coverdict: Derin Tarama ya da Bu Sınıf İçin Hangi Test Hangi Satırı Kapsıyor) toplanmamışsa hiçbir satır bu şekilde işaretlenmez - kanıt yokken suçlama yok."
+          "description": "Bir satır JaCoCo'ya göre kapsanmış olsa bile, onu kapsayan HİÇBİR testin gerçek bir doğrulaması (oracle'ı) yoksa - hepsi NO_RECOGNIZED_ORACLE/TAUTOLOGICAL_ORACLE/CATCH_ORACLE_WITHOUT_FAIL bulgularından biriyse - o satırı yeşil yerine turuncu göster (\"yalancı yeşil\"). Test bazlı kanıt (proof-java: Derin Tarama ya da Bu Sınıf İçin Hangi Test Hangi Satırı Kapsıyor) toplanmamışsa hiçbir satır bu şekilde işaretlenmez - kanıt yokken suçlama yok."
         },
-        "coverdict.badgeMetric": {
+        "proof.badgeMetric": {
           "type": "string",
           "enum": [
             "jacoco-line",
@@ -105,227 +105,227 @@
           "default": "sonar-compatible",
           "description": "Dosya Gezgini rozetlerinde ve satır boyamasında hangi kapsama modu kullanılsın. sonar-compatible (varsayılan): SonarQube'un gösterdiği yüzdeyle ±0.1 içinde eşleşir - dal (branch) kapsamını da sayar, bu yüzden jacoco-line'dan genelde daha düşük çıkar. jacoco-line: bir satırdaki herhangi bir komut çalıştıysa o satır kapsanmış sayılır (en yüksek çıkan sayı). strict-line: bir satırın kapsanmış sayılması için o satırdaki HER komutun çalışmış olması gerekir (en katı, genelde en düşük sayı). Durum çubuğu ve tooltip'ler her zaman üçünü birden gösterir; bu ayar sadece rozet/satır rengi için tek bir sayı seçer."
         },
-        "coverdict.mutationTimeout": {
+        "proof.mutationTimeout": {
           "type": "number",
           "default": 300,
           "minimum": 1,
           "description": "Mutasyon testinde bir modül için saniye cinsinden zaman bütçesi (--mutation-timeout). Aşılırsa koşu durdurulur ve sonuç kısmi kalır - kısmi sonuç yine gösterilir, sessizce atılmaz. Tek sınıf koşuları genelde saniyeler sürer; modül geneli koşular için artırmanız gerekebilir."
         },
-        "coverdict.perTestTimeout": {
+        "proof.perTestTimeout": {
           "type": "number",
           "default": 120,
           "minimum": 1,
           "description": "Derin Tarama'da bir modül için saniye cinsinden zaman bütçesi (--per-test-timeout). Aşılırsa koşu durdurulur (PER_TEST_COLLECTION_FAILED). Diff'te değişen birkaç sınıf için varsayılan genelde yeterlidir; \"Yine de Tüm Modülü Tara\" gibi çok sayıda sınıfı tek seferde hedefleyen koşularda artırmanız gerekebilir."
         },
-        "coverdict.testCommandPhase": {
+        "proof.testCommandPhase": {
           "type": "string",
           "enum": [
             "test",
             "verify"
           ],
           "default": "test",
-          "description": "\"coverdict: Testleri Çalıştır\" hangi Maven aşamasını çalıştırsın. test (varsayılan): en kısa yol, JaCoCo raporunu üretmek için genelde yeterli. verify: modülleriniz paketlenmiş bir jar'a ihtiyaç duyuyorsa (ör. bir JPMS/OSGi testi) gereklidir - daha uzun sürer."
+          "description": "\"proof-java: Testleri Çalıştır\" hangi Maven aşamasını çalıştırsın. test (varsayılan): en kısa yol, JaCoCo raporunu üretmek için genelde yeterli. verify: modülleriniz paketlenmiş bir jar'a ihtiyaç duyuyorsa (ör. bir JPMS/OSGi testi) gereklidir - daha uzun sürer."
         },
-        "coverdict.jacocoPluginVersion": {
+        "proof.jacocoPluginVersion": {
           "type": "string",
           "default": "0.8.13",
-          "description": "Pom'da JaCoCo eklentisi tanımlı değilse \"coverdict: Testleri Çalıştır\"ın komut satırından bağlayacağı org.jacoco:jacoco-maven-plugin sürümü. Pom zaten kendi JaCoCo sürümünü tanımlıyorsa bu ayar kullanılmaz - pom'a asla dokunulmaz."
+          "description": "Pom'da JaCoCo eklentisi tanımlı değilse \"proof-java: Testleri Çalıştır\"ın komut satırından bağlayacağı org.jacoco:jacoco-maven-plugin sürümü. Pom zaten kendi JaCoCo sürümünü tanımlıyorsa bu ayar kullanılmaz - pom'a asla dokunulmaz."
         }
       }
     },
     "taskDefinitions": [
       {
-        "type": "coverdict",
+        "type": "proof-java",
         "required": [
           "kind"
         ],
         "properties": {
           "kind": {
             "type": "string",
-            "description": "coverdict'in kendi başlattığı görev türü (ör. runTests)."
+            "description": "proof-java'in kendi başlattığı görev türü (ör. runTests)."
           }
         }
       }
     ],
     "commands": [
       {
-        "command": "coverdict.analyze",
-        "title": "coverdict: Hızlı Tarama"
+        "command": "proof.analyze",
+        "title": "proof-java: Hızlı Tarama"
       },
       {
-        "command": "coverdict.runTests",
-        "title": "coverdict: Testleri Çalıştır"
+        "command": "proof.runTests",
+        "title": "proof-java: Testleri Çalıştır"
       },
       {
-        "command": "coverdict.toggleCoverage",
-        "title": "coverdict: Coverage Görünümünü Aç/Kapat"
+        "command": "proof.toggleCoverage",
+        "title": "proof-java: Coverage Görünümünü Aç/Kapat"
       },
       {
-        "command": "coverdict.analyzePerTest",
-        "title": "coverdict: Derin Tarama"
+        "command": "proof.analyzePerTest",
+        "title": "proof-java: Derin Tarama"
       },
       {
-        "command": "coverdict.exportReport",
-        "title": "coverdict: Raporu Dışa Aktar (HTML)",
+        "command": "proof.exportReport",
+        "title": "proof-java: Raporu Dışa Aktar (HTML)",
         "icon": "$(export)"
       },
       {
-        "command": "coverdict.openSettings",
-        "title": "coverdict: Ayarları Aç",
+        "command": "proof.openSettings",
+        "title": "proof-java: Ayarları Aç",
         "icon": "$(gear)"
       },
       {
-        "command": "coverdict.perTestForFile",
-        "title": "coverdict: Bu Sınıf İçin Hangi Test Hangi Satırı Kapsıyor"
+        "command": "proof.perTestForFile",
+        "title": "proof-java: Bu Sınıf İçin Hangi Test Hangi Satırı Kapsıyor"
       },
       {
-        "command": "coverdict.perTestForModuleAll",
-        "title": "coverdict: Tüm Modül İçin Derin Tarama (diff'siz)"
+        "command": "proof.perTestForModuleAll",
+        "title": "proof-java: Tüm Modül İçin Derin Tarama (diff'siz)"
       },
       {
-        "command": "coverdict.copyItem",
+        "command": "proof.copyItem",
         "title": "Kopyala"
       },
       {
-        "command": "coverdict.qualityView.filter",
-        "title": "coverdict: Bulguları Filtrele",
+        "command": "proof.qualityView.filter",
+        "title": "proof-java: Bulguları Filtrele",
         "icon": "$(filter)"
       },
       {
-        "command": "coverdict.qualityView.toggleGrouping",
-        "title": "coverdict: Gruplamayı Değiştir (kural ↔ dosya)",
+        "command": "proof.qualityView.toggleGrouping",
+        "title": "proof-java: Gruplamayı Değiştir (kural ↔ dosya)",
         "icon": "$(group-by-ref-type)"
       },
       {
-        "command": "coverdict.lineTestsView.toggleProblemsOnly",
-        "title": "coverdict: Sadece Sorunlu Satırlar",
+        "command": "proof.lineTestsView.toggleProblemsOnly",
+        "title": "proof-java: Sadece Sorunlu Satırlar",
         "icon": "$(filter)"
       },
       {
-        "command": "coverdict.mutationForFile",
-        "title": "coverdict: Bu Sınıf İçin Mutasyon Testi"
+        "command": "proof.mutationForFile",
+        "title": "proof-java: Bu Sınıf İçin Mutasyon Testi"
       },
       {
-        "command": "coverdict.mutationForModule",
-        "title": "coverdict: Mutasyon Testi (Modül Geneli)"
+        "command": "proof.mutationForModule",
+        "title": "proof-java: Mutasyon Testi (Modül Geneli)"
       },
       {
-        "command": "coverdict.mutationForModuleAll",
-        "title": "coverdict: Mutasyon Testi - Tüm Modül (diff'siz)"
+        "command": "proof.mutationForModuleAll",
+        "title": "proof-java: Mutasyon Testi - Tüm Modül (diff'siz)"
       },
       {
-        "command": "coverdict.mutationView.toggleSurvivorsOnly",
-        "title": "coverdict: Sadece Hayatta Kalan Mutantlar",
+        "command": "proof.mutationView.toggleSurvivorsOnly",
+        "title": "proof-java: Sadece Hayatta Kalan Mutantlar",
         "icon": "$(filter)"
       },
       {
-        "command": "coverdict.qualityView.showInMutation",
+        "command": "proof.qualityView.showInMutation",
         "title": "Mutasyon Ağacında Göster"
       },
       {
-        "command": "coverdict.mutationView.showInQuality",
+        "command": "proof.mutationView.showInQuality",
         "title": "Test Kalitesi'nde Göster"
       },
       {
-        "command": "coverdict.lineTestsView.showInMutation",
+        "command": "proof.lineTestsView.showInMutation",
         "title": "Mutasyon Ağacında Göster"
       },
       {
-        "command": "coverdict.mutationView.showInLineTests",
+        "command": "proof.mutationView.showInLineTests",
         "title": "Satır → Testler'de Göster"
       }
     ],
     "menus": {
       "editor/context": [
         {
-          "command": "coverdict.perTestForFile",
+          "command": "proof.perTestForFile",
           "when": "resourceLangId == java",
-          "group": "coverdict"
+          "group": "proof-java"
         },
         {
-          "command": "coverdict.mutationForFile",
+          "command": "proof.mutationForFile",
           "when": "resourceLangId == java",
-          "group": "coverdict"
+          "group": "proof-java"
         }
       ],
       "view/title": [
         {
-          "command": "coverdict.exportReport",
-          "when": "view == coverdict.runView",
+          "command": "proof.exportReport",
+          "when": "view == proof.runView",
           "group": "navigation@1"
         },
         {
-          "command": "coverdict.openSettings",
-          "when": "view == coverdict.runView",
+          "command": "proof.openSettings",
+          "when": "view == proof.runView",
           "group": "navigation@2"
         },
         {
-          "command": "coverdict.qualityView.filter",
-          "when": "view == coverdict.qualityView",
+          "command": "proof.qualityView.filter",
+          "when": "view == proof.qualityView",
           "group": "navigation@1"
         },
         {
-          "command": "coverdict.qualityView.toggleGrouping",
-          "when": "view == coverdict.qualityView",
+          "command": "proof.qualityView.toggleGrouping",
+          "when": "view == proof.qualityView",
           "group": "navigation@2"
         },
         {
-          "command": "coverdict.lineTestsView.toggleProblemsOnly",
-          "when": "view == coverdict.lineTestsView",
+          "command": "proof.lineTestsView.toggleProblemsOnly",
+          "when": "view == proof.lineTestsView",
           "group": "navigation@1"
         },
         {
-          "command": "coverdict.mutationView.toggleSurvivorsOnly",
-          "when": "view == coverdict.mutationView",
+          "command": "proof.mutationView.toggleSurvivorsOnly",
+          "when": "view == proof.mutationView",
           "group": "navigation@1"
         }
       ],
       "view/item/context": [
         {
-          "command": "coverdict.copyItem",
-          "when": "view == coverdict.qualityView || view == coverdict.coverageView || view == coverdict.lineTestsView || view == coverdict.mutationView",
+          "command": "proof.copyItem",
+          "when": "view == proof.qualityView || view == proof.coverageView || view == proof.lineTestsView || view == proof.mutationView",
           "group": "9_cutcopypaste"
         },
         {
-          "command": "coverdict.qualityView.showInMutation",
-          "when": "view == coverdict.qualityView && viewItem == coverdict.qualityFinding.pseudoTested",
-          "group": "coverdict@1"
+          "command": "proof.qualityView.showInMutation",
+          "when": "view == proof.qualityView && viewItem == proof.qualityFinding.pseudoTested",
+          "group": "proof-java@1"
         },
         {
-          "command": "coverdict.mutationView.showInQuality",
-          "when": "view == coverdict.mutationView && viewItem == coverdict.mutationMethod.pseudoTested",
-          "group": "coverdict@1"
+          "command": "proof.mutationView.showInQuality",
+          "when": "view == proof.mutationView && viewItem == proof.mutationMethod.pseudoTested",
+          "group": "proof-java@1"
         },
         {
-          "command": "coverdict.lineTestsView.showInMutation",
-          "when": "view == coverdict.lineTestsView && viewItem == coverdict.prodTest.contradiction",
-          "group": "coverdict@1"
+          "command": "proof.lineTestsView.showInMutation",
+          "when": "view == proof.lineTestsView && viewItem == proof.prodTest.contradiction",
+          "group": "proof-java@1"
         },
         {
-          "command": "coverdict.mutationView.showInLineTests",
-          "when": "view == coverdict.mutationView && viewItem == coverdict.mutant.hasLineEvidence",
-          "group": "coverdict@1"
+          "command": "proof.mutationView.showInLineTests",
+          "when": "view == proof.mutationView && viewItem == proof.mutant.hasLineEvidence",
+          "group": "proof-java@1"
         }
       ],
       "commandPalette": [
         {
-          "command": "coverdict.copyItem",
+          "command": "proof.copyItem",
           "when": "false"
         },
         {
-          "command": "coverdict.qualityView.showInMutation",
+          "command": "proof.qualityView.showInMutation",
           "when": "false"
         },
         {
-          "command": "coverdict.mutationView.showInQuality",
+          "command": "proof.mutationView.showInQuality",
           "when": "false"
         },
         {
-          "command": "coverdict.lineTestsView.showInMutation",
+          "command": "proof.lineTestsView.showInMutation",
           "when": "false"
         },
         {
-          "command": "coverdict.mutationView.showInLineTests",
+          "command": "proof.mutationView.showInLineTests",
           "when": "false"
         }
       ]
@@ -333,32 +333,32 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "coverdict",
-          "title": "coverdict",
+          "id": "proof-java",
+          "title": "proof-java",
           "icon": "media/activity-bar-icon.svg"
         }
       ]
     },
     "views": {
-      "coverdict": [
+      "proof-java": [
         {
-          "id": "coverdict.runView",
+          "id": "proof.runView",
           "name": "Çalıştır"
         },
         {
-          "id": "coverdict.coverageView",
+          "id": "proof.coverageView",
           "name": "Coverage"
         },
         {
-          "id": "coverdict.qualityView",
+          "id": "proof.qualityView",
           "name": "Test Kalitesi"
         },
         {
-          "id": "coverdict.lineTestsView",
+          "id": "proof.lineTestsView",
           "name": "Satır → Testler"
         },
         {
-          "id": "coverdict.mutationView",
+          "id": "proof.mutationView",
           "name": "Mutasyon"
         }
       ]

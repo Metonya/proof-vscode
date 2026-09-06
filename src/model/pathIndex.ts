@@ -3,7 +3,7 @@ import * as path from 'node:path';
 /**
  * Repo-relative <-> absolute filesystem path, plain strings only - `model/`
  * never imports `vscode` (Plan.md Bölüm 2's first invariant); `ui/`
- * wraps the result in `vscode.Uri.file(...)` at the boundary. coverdict's
+ * wraps the result in `vscode.Uri.file(...)` at the boundary. proof-java's
  * own paths are always forward-slash and repo-relative (D-22), so this is
  * the one place that path math happens at all.
  */
@@ -23,9 +23,9 @@ export function toRepoRelativePath(workspaceRoot: string, absolutePath: string):
 /**
  * Faz 15b: an outer FQCN (nested-class suffix already stripped by the
  * caller) to a repo-relative `.java` path under one `sourceRoot`/`testRoot` -
- * mirrors coverdict-cli's `ChangedClassTargets.forEachMappedFile` exactly
+ * mirrors proof-java-cli's `ChangedClassTargets.forEachMappedFile` exactly
  * (dot-to-slash, `.java` suffix). Used to locate a test's own source file
- * when no `Finding` already carries its path (a test with no coverdict
+ * when no `Finding` already carries its path (a test with no proof-java
  * finding at all) - the caller tries each declared root and keeps the
  * first one that exists on disk (`ui/testFileLocator.ts`, since existence
  * checks need `vscode.workspace.fs`, not this pure module).

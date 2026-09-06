@@ -9,11 +9,11 @@ const METRIC_SET = { 'jacoco-line': METRIC, 'strict-line': METRIC, 'sonar-compat
 
 test('buildProductionClassIndex: maps a normal file to its FQCN', () => {
 	const fileCoverage: FileCoverageBlock = {
-		files: [{ module: 'root', path: 'src/main/java/dev/coverdict/playground/Calculator.java', metrics: METRIC_SET, lines: [] }],
+		files: [{ module: 'root', path: 'src/main/java/dev/proofjava/playground/Calculator.java', metrics: METRIC_SET, lines: [] }],
 		excluded: [],
 	};
 	const { byClassName, ambiguous } = buildProductionClassIndex(fileCoverage, ['src/main/java']);
-	assert.equal(byClassName.get('dev.coverdict.playground.Calculator'), 'src/main/java/dev/coverdict/playground/Calculator.java');
+	assert.equal(byClassName.get('dev.proofjava.playground.Calculator'), 'src/main/java/dev/proofjava/playground/Calculator.java');
 	assert.equal(ambiguous.size, 0);
 });
 

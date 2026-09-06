@@ -124,13 +124,13 @@ suite('Sidebar tree views (Faz 11b)', () => {
 	/**
 	 * Faz 24 (§7.6 madde 5): Test Kalitesi ↔ Mutasyon köprüsü. Gerçek
 	 * `productionMethod` biçimi (`--mutation-report` koşusundan,
-	 * 2026-08-28): `"dev.coverdict.playground.Calculator#square(I)I"`.
+	 * 2026-08-28): `"dev.proofjava.playground.Calculator#square(I)I"`.
 	 */
 	const PSEUDO_TESTED_FINDING: Finding = {
 		rule: 'PSEUDO_TESTED_METHOD', severity: 'WARNING', confidence: 'HIGH', module: 'root',
-		path: 'src/main/java/dev/coverdict/playground/Calculator.java', startLine: 37, endLine: 37,
-		productionMethod: 'dev.coverdict.playground.Calculator#square(I)I',
-		message: 'dev.coverdict.playground.Calculator#square is covered but every mutant generated for it survived - the tests that reach it never observe its behavior.',
+		path: 'src/main/java/dev/proofjava/playground/Calculator.java', startLine: 37, endLine: 37,
+		productionMethod: 'dev.proofjava.playground.Calculator#square(I)I',
+		message: 'dev.proofjava.playground.Calculator#square is covered but every mutant generated for it survived - the tests that reach it never observe its behavior.',
 		suggestedAction: "Add an assertion on this method's return value or observable side effect for at least one covering test.",
 		fingerprint: 'e1f087bbb5ce5bc8',
 	};
@@ -145,8 +145,8 @@ suite('Sidebar tree views (Faz 11b)', () => {
 
 		const pseudoFinding = provider.getChildren(pseudoRule)[0];
 		const oracleFinding = provider.getChildren(oracleRule)[0];
-		assert.equal(provider.getTreeItem(pseudoFinding).contextValue, 'coverdict.qualityFinding.pseudoTested');
-		assert.equal(provider.getTreeItem(oracleFinding).contextValue, 'coverdict.qualityFinding', 'a non-PSEUDO_TESTED_METHOD finding must not get the bridge affordance');
+		assert.equal(provider.getTreeItem(pseudoFinding).contextValue, 'proof.qualityFinding.pseudoTested');
+		assert.equal(provider.getTreeItem(oracleFinding).contextValue, 'proof.qualityFinding', 'a non-PSEUDO_TESTED_METHOD finding must not get the bridge affordance');
 	});
 
 	test('getParent: a finding node resolves back to its group (rule or file), matching whichever grouping is active', () => {
@@ -165,7 +165,7 @@ suite('Sidebar tree views (Faz 11b)', () => {
 
 	test('findQualityBridgeTarget: finds the real PSEUDO_TESTED_METHOD finding by its productionMethod key', () => {
 		setCoverageState({ ...STATE, findings: [FINDING, PSEUDO_TESTED_FINDING] });
-		const target = findQualityBridgeTarget('dev.coverdict.playground.Calculator#square(I)I');
+		const target = findQualityBridgeTarget('dev.proofjava.playground.Calculator#square(I)I');
 		assert.ok(target);
 		assert.equal(target?.kind, 'finding');
 		if (target?.kind === 'finding') {
@@ -175,6 +175,6 @@ suite('Sidebar tree views (Faz 11b)', () => {
 
 	test('findQualityBridgeTarget: no matching finding (stale/mismatched method) -> undefined, not a guess', () => {
 		setCoverageState({ ...STATE, findings: [FINDING] });
-		assert.equal(findQualityBridgeTarget('dev.coverdict.playground.Calculator#square(I)I'), undefined);
+		assert.equal(findQualityBridgeTarget('dev.proofjava.playground.Calculator#square(I)I'), undefined);
 	});
 });

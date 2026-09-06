@@ -5,7 +5,7 @@ import { ruleDocsUrl, ruleInfo } from '../model/ruleCatalog';
 import type { Finding } from '../verdict/types';
 
 /**
- * Faz 11a: coverdict'in altı test-oracle-kalitesi bulgusunu (`findings[]`)
+ * Faz 11a: proof-java'in altı test-oracle-kalitesi bulgusunu (`findings[]`)
  * Problems panelinde gösterir - Sonar'ın yaptığı gibi, ama sıfır yeni
  * analiz: her bulgu zaten CLI'ın verdict'inde tam biçimlendirilmiş geliyor.
  *
@@ -14,7 +14,7 @@ import type { Finding } from '../verdict/types';
  * CLI'ın kendi `suggestedAction`'ı eklenir.
  */
 export function createDiagnosticCollection(): vscode.DiagnosticCollection {
-	return vscode.languages.createDiagnosticCollection('coverdict');
+	return vscode.languages.createDiagnosticCollection('proof-java');
 }
 
 export function publishFindings(collection: vscode.DiagnosticCollection, workspaceRoot: string, findings: readonly Finding[]): void {
@@ -60,7 +60,7 @@ function toDiagnostic(finding: Finding): vscode.Diagnostic {
 		hint ? `${info.title}: ${hint}` : info.title,
 		finding.severity === 'WARNING' ? vscode.DiagnosticSeverity.Warning : vscode.DiagnosticSeverity.Information,
 	);
-	diagnostic.source = 'coverdict';
+	diagnostic.source = 'proof-java';
 	diagnostic.code = {
 		value: `${finding.rule} (${finding.confidence})`,
 		target: vscode.Uri.parse(ruleDocsUrl(finding.rule)),

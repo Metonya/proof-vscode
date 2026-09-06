@@ -42,8 +42,8 @@ import { isMutationBlock, isPerTestBlock, parseVerdict } from './verdict/parse';
  * short list of `context.subscriptions.push(...)` calls (Plan.md Bölüm 2).
  */
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-	const output = vscode.window.createOutputChannel('coverdict');
-	const colorblindMode = vscode.workspace.getConfiguration('coverdict').get<boolean>('colorblindMode') ?? false;
+	const output = vscode.window.createOutputChannel('proof-java');
+	const colorblindMode = vscode.workspace.getConfiguration('proof').get<boolean>('colorblindMode') ?? false;
 	let gutterTypes = createGutterDecorationTypes(colorblindMode);
 	const explorerBadges = new ExplorerBadgeProvider();
 	const statusBarItem = createStatusBarItem();
@@ -60,14 +60,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	// webview panel, clicking a node in this view cannot empty it: the
 	// provider tracks the last Java editor itself (`setActiveDocument`),
 	// never reads `vscode.window.activeTextEditor` live.
-	const lineTestsTreeView = vscode.window.createTreeView('coverdict.lineTestsView', { treeDataProvider: lineTestsView, showCollapseAll: true });
+	const lineTestsTreeView = vscode.window.createTreeView('proof.lineTestsView', { treeDataProvider: lineTestsView, showCollapseAll: true });
 	lineTestsView.setActiveDocument(vscode.window.activeTextEditor?.document);
 
 	// Faz 24 (§7.6 madde 5): Test Kalitesi ↔ Mutasyon köprüsü de `reveal()`
 	// kullanıyor, aynı sebeple - her ikisi de plain `registerTreeDataProvider`
 	// ile kalsaydı köprü komutları hedefi ekrana odaklayamazdı.
-	const qualityTreeView = vscode.window.createTreeView('coverdict.qualityView', { treeDataProvider: qualityView, showCollapseAll: true });
-	const mutationTreeView = vscode.window.createTreeView('coverdict.mutationView', { treeDataProvider: mutationView, showCollapseAll: true });
+	const qualityTreeView = vscode.window.createTreeView('proof.qualityView', { treeDataProvider: qualityView, showCollapseAll: true });
+	const mutationTreeView = vscode.window.createTreeView('proof.mutationView', { treeDataProvider: mutationView, showCollapseAll: true });
 
 	const sinks: CoverageSinks = { context, gutterTypes, explorerBadges, statusBarItem, diagnostics, runView, coverageView, qualityView, qualityTreeView, lineTestsView, lineTestsTreeView, mutationView, mutationTreeView };
 
@@ -83,8 +83,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		vscode.window.registerFileDecorationProvider(explorerBadges),
 		statusBarItem,
 		diagnostics,
-		vscode.window.registerTreeDataProvider('coverdict.runView', runView),
-		vscode.window.registerTreeDataProvider('coverdict.coverageView', coverageView),
+		vscode.window.registerTreeDataProvider('proof.runView', runView),
+		vscode.window.registerTreeDataProvider('proof.coverageView', coverageView),
 		qualityTreeView,
 		lineTestsTreeView,
 		mutationTreeView,
@@ -142,11 +142,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 				void lineTestsTreeView.reveal(node, { select: true, focus: false });
 			}
 		}),
-		// coverdict.show.* ayarları canlı: kullanıcı ayarlar sayfasında
+		// proof.show.* ayarları canlı: kullanıcı ayarlar sayfasında
 		// değiştirdiği anda son taramadan yeniden boyanır, tekrar analiz veya
 		// aç/kapat yapmasına gerek kalmaz.
 		vscode.workspace.onDidChangeConfiguration((e) => {
-			if (!e.affectsConfiguration('coverdict.show') && !e.affectsConfiguration('coverdict.badgeMetric')) {
+			if (!e.affectsConfiguration('proof.show') && !e.affectsConfiguration('proof.badgeMetric')) {
 				return;
 			}
 			const state = getCoverageState();
@@ -154,17 +154,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 				republishFromState(sinks, state.workspaceRoot);
 			}
 		}),
-		// coverdict.colorblindMode da canlı: eski davranış (yalnızca
-		// açılışta okunup pencere yenilemesi isteyen) coverdict.show.* ile
+		// proof.colorblindMode da canlı: eski davranış (yalnızca
+		// açılışta okunup pencere yenilemesi isteyen) proof.show.* ile
 		// tutarsızdı ve kafa karıştırıyordu - eskiler dispose edilip
 		// yenileri kaydedilir, sinks.gutterTypes güncellenir (commands.ts
 		// hep sinks üzerinden okur), açık editörler hemen yeni renklerle
 		// boyanır.
 		vscode.workspace.onDidChangeConfiguration((e) => {
-			if (!e.affectsConfiguration('coverdict.colorblindMode')) {
+			if (!e.affectsConfiguration('proof.colorblindMode')) {
 				return;
 			}
-			const newMode = vscode.workspace.getConfiguration('coverdict').get<boolean>('colorblindMode') ?? false;
+			const newMode = vscode.workspace.getConfiguration('proof').get<boolean>('colorblindMode') ?? false;
 			const oldTypes = gutterTypes;
 			gutterTypes = createGutterDecorationTypes(newMode);
 			sinks.gutterTypes = gutterTypes;
@@ -347,7 +347,7 @@ function parsePerTestSnapshot(raw: string): PerTestSnapshot | undefined {
 	return json as unknown as PerTestSnapshot;
 }
 
-/** `coverdict.show.*`/`coverdict.badgeMetric` changed while a run's data is still current - repaint from `model/store`'s own state, no re-parse needed. */
+/** `proof.show.*`/`proof.badgeMetric` changed while a run's data is still current - repaint from `model/store`'s own state, no re-parse needed. */
 function republishFromState(sinks: CoverageSinks, workspaceRoot: string): void {
 	const state = getCoverageState();
 	if (state) {

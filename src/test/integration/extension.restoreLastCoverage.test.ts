@@ -26,13 +26,13 @@ const METRIC_SET = { 'jacoco-line': METRIC, 'strict-line': METRIC, 'sonar-compat
  */
 function realVerdictJson(): unknown {
 	return {
-		schemaVersion: '1', tool: { name: 'coverdict', version: '0.0.0' },
+		schemaVersion: '1', tool: { name: 'proof-java', version: '0.0.0' },
 		analysis: { status: 'complete', exitCode: 0, incompleteReasons: [] },
 		inputs: { modules: [{ id: 'root', root: '.', sourceRoots: ['src/main/java'], testRoots: ['src/test/java'] }] },
 		coverage: { overall: METRIC_SET, newCode: { status: 'unavailable_no_vcs' } },
 		changedFiles: [], findings: [], warnings: [],
 		fileCoverage: {
-			files: [{ module: 'root', path: 'src/main/java/dev/coverdict/playground/Calculator.java', metrics: METRIC_SET, lines: [] }],
+			files: [{ module: 'root', path: 'src/main/java/dev/proofjava/playground/Calculator.java', metrics: METRIC_SET, lines: [] }],
 			excluded: [],
 		},
 		perTest: {
@@ -40,8 +40,8 @@ function realVerdictJson(): unknown {
 			modules: [{
 				id: 'root',
 				entries: [{
-					className: 'dev.coverdict.playground.Calculator', methodName: 'square',
-					lines: [{ line: 37, tests: ['[class:dev.coverdict.playground.CalculatorGoodTest]/[method:squareWorks()]'] }],
+					className: 'dev.proofjava.playground.Calculator', methodName: 'square',
+					lines: [{ line: 37, tests: ['[class:dev.proofjava.playground.CalculatorGoodTest]/[method:squareWorks()]'] }],
 				}],
 				ambient: [],
 			}],
@@ -63,7 +63,7 @@ function realMutationSnapshot(ranAtMs: number): MutationSnapshot {
 			modules: [{
 				id: 'root',
 				methods: [{
-					className: 'dev.coverdict.playground.Calculator', methodName: 'square', methodDescription: '(I)I',
+					className: 'dev.proofjava.playground.Calculator', methodName: 'square', methodDescription: '(I)I',
 					firstLine: 37, lastLine: 37,
 					mutants: [{
 						mutator: 'org.pitest.mutationtest.engine.gregor.mutators.returns.PrimitiveReturnsMutator',
@@ -73,7 +73,7 @@ function realMutationSnapshot(ranAtMs: number): MutationSnapshot {
 			}],
 		},
 		warnings: [],
-		targets: ['dev.coverdict.playground.Calculator'],
+		targets: ['dev.proofjava.playground.Calculator'],
 		ranAtMs,
 	};
 }
@@ -87,13 +87,13 @@ function realMutationSnapshot(ranAtMs: number): MutationSnapshot {
  */
 function verdictJsonWithoutPerTest(): unknown {
 	return {
-		schemaVersion: '1', tool: { name: 'coverdict', version: '0.0.0' },
+		schemaVersion: '1', tool: { name: 'proof-java', version: '0.0.0' },
 		analysis: { status: 'complete', exitCode: 0, incompleteReasons: [] },
 		inputs: { modules: [{ id: 'root', root: '.', sourceRoots: ['src/main/java'], testRoots: ['src/test/java'] }] },
 		coverage: { overall: METRIC_SET, newCode: { status: 'unavailable_no_vcs' } },
 		changedFiles: [], findings: [], warnings: [],
 		fileCoverage: {
-			files: [{ module: 'root', path: 'src/main/java/dev/coverdict/playground/Calculator.java', metrics: METRIC_SET, lines: [] }],
+			files: [{ module: 'root', path: 'src/main/java/dev/proofjava/playground/Calculator.java', metrics: METRIC_SET, lines: [] }],
 			excluded: [],
 		},
 	};
@@ -107,8 +107,8 @@ function realPerTestSnapshot(): PerTestSnapshot {
 			modules: [{
 				id: 'root',
 				entries: [{
-					className: 'dev.coverdict.playground.Calculator', methodName: 'square',
-					lines: [{ line: 37, tests: ['[class:dev.coverdict.playground.CalculatorGoodTest]/[method:squareWorks()]'] }],
+					className: 'dev.proofjava.playground.Calculator', methodName: 'square',
+					lines: [{ line: 37, tests: ['[class:dev.proofjava.playground.CalculatorGoodTest]/[method:squareWorks()]'] }],
 				}],
 				ambient: [],
 			}],
@@ -148,15 +148,15 @@ function spyRefresh<N>(view: { refresh(): void; getChildren(): N[] }): N[][] {
 
 suite('extension.restoreLastCoverageFrom (Faz 23/25 - pencere yenileme)', () => {
 	test('a saved verdict with perTest, plus a separate mutation-current.json, leaves both views populated after restore, not stuck on their pre-restore snapshot', async () => {
-		const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-restore-'));
+		const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-restore-'));
 		fs.writeFileSync(path.join(storageDir, 'verdict-current.json'), JSON.stringify(realVerdictJson()), 'utf8');
 		fs.writeFileSync(path.join(storageDir, MUTATION_STORAGE_FILE), JSON.stringify(realMutationSnapshot(Date.now() - 60_000)), 'utf8');
 
-		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-restore-ws-'));
-		const classDir = path.join(workspaceRoot, 'src', 'main', 'java', 'dev', 'coverdict', 'playground');
+		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-restore-ws-'));
+		const classDir = path.join(workspaceRoot, 'src', 'main', 'java', 'dev', 'proofjava', 'playground');
 		fs.mkdirSync(classDir, { recursive: true });
 		const classFile = path.join(classDir, 'Calculator.java');
-		fs.writeFileSync(classFile, 'package dev.coverdict.playground;\n\npublic class Calculator {\n}\n', 'utf8');
+		fs.writeFileSync(classFile, 'package dev.proofjava.playground;\n\npublic class Calculator {\n}\n', 'utf8');
 		const document = await vscode.workspace.openTextDocument(vscode.Uri.file(classFile));
 
 		const sinks = buildSinks();
@@ -204,11 +204,11 @@ suite('extension.restoreLastCoverageFrom (Faz 23/25 - pencere yenileme)', () => 
 	 * its own independent file.
 	 */
 	test('mutation restores from its own file even when the latest verdict-current.json has no mutation block at all', async () => {
-		const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-restore-'));
+		const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-restore-'));
 		fs.writeFileSync(path.join(storageDir, 'verdict-current.json'), JSON.stringify(realVerdictJson()), 'utf8');
 		fs.writeFileSync(path.join(storageDir, MUTATION_STORAGE_FILE), JSON.stringify(realMutationSnapshot(Date.now() - 5 * 60_000)), 'utf8');
 
-		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-restore-ws2-'));
+		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-restore-ws2-'));
 		const sinks = buildSinks();
 		const mutationSnapshots = spyRefresh<MutationNode>(sinks.mutationView);
 
@@ -224,11 +224,11 @@ suite('extension.restoreLastCoverageFrom (Faz 23/25 - pencere yenileme)', () => 
 	});
 
 	test('a missing mutation-current.json (never ran mutation, or a pre-Faz-25 install) leaves the mutation view in its normal "never run" state, not an error', async () => {
-		const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-restore-'));
+		const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-restore-'));
 		fs.writeFileSync(path.join(storageDir, 'verdict-current.json'), JSON.stringify(realVerdictJson()), 'utf8');
 		// No mutation-current.json written at all.
 
-		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-restore-ws3-'));
+		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-restore-ws3-'));
 		const sinks = buildSinks();
 		const mutationSnapshots = spyRefresh<MutationNode>(sinks.mutationView);
 
@@ -238,11 +238,11 @@ suite('extension.restoreLastCoverageFrom (Faz 23/25 - pencere yenileme)', () => 
 	});
 
 	test('a corrupted mutation-current.json (truncated write, disk full mid-save) is ignored, not thrown', async () => {
-		const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-restore-'));
+		const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-restore-'));
 		fs.writeFileSync(path.join(storageDir, 'verdict-current.json'), JSON.stringify(realVerdictJson()), 'utf8');
 		fs.writeFileSync(path.join(storageDir, MUTATION_STORAGE_FILE), '{"moduleId": "root", "mutat', 'utf8');
 
-		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-restore-ws4-'));
+		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-restore-ws4-'));
 		const sinks = buildSinks();
 		const mutationSnapshots = spyRefresh<MutationNode>(sinks.mutationView);
 
@@ -251,13 +251,13 @@ suite('extension.restoreLastCoverageFrom (Faz 23/25 - pencere yenileme)', () => 
 	});
 
 	test('a mutation-current.json missing a required field (e.g. from a hypothetical older shape) is ignored, not guessed at', async () => {
-		const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-restore-'));
+		const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-restore-'));
 		fs.writeFileSync(path.join(storageDir, 'verdict-current.json'), JSON.stringify(realVerdictJson()), 'utf8');
 		const withoutTimestamp: Record<string, unknown> = { ...realMutationSnapshot(Date.now()) };
 		delete withoutTimestamp.ranAtMs;
 		fs.writeFileSync(path.join(storageDir, MUTATION_STORAGE_FILE), JSON.stringify(withoutTimestamp), 'utf8');
 
-		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-restore-ws5-'));
+		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-restore-ws5-'));
 		const sinks = buildSinks();
 		const mutationSnapshots = spyRefresh<MutationNode>(sinks.mutationView);
 
@@ -277,15 +277,15 @@ suite('extension.restoreLastCoverageFrom (Faz 23/25 - pencere yenileme)', () => 
 	 * must still restore from its own independent file.
 	 */
 	test('perTest restores from its own file even when the latest verdict-current.json (a later Mutasyon Testi run) has no perTest block at all', async () => {
-		const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-restore-'));
+		const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-restore-'));
 		fs.writeFileSync(path.join(storageDir, 'verdict-current.json'), JSON.stringify(verdictJsonWithoutPerTest()), 'utf8');
 		fs.writeFileSync(path.join(storageDir, PERTEST_STORAGE_FILE), JSON.stringify(realPerTestSnapshot()), 'utf8');
 
-		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-restore-ws6-'));
-		const classDir = path.join(workspaceRoot, 'src', 'main', 'java', 'dev', 'coverdict', 'playground');
+		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-restore-ws6-'));
+		const classDir = path.join(workspaceRoot, 'src', 'main', 'java', 'dev', 'proofjava', 'playground');
 		fs.mkdirSync(classDir, { recursive: true });
 		const classFile = path.join(classDir, 'Calculator.java');
-		fs.writeFileSync(classFile, 'package dev.coverdict.playground;\n\npublic class Calculator {\n}\n', 'utf8');
+		fs.writeFileSync(classFile, 'package dev.proofjava.playground;\n\npublic class Calculator {\n}\n', 'utf8');
 		const document = await vscode.workspace.openTextDocument(vscode.Uri.file(classFile));
 
 		const sinks = buildSinks();
@@ -299,15 +299,15 @@ suite('extension.restoreLastCoverageFrom (Faz 23/25 - pencere yenileme)', () => 
 	});
 
 	test('a missing pertest-current.json (never ran Derin Tarama) falls back to verdict-current.json\'s own perTest block, unchanged behavior', async () => {
-		const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-restore-'));
+		const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-restore-'));
 		fs.writeFileSync(path.join(storageDir, 'verdict-current.json'), JSON.stringify(realVerdictJson()), 'utf8');
 		// No pertest-current.json written - realVerdictJson()'s own embedded perTest block must still apply.
 
-		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-restore-ws7-'));
-		const classDir = path.join(workspaceRoot, 'src', 'main', 'java', 'dev', 'coverdict', 'playground');
+		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-restore-ws7-'));
+		const classDir = path.join(workspaceRoot, 'src', 'main', 'java', 'dev', 'proofjava', 'playground');
 		fs.mkdirSync(classDir, { recursive: true });
 		const classFile = path.join(classDir, 'Calculator.java');
-		fs.writeFileSync(classFile, 'package dev.coverdict.playground;\n\npublic class Calculator {\n}\n', 'utf8');
+		fs.writeFileSync(classFile, 'package dev.proofjava.playground;\n\npublic class Calculator {\n}\n', 'utf8');
 		const document = await vscode.workspace.openTextDocument(vscode.Uri.file(classFile));
 
 		const sinks = buildSinks();
@@ -320,15 +320,15 @@ suite('extension.restoreLastCoverageFrom (Faz 23/25 - pencere yenileme)', () => 
 	});
 
 	test('a corrupted pertest-current.json is ignored, falls back to verdict-current.json\'s own perTest block', async () => {
-		const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-restore-'));
+		const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-restore-'));
 		fs.writeFileSync(path.join(storageDir, 'verdict-current.json'), JSON.stringify(realVerdictJson()), 'utf8');
 		fs.writeFileSync(path.join(storageDir, PERTEST_STORAGE_FILE), '{"moduleId": "root", "perTe', 'utf8');
 
-		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-restore-ws8-'));
-		const classDir = path.join(workspaceRoot, 'src', 'main', 'java', 'dev', 'coverdict', 'playground');
+		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-restore-ws8-'));
+		const classDir = path.join(workspaceRoot, 'src', 'main', 'java', 'dev', 'proofjava', 'playground');
 		fs.mkdirSync(classDir, { recursive: true });
 		const classFile = path.join(classDir, 'Calculator.java');
-		fs.writeFileSync(classFile, 'package dev.coverdict.playground;\n\npublic class Calculator {\n}\n', 'utf8');
+		fs.writeFileSync(classFile, 'package dev.proofjava.playground;\n\npublic class Calculator {\n}\n', 'utf8');
 		const document = await vscode.workspace.openTextDocument(vscode.Uri.file(classFile));
 
 		const sinks = buildSinks();

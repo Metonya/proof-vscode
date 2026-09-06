@@ -2,7 +2,7 @@
  * Pure: recognizes a small, closed set of Maven failure shapes from raw
  * subprocess output and turns them into an honest, actionable Turkish
  * sentence - never a guess. An unrecognized failure returns `undefined`
- * and the caller falls back to "ayrıntı için Output → coverdict kanalına
+ * and the caller falls back to "ayrıntı için Output → proof-java kanalına
  * bakın" with the raw text already logged - hard rule 3a: an unrecognized
  * cause is never invented.
  *
@@ -56,7 +56,7 @@ function interpretUnresolvedReactorSibling(output: string): MavenFailureInterpre
 	};
 }
 
-/** A pom with no `jacoco-maven-plugin` declared cannot resolve the short `jacoco:report` goal form - coverdict always uses the full coordinate, so seeing this means something else on the machine (a script, a stale alias) tried the short form. */
+/** A pom with no `jacoco-maven-plugin` declared cannot resolve the short `jacoco:report` goal form - proof-java always uses the full coordinate, so seeing this means something else on the machine (a script, a stale alias) tried the short form. */
 function interpretNoPluginPrefix(output: string): MavenFailureInterpretation | undefined {
 	const match = NO_PLUGIN_PREFIX_PATTERN.exec(output);
 	if (!match) {
@@ -64,11 +64,11 @@ function interpretNoPluginPrefix(output: string): MavenFailureInterpretation | u
 	}
 	return {
 		kind: 'noPluginPrefix',
-		detail: `Bu projenin pom'unda JaCoCo eklentisi tanımlı değil, kısa "${match[1]}:..." biçimi çalışmıyor. coverdict kendi komutlarında her zaman tam koordinatı (org.jacoco:jacoco-maven-plugin:<sürüm>:...) kullanır.`,
+		detail: `Bu projenin pom'unda JaCoCo eklentisi tanımlı değil, kısa "${match[1]}:..." biçimi çalışmıyor. proof-java kendi komutlarında her zaman tam koordinatı (org.jacoco:jacoco-maven-plugin:<sürüm>:...) kullanır.`,
 	};
 }
 
-/** Quotes Maven's own sentence verbatim rather than paraphrasing a version range coverdict does not know. */
+/** Quotes Maven's own sentence verbatim rather than paraphrasing a version range proof-java does not know. */
 function interpretEnforcerJdk(output: string): MavenFailureInterpretation | undefined {
 	const match = ENFORCER_JDK_PATTERN.exec(output);
 	if (!match) {
@@ -76,14 +76,14 @@ function interpretEnforcerJdk(output: string): MavenFailureInterpretation | unde
 	}
 	return {
 		kind: 'enforcerJdk',
-		detail: `Maven'ın kendi mesajı: "${match[0].trim()}". coverdict.javaExecutable / JAVA_HOME'un işaret ettiği JDK'yı bu projenin beklediği aralığa göre ayarlayın.`,
+		detail: `Maven'ın kendi mesajı: "${match[0].trim()}". proof.javaExecutable / JAVA_HOME'un işaret ettiği JDK'yı bu projenin beklediği aralığa göre ayarlayın.`,
 	};
 }
 
 /**
  * Real gson shape (`test-jpms/src/test/java/module-info.java:[19,22] module
  * not found: com.google.gson`, verified this session): a sibling module's
- * own JPMS `module-info.java` requires a reactor module coverdict never
+ * own JPMS `module-info.java` requires a reactor module proof-java never
  * asked for and has nothing to do with the module actually being analyzed.
  * The dependency module descriptor is typically only added to the JAR at
  * the `package` phase (e.g. via ModiTect) - a plain `test`/`verify` build

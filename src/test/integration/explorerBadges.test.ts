@@ -29,7 +29,7 @@ const FILE_COVERAGE: FileCoverageBlock = {
 	files: [
 		{
 			module: 'root',
-			path: 'src/main/java/dev/coverdict/playground/Calculator.java',
+			path: 'src/main/java/dev/proofjava/playground/Calculator.java',
 			metrics: {
 				'jacoco-line': { numeratorName: 'coveredLines', numerator: 11, denominatorName: 'executableLines', denominator: 12, percent: 91.7 },
 				'strict-line': { numeratorName: 'fullyCoveredLines', numerator: 9, denominatorName: 'executableLines', denominator: 12, percent: 75 },
@@ -39,7 +39,7 @@ const FILE_COVERAGE: FileCoverageBlock = {
 		},
 		{
 			module: 'root',
-			path: 'src/main/java/dev/coverdict/playground/Notifier.java',
+			path: 'src/main/java/dev/proofjava/playground/Notifier.java',
 			metrics: {
 				'jacoco-line': { numeratorName: 'coveredLines', numerator: 0, denominatorName: 'executableLines', denominator: 0, percent: null },
 				'strict-line': { numeratorName: 'fullyCoveredLines', numerator: 0, denominatorName: 'executableLines', denominator: 0, percent: null },
@@ -49,7 +49,7 @@ const FILE_COVERAGE: FileCoverageBlock = {
 		},
 		{
 			module: 'root',
-			path: 'src/main/java/dev/coverdict/playground/NotifyingCalculator.java',
+			path: 'src/main/java/dev/proofjava/playground/NotifyingCalculator.java',
 			metrics: {
 				'jacoco-line': { numeratorName: 'coveredLines', numerator: 6, denominatorName: 'executableLines', denominator: 6, percent: 100 },
 				'strict-line': { numeratorName: 'fullyCoveredLines', numerator: 6, denominatorName: 'executableLines', denominator: 6, percent: 100 },
@@ -66,18 +66,18 @@ suite('Explorer badges (Faz 9 / Faz 13 madde 8)', () => {
 		const provider = new ExplorerBadgeProvider();
 		provider.update(WORKSPACE_ROOT, FILE_COVERAGE, 'sonar-compatible');
 
-		const calculator = provider.provideFileDecoration(vscode.Uri.file(path.join(WORKSPACE_ROOT, 'src/main/java/dev/coverdict/playground/Calculator.java')));
+		const calculator = provider.provideFileDecoration(vscode.Uri.file(path.join(WORKSPACE_ROOT, 'src/main/java/dev/proofjava/playground/Calculator.java')));
 		assert.ok(calculator, 'Calculator.java (gerçek veri, %80) rozet almalı');
 		assert.equal(calculator!.badge, '80');
 
-		const notifying = provider.provideFileDecoration(vscode.Uri.file(path.join(WORKSPACE_ROOT, 'src/main/java/dev/coverdict/playground/NotifyingCalculator.java')));
+		const notifying = provider.provideFileDecoration(vscode.Uri.file(path.join(WORKSPACE_ROOT, 'src/main/java/dev/proofjava/playground/NotifyingCalculator.java')));
 		assert.ok(notifying, 'NotifyingCalculator.java (gerçek veri, %100) rozet almalı');
 		assert.equal(notifying!.badge, '✓', '%100 iki karaktere sığmaz ("100"), VS Code onu reddedip dekorasyonu tamamen düşürür - Faz 18');
 
-		const notifier = provider.provideFileDecoration(vscode.Uri.file(path.join(WORKSPACE_ROOT, 'src/main/java/dev/coverdict/playground/Notifier.java')));
+		const notifier = provider.provideFileDecoration(vscode.Uri.file(path.join(WORKSPACE_ROOT, 'src/main/java/dev/proofjava/playground/Notifier.java')));
 		assert.equal(notifier, undefined, 'Notifier.java saf arayüz - 0 çalıştırılabilir satır, veri yok, rozet olmamalı (hard rule 3a)');
 
-		const folder = provider.provideFileDecoration(vscode.Uri.file(path.join(WORKSPACE_ROOT, 'src/main/java/dev/coverdict/playground')));
+		const folder = provider.provideFileDecoration(vscode.Uri.file(path.join(WORKSPACE_ROOT, 'src/main/java/dev/proofjava/playground')));
 		assert.ok(folder, 'klasör rozeti, veri taşıyan iki dosyanın rollup\'ından gelmeli');
 		assert.equal(folder!.badge, '85');
 
@@ -100,10 +100,10 @@ suite('Explorer badges (Faz 9 / Faz 13 madde 8)', () => {
 		provider.update(WORKSPACE_ROOT, FILE_COVERAGE, 'sonar-compatible');
 
 		const uris = [
-			'src/main/java/dev/coverdict/playground/Calculator.java',
-			'src/main/java/dev/coverdict/playground/Notifier.java',
-			'src/main/java/dev/coverdict/playground/NotifyingCalculator.java',
-			'src/main/java/dev/coverdict/playground',
+			'src/main/java/dev/proofjava/playground/Calculator.java',
+			'src/main/java/dev/proofjava/playground/Notifier.java',
+			'src/main/java/dev/proofjava/playground/NotifyingCalculator.java',
+			'src/main/java/dev/proofjava/playground',
 			'src/main/java',
 			'src',
 		].map((p) => vscode.Uri.file(path.join(WORKSPACE_ROOT, p)));
@@ -117,12 +117,12 @@ suite('Explorer badges (Faz 9 / Faz 13 madde 8)', () => {
 		provider.dispose();
 	});
 
-	/** Faz 18: a file the user deliberately excluded must not look identical to a file coverdict simply has no data for. */
+	/** Faz 18: a file the user deliberately excluded must not look identical to a file proof-java simply has no data for. */
 	test('an excluded file gets its own badge and gray color, distinct from "no data"', () => {
 		const provider = new ExplorerBadgeProvider();
-		provider.update(WORKSPACE_ROOT, { ...FILE_COVERAGE, excluded: ['src/main/java/dev/coverdict/playground/Generated.java'] }, 'sonar-compatible');
+		provider.update(WORKSPACE_ROOT, { ...FILE_COVERAGE, excluded: ['src/main/java/dev/proofjava/playground/Generated.java'] }, 'sonar-compatible');
 
-		const excluded = provider.provideFileDecoration(vscode.Uri.file(path.join(WORKSPACE_ROOT, 'src/main/java/dev/coverdict/playground/Generated.java')));
+		const excluded = provider.provideFileDecoration(vscode.Uri.file(path.join(WORKSPACE_ROOT, 'src/main/java/dev/proofjava/playground/Generated.java')));
 		assert.ok(excluded, 'kapsama dışı bırakılmış dosya da işaretlenmeli');
 		assert.equal(excluded!.badge, '–');
 		assert.match(String(excluded!.tooltip), /coverage dışı/);

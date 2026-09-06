@@ -1,9 +1,9 @@
-# coverdict-vscode
+# proof-vscode
 
-VS Code / Cursor / Windsurf extension for [coverdict](https://github.com/) - runs the coverdict CLI and renders its JSON verdict: inline coverage gutter, "which tests cover this line", and mutation findings.
+VS Code / Cursor / Windsurf extension for [proof-java](https://github.com/) - runs the proof-java CLI and renders its JSON verdict: inline coverage gutter, "which tests cover this line", and mutation findings.
 
 Not published anywhere. Private dogfood only for now - the formal v1 schema
-freeze (coverdict's Plan.md Faz 3) is deliberately skipped until there is a
+freeze (proof-java's Plan.md Faz 3) is deliberately skipped until there is a
 real reason to distribute this.
 
 ## Status
@@ -14,7 +14,7 @@ which rules are never broken, what works today, and what is still open.
 [`docs/NOTES.md`](docs/NOTES.md) is the chronological log behind those
 decisions; `PLAN.md` wins where they disagree.
 
-Faz 21 done (2026-08-28): the extension runs coverdict, renders Explorer
+Faz 21 done (2026-08-28): the extension runs proof-java, renders Explorer
 coverage badges and an editor gutter through its own decoration types
 (the native VS Code Test Coverage API was dropped - it has no documented
 way to clear or independently control its two rendering surfaces), shows
@@ -49,10 +49,10 @@ Two rules that hold for the whole project, not just this skeleton:
 
 ## Requires
 
-A locally built `coverdict.jar` (`mvn -pl coverdict-cli package` in the
-`coverdict` repo). The extension looks for it via `coverdict.jarPath`, then
-`${workspaceFolder}/coverdict-cli/target/coverdict.jar`, then
-`${workspaceFolder}/.coverdict/coverdict.jar`.
+A locally built `proof-java.jar` (`mvn -pl proof-java-cli package` in the
+`proof-java` repo). The extension looks for it via `proof.jarPath`, then
+`${workspaceFolder}/proof-java-cli/target/proof-java.jar`, then
+`${workspaceFolder}/.proof-java/proof-java.jar`.
 
 ## Develop
 

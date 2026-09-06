@@ -45,7 +45,7 @@ export function parseVerdict(raw: string): Result<VerdictDocument> {
 	}
 
 	if (!isVerdictDocument(json)) {
-		return { ok: false, error: 'does not look like a coverdict verdict document (missing a required top-level field)' };
+		return { ok: false, error: 'does not look like a proof-java verdict document (missing a required top-level field)' };
 	}
 	if ('fileCoverage' in json && !isFileCoverageBlock(json.fileCoverage)) {
 		return { ok: false, error: 'fileCoverage is present but malformed' };

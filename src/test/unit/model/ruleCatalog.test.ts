@@ -31,6 +31,6 @@ test('no title is just the raw enum - the whole point is that it is readable', (
 	}
 });
 
-test('ruleDocsUrl points at that rule\'s own doc in the coverdict repo', () => {
-	assert.equal(ruleDocsUrl('NULL_CHECK_ONLY'), 'https://github.com/Metonya/coverdict/blob/main/docs/rules/NULL_CHECK_ONLY.md');
+test('ruleDocsUrl points at that rule\'s own doc in the proof-java repo', () => {
+	assert.equal(ruleDocsUrl('NULL_CHECK_ONLY'), 'https://github.com/Metonya/proof-java/blob/main/docs/rules/NULL_CHECK_ONLY.md');
 });

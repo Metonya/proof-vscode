@@ -12,14 +12,14 @@ import type { MetricSet, NewCodeCoverage } from '../verdict/types';
  * the gutter, same gesture as the info message's summary text.
  */
 export function createStatusBarItem(): vscode.StatusBarItem {
-	const item = vscode.window.createStatusBarItem('coverdict', vscode.StatusBarAlignment.Left, 100);
-	item.name = 'coverdict';
-	item.command = 'coverdict.toggleCoverage';
+	const item = vscode.window.createStatusBarItem('proof-java', vscode.StatusBarAlignment.Left, 100);
+	item.name = 'proof-java';
+	item.command = 'proof.toggleCoverage';
 	return item;
 }
 
 export function showNoFileCoverageWarning(item: vscode.StatusBarItem): void {
-	item.text = '$(warning) coverdict: coverage verisi yok';
+	item.text = '$(warning) proof-java: coverage verisi yok';
 	item.tooltip = 'Son analiz koşusunda fileCoverage bloğu yok - coverage görünümünde hiçbir şey gösterilmiyor.';
 	item.show();
 }
@@ -27,10 +27,10 @@ export function showNoFileCoverageWarning(item: vscode.StatusBarItem): void {
 export function showCoverageSummary(item: vscode.StatusBarItem, overall: MetricSet, gutterVisible: boolean, badgeMetric: BadgeMetric, newCode: NewCodeCoverage): void {
 	const headlinePercent = overall[badgeMetric].percent;
 	const eyeIcon = gutterVisible ? 'eye' : 'eye-closed';
-	item.text = headlinePercent === null ? '$(check) coverdict' : `$(${eyeIcon}) coverdict ${headlinePercent}%`;
+	item.text = headlinePercent === null ? '$(check) proof-java' : `$(${eyeIcon}) proof-java ${headlinePercent}%`;
 	item.tooltip = new vscode.MarkdownString(
 		[
-			`**coverdict** - ${gutterVisible ? 'coverage görünümü açık' : 'coverage görünümü kapalı'} (aç/kapat için tıklayın)`,
+			`**proof-java** - ${gutterVisible ? 'coverage görünümü açık' : 'coverage görünümü kapalı'} (aç/kapat için tıklayın)`,
 			'',
 			'**Genel** (tüm repo)',
 			metricLine('jacoco-line', overall['jacoco-line']),

@@ -10,7 +10,7 @@ import { resolveRunTestsModuleScope } from '../../ui/preflight';
  * Faz 31: the real fix behind the gson `test-jpms` failure - a first-ever
  * "Testleri Çalıştır" click had no way to know which module(s) the user
  * cared about, so it always built the whole reactor, including sibling
- * modules coverdict never needed (JPMS/native-image/ProGuard, each with its
+ * modules proof-java never needed (JPMS/native-image/ProGuard, each with its
  * own unrelated toolchain requirements). `resolveRunTestsModuleScope`
  * decides the scope *before* ever offering to run tests: 0/1 module needs no
  * decision, an unambiguous active-file signal scopes silently, otherwise a
@@ -39,7 +39,7 @@ async function openJavaFile(root: string, relativeDir: string, packageName: stri
 
 suite('resolveRunTestsModuleScope (Faz 31)', () => {
 	test('a single pom.xml (no real scoping decision) never prompts, returns undefined moduleRoots', async () => {
-		const root = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-preflight-single-'));
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-preflight-single-'));
 		writePom(root, '.');
 		const scope = await resolveRunTestsModuleScope(makeWorkspaceFolder(root));
 		assert.deepEqual(scope, { moduleRoots: undefined });
@@ -47,7 +47,7 @@ suite('resolveRunTestsModuleScope (Faz 31)', () => {
 
 	test('multiple modules, active Java file under one of them, scopes silently to it - no prompt', async () => {
 		await vscode.commands.executeCommand('workbench.action.closeAllEditors');
-		const root = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-preflight-active-'));
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-preflight-active-'));
 		writePom(root, '.');
 		writePom(root, 'gson');
 		writePom(root, 'extras');
@@ -62,7 +62,7 @@ suite('resolveRunTestsModuleScope (Faz 31)', () => {
 
 	test('multiple modules, no active document, shows a multi-select prompt with every module checked by default', async () => {
 		await vscode.commands.executeCommand('workbench.action.closeAllEditors');
-		const root = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-preflight-multi-'));
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-preflight-multi-'));
 		writePom(root, '.');
 		writePom(root, 'gson');
 		writePom(root, 'test-jpms');
@@ -90,7 +90,7 @@ suite('resolveRunTestsModuleScope (Faz 31)', () => {
 
 	test('multiple modules, user unchecks one in the prompt - scopes to only what stayed checked', async () => {
 		await vscode.commands.executeCommand('workbench.action.closeAllEditors');
-		const root = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-preflight-partial-'));
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-preflight-partial-'));
 		writePom(root, '.');
 		writePom(root, 'gson');
 		writePom(root, 'test-jpms');
@@ -109,7 +109,7 @@ suite('resolveRunTestsModuleScope (Faz 31)', () => {
 
 	test('multiple modules, user dismisses the prompt (Escape) - returns undefined entirely, never falls back to running everything silently', async () => {
 		await vscode.commands.executeCommand('workbench.action.closeAllEditors');
-		const root = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-preflight-cancel-'));
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-preflight-cancel-'));
 		writePom(root, '.');
 		writePom(root, 'gson');
 		writePom(root, 'test-jpms');

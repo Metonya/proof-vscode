@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { warningInfo } from '../../../model/warningCatalog';
 
-/** Faz 18: the warning the user actually saw and could not interpret - it must now carry both possible causes, since coverdict genuinely cannot tell them apart. */
+/** Faz 18: the warning the user actually saw and could not interpret - it must now carry both possible causes, since proof-java genuinely cannot tell them apart. */
 test('CHANGED_LINES_ABSENT_FROM_REPORT explains both causes: non-executable lines and a stale report', () => {
 	const info = warningInfo({ code: 'CHANGED_LINES_ABSENT_FROM_REPORT', message: '3 changed line(s) across 1 file(s) are absent...' });
 	assert.notEqual(info.title, info.code, 'the title must be readable, not the raw enum');

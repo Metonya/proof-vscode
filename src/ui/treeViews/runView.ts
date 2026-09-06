@@ -6,11 +6,11 @@ import { formatRelativeTime } from '../../model/mutationModel';
 import { isGutterVisible } from '../../model/store';
 
 /**
- * Faz 11b: "coverdict: Çalıştır" - komut paletine gitmeden analiz
+ * Faz 11b: "proof-java: Çalıştır" - komut paletine gitmeden analiz
  * başlatmak için sol kenar çubuğu görünümü.
  *
  * **Faz 18 - iki butona indirildi.** Kullanıcının kendi geri bildirimi:
- * "son kullanıcı olarak fazla buton var... benim isteğim coverdict'in
+ * "son kullanıcı olarak fazla buton var... benim isteğim proof-java'in
  * kullanılması, kötü testleri tespit, coverage'ın overall ve new code
  * olarak hesaplanması, hangi test hangi yeri cover ediyor görmek,
  * mutasyon başlatmak". Beş komut yerine iki tarama var, ikisi de ne
@@ -40,7 +40,7 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 			return [new RunItem('Önce bir klasör açın', undefined, undefined, 'warning')];
 		}
 
-		const config = vscode.workspace.getConfiguration('coverdict', folder);
+		const config = vscode.workspace.getConfiguration('proof', folder);
 		const diffMode = config.get<string>('diffMode') ?? 'uncommitted';
 		const scopeText = diffModeText(diffMode, config.get<string>('baseRef'));
 
@@ -51,14 +51,14 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 			new RunItem(
 				'Testleri Çalıştır',
 				reportFreshnessText(folder),
-				'coverdict.runTests',
+				'proof.runTests',
 				'run-all',
-				'Maven ile testleri JaCoCo altında çalıştırır (görünür bir terminalde) ve raporu tazeler. Pom\'da JaCoCo eklentisi yoksa coverdict komut satırından ekler, kalıcı bir pom değişikliği yapmaz. Bitince Hızlı Tarama otomatik çalışır.',
+				'Maven ile testleri JaCoCo altında çalıştırır (görünür bir terminalde) ve raporu tazeler. Pom\'da JaCoCo eklentisi yoksa proof-java komut satırından ekler, kalıcı bir pom değişikliği yapmaz. Bitince Hızlı Tarama otomatik çalışır.',
 			),
 			new RunItem(
 				'Hızlı Tarama',
 				`coverage + kötü test bulguları · yeni kod: ${scopeText}`,
-				'coverdict.analyze',
+				'proof.analyze',
 				'play',
 				`Saniyeler sürer. Şunları hesaplar:\n· Genel coverage (tüm repo)\n· Yeni kod coverage (${scopeText})\n· Test kalitesi bulguları (doğrulaması olmayan/zayıf testler)`,
 			),
@@ -76,7 +76,7 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 			items.push(new RunItem(
 				'Derin Tarama',
 				'hızlı taramanın her şeyi + hangi test hangi satırı cover ediyor',
-				'coverdict.analyzePerTest',
+				'proof.analyzePerTest',
 				'beaker',
 				'DERİN TARAMA MUTASYON TESTİ DEĞİLDİR - mutasyon ayrı bir madde (aşağıda).\n\n'
 				+ `Dakikalar sürebilir (testleri PIT motoru altında yeniden çalıştırır, ama sadece hangi testin hangi satıra dokunduğunu kaydetmek için - kodu mutasyona uğratmaz).\n\nHızlı taramanın her şeyine ek olarak:\n· Her satırı hangi testlerin çalıştırdığı ("Satır → Testler" görünümü)\n· "Yalancı yeşil" satırlar - covered ama cover eden hiçbir testin doğrulaması yok\n\nKapsam: ${scopeText} içinde değişen sınıflar.`,
@@ -97,7 +97,7 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 			: new RunItem(
 				'Mutasyon Testi',
 				'kodu kasten boz, hiçbir testin fark etmediği yerleri bul',
-				'coverdict.mutationForModule',
+				'proof.mutationForModule',
 				'zap',
 				'GERÇEK MUTASYON TESTİ (Derin Tarama\'dan farklı).\n\n'
 				+ 'Kodun küçük varyantlarını ("mutant") üretip testleri tekrar koşar. Bir mutant hayatta kaldıysa kodu bozduk ve hiçbir test fark etmedi - o davranışı doğrulayan bir assertion eksik demektir.\n\n'
@@ -107,7 +107,7 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 			new RunItem(
 				'Coverage Görünümü',
 				isGutterVisible() ? 'açık - gizlemek için tıklayın' : 'kapalı - göstermek için tıklayın',
-				'coverdict.toggleCoverage',
+				'proof.toggleCoverage',
 				isGutterVisible() ? 'eye' : 'eye-closed',
 				'Editördeki satır renklerini ve Dosya Gezgini rozetlerini birlikte açar/kapatır. Yeniden tarama yapmaz.',
 			));
@@ -117,7 +117,7 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 
 /** Best-effort: the configured report's own mtime, the same "is this stale?" signal `--file-coverage`-driven staleness already relies on elsewhere. A missing report is not an error here, just "henüz yok" (hard rule 3a: absence gets its own state, not a guess). */
 function reportFreshnessText(folder: vscode.WorkspaceFolder): string {
-	const reportPath = vscode.workspace.getConfiguration('coverdict', folder).get<string>('reportPath') || 'target/site/jacoco/jacoco.xml';
+	const reportPath = vscode.workspace.getConfiguration('proof', folder).get<string>('reportPath') || 'target/site/jacoco/jacoco.xml';
 	try {
 		const stat = fs.statSync(path.join(folder.uri.fsPath, reportPath));
 		return `rapor: ${formatRelativeTime(stat.mtimeMs, Date.now())}`;

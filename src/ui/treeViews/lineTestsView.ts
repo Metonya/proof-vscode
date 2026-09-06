@@ -319,22 +319,22 @@ function hasProblem(tests: readonly string[], findingsByTestMethod: ReturnType<t
 	return lineQuality(tests, findingsByTestMethod).tests.some((t) => t.verdict !== 'ok');
 }
 
-/** Faz 31: "ben değişiklik yapmadan tüm repoda tarama yapabilmeliyim" - diff hiç hedef bulamadığında sunulan kurtarma eylemi, `coverdict.perTestForModuleAll`. */
+/** Faz 31: "ben değişiklik yapmadan tüm repoda tarama yapabilmeliyim" - diff hiç hedef bulamadığında sunulan kurtarma eylemi, `proof.perTestForModuleAll`. */
 function scanAllHintItem(): vscode.TreeItem {
 	const item = new vscode.TreeItem('Yine de Tüm Modülü Tara (diff\'siz)', vscode.TreeItemCollapsibleState.None);
 	item.iconPath = new vscode.ThemeIcon('play');
-	item.command = { command: 'coverdict.perTestForModuleAll', title: 'Tüm Modülü Tara' };
+	item.command = { command: 'proof.perTestForModuleAll', title: 'Tüm Modülü Tara' };
 	// Faz 31: real gson dogfood - 80 classes in one run outran the CLI's
 	// default 120s per-test budget (PIT minion force-killed mid-collection).
-	// coverdict.perTestTimeout now exists specifically for this.
-	item.tooltip = 'Diff\'ten bağımsız, bu modüldeki her production sınıfını hedefler - modül büyükse (onlarca sınıf) coverdict.perTestTimeout ayarını (varsayılan 120s) artırmanız gerekebilir, aksi hâlde PER_TEST_COLLECTION_FAILED ile durabilir.';
+	// proof.perTestTimeout now exists specifically for this.
+	item.tooltip = 'Diff\'ten bağımsız, bu modüldeki her production sınıfını hedefler - modül büyükse (onlarca sınıf) proof.perTestTimeout ayarını (varsayılan 120s) artırmanız gerekebilir, aksi hâlde PER_TEST_COLLECTION_FAILED ile durabilir.';
 	return item;
 }
 
 function collectHintItem(): vscode.TreeItem {
 	const item = new vscode.TreeItem('Bu Sınıf İçin Topla', vscode.TreeItemCollapsibleState.None);
 	item.iconPath = new vscode.ThemeIcon('play');
-	item.command = { command: 'coverdict.perTestForFile', title: 'Bu Sınıf İçin Topla' };
+	item.command = { command: 'proof.perTestForFile', title: 'Bu Sınıf İçin Topla' };
 	return item;
 }
 
@@ -344,7 +344,7 @@ function classItem(node: Extract<LineTestsNode, { kind: 'class' }>): vscode.Tree
 	item.description = `${node.linesToTests.size} satır`;
 	item.iconPath = new vscode.ThemeIcon('symbol-class');
 	item.tooltip = node.className;
-	item.contextValue = 'coverdict.lineTestsClass';
+	item.contextValue = 'proof.lineTestsClass';
 	return item;
 }
 
@@ -374,7 +374,7 @@ function prodLineItem(node: Extract<LineTestsNode, { kind: 'prodLine' }>): vscod
 	if (tooltipParts.length > 0) {
 		item.tooltip = new vscode.MarkdownString(tooltipParts.join('\n\n'));
 	}
-	item.contextValue = 'coverdict.prodLine';
+	item.contextValue = 'proof.prodLine';
 	return item;
 }
 
@@ -420,7 +420,7 @@ async function prodTestItem(node: Extract<LineTestsNode, { kind: 'prodTest' }>):
 			item.command = { command: 'vscode.open', title: 'Test Dosyasını Aç', arguments: [uri, { selection }] };
 		}
 	}
-	item.contextValue = contradiction ? 'coverdict.prodTest.contradiction' : 'coverdict.prodTest';
+	item.contextValue = contradiction ? 'proof.prodTest.contradiction' : 'proof.prodTest';
 	return item;
 }
 
@@ -493,7 +493,7 @@ function noPerTestDataMessage(): string {
 	}
 	if (warningFor('PER_TEST_NO_CHANGED_TARGETS')) {
 		return 'Bu koşuda hiçbir sınıf değişmemiş, bu yüzden test bazlı kanıt boş - bu bir hata değil: L2 sadece diff\'te değişen production sınıflarını hedefler. '
-			+ 'Bu dosyada gerçek bir değişiklik yapıp tekrar tarayın, coverdict.diffMode\'u "base" yapıp coverdict.baseRef\'e bu sınıfın değiştiği bir commit/branch girin, ya da aşağıdaki düğmeyle diff\'ten bağımsız tüm modülü tarayın.';
+			+ 'Bu dosyada gerçek bir değişiklik yapıp tekrar tarayın, proof.diffMode\'u "base" yapıp proof.baseRef\'e bu sınıfın değiştiği bir commit/branch girin, ya da aşağıdaki düğmeyle diff\'ten bağımsız tüm modülü tarayın.';
 	}
 	return 'Bu sınıf için test bazlı kanıt yok.';
 }

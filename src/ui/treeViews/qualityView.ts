@@ -6,13 +6,13 @@ import { getCoverageState } from '../../model/store';
 import type { Finding, RuleId } from '../../verdict/types';
 
 /**
- * Faz 11b: "coverdict: Test Kalitesi" - `findings[]` gruplanmış, tıklanınca
+ * Faz 11b: "proof-java: Test Kalitesi" - `findings[]` gruplanmış, tıklanınca
  * ilgili test dosyası/satırı açılır.
  *
  * Faz 18: kullanıcının doğrudan geri bildirimi üzerine üç şey değişti -
  * (1) ham enum yerine düz Türkçe başlık, kod hâlâ yanında ve hover'da
  * kuralın ne olduğu + ne yapılacağı yazıyor (`model/ruleCatalog.ts`,
- * metinler coverdict'in kendi `docs/rules/<RULE>.md`'lerinden), (2) kural
+ * metinler proof-java'in kendi `docs/rules/<RULE>.md`'lerinden), (2) kural
  * yerine **dosyaya** göre de gruplanabiliyor, (3) serbest metinle
  * filtrelenebiliyor. Filtre ve gruplama modu bu sağlayıcının kendi
  * durumu - ayar dosyasına yazılmaz, oturum içinde yaşar.
@@ -156,7 +156,7 @@ function ruleItem(node: Extract<QualityNode, { kind: 'rule' }>): vscode.TreeItem
 	item.tooltip = new vscode.MarkdownString(
 		`**${info.title}** \`${info.code}\`\n\n${info.summary}\n\n**Ne yapmalı:** ${info.action}\n\n[Kural dokümanı](${ruleDocsUrl(node.rule)})`,
 	);
-	item.contextValue = 'coverdict.qualityRule';
+	item.contextValue = 'proof.qualityRule';
 	return item;
 }
 
@@ -167,7 +167,7 @@ function fileItem(node: Extract<QualityNode, { kind: 'file' }>): vscode.TreeItem
 	item.resourceUri = resourceUriFor(node.path);
 	item.iconPath = vscode.ThemeIcon.File;
 	item.tooltip = node.path;
-	item.contextValue = 'coverdict.qualityFile';
+	item.contextValue = 'proof.qualityFile';
 	return item;
 }
 
@@ -184,8 +184,8 @@ function findingItem(finding: Finding): vscode.TreeItem {
 	item.tooltip = new vscode.MarkdownString(
 		`**${info.title}** \`${info.code}\` · güven: ${finding.confidence}\n\n${finding.message}\n\n**Ne yapmalı:** ${finding.suggestedAction}\n\n[Kural dokümanı](${ruleDocsUrl(finding.rule)})${bridgeNote}`,
 	);
-	item.id = `coverdict.qualityFinding:${finding.fingerprint}`;
-	item.contextValue = isPseudoTested ? 'coverdict.qualityFinding.pseudoTested' : 'coverdict.qualityFinding';
+	item.id = `proof.qualityFinding:${finding.fingerprint}`;
+	item.contextValue = isPseudoTested ? 'proof.qualityFinding.pseudoTested' : 'proof.qualityFinding';
 
 	const state = getCoverageState();
 	if (state) {

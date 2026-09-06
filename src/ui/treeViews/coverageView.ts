@@ -6,7 +6,7 @@ import { toAbsolutePath } from '../../model/pathIndex';
 import type { ChangedFile, Metric, MetricSet, Reason } from '../../verdict/types';
 
 /**
- * Faz 11b: "coverdict: Kapsama" - genel kapsama, yeni kod kapsaması, ve
+ * Faz 11b: "proof-java: Kapsama" - genel kapsama, yeni kod kapsaması, ve
  * kapsanmayan yeni satırlar tek yerde. Her üçü de CLI'ın verdict'inde zaten
  * hazır (D-70: dosya/klasör bazlı yeniden hesaplama yok, sadece
  * `changedFiles[].uncoveredNewRanges`'ın kendisi listelenir - "yeni ve
@@ -135,17 +135,17 @@ function newCodeChildren(newCode: CoverageState['newCode'], changedFiles: Covera
 	return metricNodes(newCode);
 }
 
-/** `coverdict.diffMode`/`coverdict.baseRef`'i okuyup kullanıcının "hangi mod aktif" sorusuna tek satırlık bir cevap üretir - ayarları değiştirmeden burada tekrar görünür kılmak için. */
+/** `proof.diffMode`/`proof.baseRef`'i okuyup kullanıcının "hangi mod aktif" sorusuna tek satırlık bir cevap üretir - ayarları değiştirmeden burada tekrar görünür kılmak için. */
 function diffModeDetail(): string {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
 		return '';
 	}
-	const config = vscode.workspace.getConfiguration('coverdict', folder);
+	const config = vscode.workspace.getConfiguration('proof', folder);
 	const diffMode = config.get<string>('diffMode') ?? 'uncommitted';
 	if (diffMode === 'base') {
 		const baseRef = config.get<string>('baseRef')?.trim();
-		return `mod: base, ref: ${baseRef || '(boş - coverdict.baseRef ayarlanmamış)'}`;
+		return `mod: base, ref: ${baseRef || '(boş - proof.baseRef ayarlanmamış)'}`;
 	}
 	return `mod: ${diffMode}`;
 }
@@ -185,7 +185,7 @@ function warningItem(reason: Reason): vscode.TreeItem {
 			`\`\`\`\n${reason.message}\n\`\`\``,
 		].filter(Boolean).join('\n\n'),
 	);
-	item.contextValue = 'coverdict.warning';
+	item.contextValue = 'proof.warning';
 	return item;
 }
 

@@ -8,11 +8,11 @@ import { resolveEnvOverrides } from '../cli/terminalEnv';
  * spawns directly - not just Maven. First found for `ui/mavenTestTask.ts`
  * (the `CustomExecution` rewrite bypasses the terminal, so a workspace's
  * `terminal.integrated.env.*` JDK pin silently stopped applying to Maven),
- * but the exact same gap exists for `coverdict.jar` itself: it has always
+ * but the exact same gap exists for `proof-java.jar` itself: it has always
  * been a plain `child_process.spawn` (`cli/runner.ts`), never routed
  * through a terminal, so it only ever inherited the *extension host's own*
- * environment. Real symptom: `coverdict.jar`'s own L2/L3 collection forks a
- * PIT "minion" JVM using the *same* JDK `coverdict.jar` itself is running
+ * environment. Real symptom: `proof-java.jar`'s own L2/L3 collection forks a
+ * PIT "minion" JVM using the *same* JDK `proof-java.jar` itself is running
  * under - if that resolves to whatever `java` happens to be on the
  * extension host's PATH (JDK 25 in this session) instead of the
  * workspace's pinned JDK 17, the minion crashes
@@ -20,7 +20,7 @@ import { resolveEnvOverrides } from '../cli/terminalEnv';
  * evidence silently comes back empty - "Satır → Testler" and Mutasyon show
  * nothing, with no obvious link back to a JDK mismatch.
  *
- * Used for the `coverdict.jar` spawn itself (`ui/commands.ts`) and for
+ * Used for the `proof-java.jar` spawn itself (`ui/commands.ts`) and for
  * `doctor` (`ui/preflight.ts`) - `doctor --fix` also shells out to `mvn`
  * internally (`MavenClient.java`), so it needs the same environment too.
  */

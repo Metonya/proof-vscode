@@ -52,7 +52,7 @@ Faz 13'ü playground'da test ederken üç yeni sorun bildirdi ve bunlar da
 - Satır → Testler paneli okunmuyordu (`@ParameterizedTest` id'leri ham
   basılıyordu) - `verdict/testIdentity.ts` test-template desteği,
   `ui/panelView.ts` gruplu/katlanır görünüm.
-- `coverdict-cli`'a yeni `--per-test-target` (Faz 14a, `--mutation-target`
+- `proof-java-cli`'a yeni `--per-test-target` (Faz 14a, `--mutation-target`
   ile aynı desen) + eklentide yeni "Bu Sınıf İçin Hangi Test Hangi Satırı
   Kapsıyor" komutu (Faz 14b) - artık kod değiştirmeden/diff yaratmadan
   L2 kanıtı toplanabiliyor.
@@ -64,7 +64,7 @@ Faz 13'ü playground'da test ederken üç yeni sorun bildirdi ve bunlar da
   Faz 14e): tarama sonrası dosya düzenlenince gutter/rozet artık "bayat"
   diyor, eski veriyi göstermeye devam etmiyor.
 
-**Faz 15 (2026-08-28) - panel bug + coverdict'in asıl kayıp değeri:**
+**Faz 15 (2026-08-28) - panel bug + proof-java'in asıl kayıp değeri:**
 kullanıcı Faz 14b'nin yeni "Satır → Testler" panelini test ederken iki şey
 bildirdi: (1) panele tıklar tıklamaz kendini siliyor ("kendine tıklayınca
 `activeTextEditor` değişip `noActiveEditor`'a düşüyor" - gerçek bug), (2)
@@ -81,7 +81,7 @@ ama onu kapsayan tek test (`squareHasNoAssertion`) hiçbir şey doğrulamıyor.
   her testi ok/noOracle/weak/redundant/inconclusive'a sınıflandırır, bir
   satırın "yalancı yeşil" olup olmadığını (kapsayan HİÇBİR testin oracle'ı
   yok) hesaplar.
-- Gutter'a 5. durum: "oracleless" (turuncu) - `coverdict.show.oraclelessLines`
+- Gutter'a 5. durum: "oracleless" (turuncu) - `proof.show.oraclelessLines`
   ile kapatılabilir.
 - Ters yön eklendi: bir test metoduna hover → hangi production satırlarını
   çalıştırdığı.
@@ -117,7 +117,7 @@ ama bu geçici bir yama, gerçek çözüm mutasyonu gerçekten eklemek.
 - `--mutation-target <id>=<FQCN>` — tek sınıf, diff gerektirmez
 - `--mutation-timeout <saniye>` (varsayılan 300)
 - İlerleme akışı **zaten var ama kullanılmıyor**: CLI her ilerleme satırını
-  `stderr`'e `coverdict: ` önekiyle anında flush ediyor
+  `stderr`'e `proof-java: ` önekiyle anında flush ediyor
   (`AnalyzeCommand.java`'nın `buildDiagnostics`'i), 30 sn'de bir heartbeat
   (`MutationRunner.java`). `cli/runner.ts`'in `onStderrLine` kancası hazır
   ve şu an sadece Output'a ham geçiyor; `withProgress`'in `_progress`'i
@@ -161,7 +161,7 @@ ama bu geçici bir yama, gerçek çözüm mutasyonu gerçekten eklemek.
   — yerine sağlayıcının ürettiği **her** rozetin ≤2 code point olduğunu
   doğrulayan bir değişmez testi kondu.
 - Faz 16 madde 3 (Test Kalitesi) — kural adları düz Türkçe başlığa çevrildi
-  (`model/ruleCatalog.ts`, metinler coverdict'in kendi
+  (`model/ruleCatalog.ts`, metinler proof-java'in kendi
   `docs/rules/<RULE>.md`'lerinden), ham enum yanında duruyor, hover'da
   "ne demek + ne yapmalı" var. Filtreleme (serbest metin) ve dosyaya göre
   gruplama eklendi. Sağ tık → Kopyala eklendi.
@@ -180,7 +180,7 @@ ama bu geçici bir yama, gerçek çözüm mutasyonu gerçekten eklemek.
   aralıklar var, kapsanan yeni satırların listesi şemada yok — D-70).
 
 **Dikkat (tuzak):** `mvn clean test` çalıştırmak
-`target/coverdict-classpath.txt`'yi siler ve "Satır → Testler" bir daha
+`target/proof-classpath.txt`'yi siler ve "Satır → Testler" bir daha
 çalışmaz (`PER_TEST_CLASSPATH_MISSING`). Bu oturumda bir kez yaşandı.
 `clean`den sonra classpath listesini yeniden üretin
 (`mvn dependency:build-classpath` + `target/classes`/`target/test-classes`
@@ -228,14 +228,14 @@ entries[].className` içinde eşleşme arıyor
 (`model/lineIndex.ts:23-37`). Ekran görüntüsündeki satır numaraları
 (15, 17, 21, 22, 23) **production `Calculator.java`'nın değil, test
 dosyasının kendi satırları** (dosyanın kendi editöründe aynı satırlarda
-metot gövdesi/assertion var). Bu, coverdict-cli'ın L2 (PIT tabanlı)
+metot gövdesi/assertion var). Bu, proof-java-cli'ın L2 (PIT tabanlı)
 toplayıcısının **test sınıfının kendi satırlarını da** `entries`'e
 kendi kendine kapsayan bir "test" olarak yazdığını düşündürüyor (test
 metodu kendi gövdesini "çalıştırıyor" sayılmış olabilir).
 
 **Doğrulama adımı:** gerçek bir `--per-test-target` koşusunun çıktısında
 (`perTest.modules[0].entries`) `className` alanı
-`dev.coverdict.playground.CalculatorNullCheckOnlyTest` gibi bir **test**
+`dev.proofjava.playground.CalculatorNullCheckOnlyTest` gibi bir **test**
 sınıfı adı taşıyan bir girdi var mı, bak. Varsa hipotez doğrulanır.
 
 **Olası düzeltme yönleri (karar verilmedi, sonraki oturum seçsin):**
@@ -283,7 +283,7 @@ playground'a karşı gerçek bir `--file-coverage` koşusu çalıştır,
 olmadığını, `path` alanının `ExplorerBadgeProvider`'ın beklediği
 biçimde olup olmadığını kontrol et (`ui/explorerBadges.ts`). Ekran
 görüntüsü alındığı an hangi komut en son çalıştırılmıştı bilinmiyor -
-`coverdict.perTestForFile` (Faz 14b/15b, tek sınıf hedefli) son koşu
+`proof.perTestForFile` (Faz 14b/15b, tek sınıf hedefli) son koşu
 olduysa `fileCoverage` yine de **tüm** filtrelenmiş dosyaları içermeli
 (`buildAnalyzeArgs`'da `fileCoverage: true` her koşuda sabit) - yani
 tek-hedefli bir koşunun bu rozeti bir şekilde bastırıp bastırmadığı da
@@ -306,7 +306,7 @@ Madde madde:
 - **Kural adları için daha iyi display ismi** - şu an ham
   `RuleId` enum değeri gösteriliyor (örn. `CATCH_ORACLE_WITHOUT_FAIL`).
   İnsan okunur bir eşleme lazım (örn. "Yakalanıp Yutulan İstisna" gibi -
-  gerçek metin coverdict-cli'ın `docs/rules/<RULE>.md` dosyalarından
+  gerçek metin proof-java-cli'ın `docs/rules/<RULE>.md` dosyalarından
   alınabilir, uydurulmamalı).
 - **Üstüne gelince açıklama (hover/tooltip)** - kural grubu düğümünün
   kendisinde bugün tooltip yok (yalnızca tek tek bulgu yapraklarında var,
@@ -317,7 +317,7 @@ Madde madde:
 ## Genel not
 
 Yukarıdaki 1 ve 2 numaralı maddeler **gerçek hata şüphesi** taşıyor ve
-Faz 15'in "artık coverdict'in asıl değeri görünüyor" iddiasını
+Faz 15'in "artık proof-java'in asıl değeri görünüyor" iddiasını
 zedeliyor - production/test yön karışıklığı özellikle ciddi, çünkü
 kullanıcının en son "bu daha iyi" dediği tam olarak bu ekran. Bir
 sonraki oturum önce 1'i (gerçek veriyle doğrulayıp) düzeltmeli, sonra 2'yi
@@ -335,8 +335,8 @@ kısa bir bildirim (`showInformationMessage` gibi, ama rahatsız etmeyen)
 
 ## 2. Durum çubuğundaki yüzde, seçili `badgeMetric`'i yansıtmıyor
 
-Kullanıcı `coverdict.badgeMetric`'i `sonar-compatible` yaptı, ama durum
-çubuğundaki `$(eye) coverdict NN%` hâlâ `jacoco-line`'ı gösteriyor
+Kullanıcı `proof.badgeMetric`'i `sonar-compatible` yaptı, ama durum
+çubuğundaki `$(eye) proof-java NN%` hâlâ `jacoco-line`'ı gösteriyor
 (`ui/statusBar.ts`'in `showCoverageSummary` fonksiyonu sabit `overall['jacoco-line']`
 okuyor). Explorer rozetleri ve gutter zaten `badgeMetric`'e göre boyanıyor
 (Faz 9) — durum çubuğunun *başlık* sayısı da aynı ayarı kullanmalı, tooltip
@@ -365,13 +365,13 @@ iyi anlatmalı:
 - Şu anki hata mesajı teknik doğru ama "neden" kısmı eksik. "L2 kanıtı
   sadece değişen dosyaları hedefleyebilir; no-vcs'te 'değişen dosya' diye
   bir kavram yok" gibi bir cümle eklenebilir.
-- Alternatif: `coverdict.diffMode` `no-vcs` iken "Analiz Et (test bazlı)"
+- Alternatif: `proof.diffMode` `no-vcs` iken "Analiz Et (test bazlı)"
   komutu/ağaç öğesi baştan devre dışı/gri gösterilebilir, kullanıcı
   tıklayıp hata almadan önce zaten neden yapamayacağını görür.
 
 ## 5. `base` modunda mevcut commit'i base verince yine sonuç boş çıktı
 
-Kullanıcı `coverdict.diffMode`'u `base` yapıp `coverdict.baseRef`'e
+Kullanıcı `proof.diffMode`'u `base` yapıp `proof.baseRef`'e
 **şu an üzerinde olduğu commit'i** girdi (yani HEAD'i baseRef yaptı) —
 sonuç yine "değişen sınıf yok" oldu. Bu **beklenen davranış**: `base`
 modu `merge-base(baseRef, HEAD)`'ten çalışma ağacına diff alıyor; baseRef
@@ -394,8 +394,8 @@ diye. Bunun yerine madde 7'deki branch yaklaşımı kullanılacak.
 
 Plan: `coverdict-playground`'da yeni bir **feature branch** açılacak, o
 branch'e gerçek bir değişiklik/yeni dosya eklenip **push'lanacak**
-(uzak repoya). Sonra `coverdict.diffMode` `base` yapılıp
-`coverdict.baseRef`'e `main` (ya da `origin/main`) girilerek bu iki
+(uzak repoya). Sonra `proof.diffMode` `base` yapılıp
+`proof.baseRef`'e `main` (ya da `origin/main`) girilerek bu iki
 branch arasındaki gerçek fark üzerinden "yeni kod" kapsaması denenecek.
 Bu hem madde 5'in "boş diff" durumunu netleştirecek hem de Kapsama
 ağacındaki "Yeni Kod" ve "Kapsanmayan Yeni Satırlar" bölümlerini gerçek
@@ -441,7 +441,7 @@ ya da ara bir commit) denk geldi.
 ## 9. Analiz sonrası sağ alttan çıkan bildirim mesajının formatı kötü
 
 `runAnalyzeCore`'un sonunda `showInformationMessage` ile gösterilen
-"coverdict: complete - jacoco-line 94.4% · strict-line 83.3% ·
+"proof-java: complete - jacoco-line 94.4% · strict-line 83.3% ·
 sonar-compatible 84.6%" mesajı ekran görüntüsünde çirkin/okunaksız
 duruyor. Format, satır sonu davranışı, hangi bilginin öne çıkarılacağı
 (belki sadece seçili `badgeMetric` öne çıkıp diğer ikisi küçük harfle
@@ -455,7 +455,7 @@ Kullanıcı üç sayının neden farklı çıktığını biliyor ama **nasıl**
 hesaplandığını bilmiyor - şu an hiçbir yerde (tooltip, panel, ağaç) bu
 üç modun formülü basitçe anlatılmıyor, sadece sayılar yan yana duruyor.
 Eklenecek kısa, sade bir açıklama (CLI'ın kendi `MetricsEngine.java`'sından,
-D-04/D-19 kararlarından - hesaplama mantığı zaten coverdict'in kendi
+D-04/D-19 kararlarından - hesaplama mantığı zaten proof-java'in kendi
 dokümantasyonunda var, sadece kullanıcıya görünür kılınmalı):
 
 - **jacoco-line**: bir satırdaki **herhangi bir** komut çalıştıysa o
@@ -476,7 +476,7 @@ dokümantasyonunda var, sadece kullanıcıya görünür kılınmalı):
 Nereye eklenebilir: durum çubuğu tooltip'inin altına bir cümlelik özet,
 ya da Kapsama ağacındaki her metrik satırının kendi tooltip'ine (hover
 edince "bu nasıl hesaplanıyor" açıklaması), ya da ayarlardaki
-`coverdict.badgeMetric`'in description'ına zaten kısmen var - ana metin
+`proof.badgeMetric`'in description'ına zaten kısmen var - ana metin
 görünümüne (tooltip/panel) de taşınmalı.
 
 ---

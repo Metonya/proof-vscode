@@ -9,7 +9,7 @@ const MINIMAL_METRIC_SET = { 'jacoco-line': MINIMAL_METRIC, 'strict-line': MINIM
 function minimalDocument(): unknown {
 	return {
 		schemaVersion: '0.1.0',
-		tool: { name: 'coverdict', version: '0.1.0' },
+		tool: { name: 'proof-java', version: '0.1.0' },
 		analysis: { status: 'complete', exitCode: 0, incompleteReasons: [] },
 		inputs: { modules: [{ id: 'root', root: '.', sourceRoots: ['src/main/java'], testRoots: ['src/test/java'] }] },
 		coverage: { overall: MINIMAL_METRIC_SET, newCode: { status: 'unavailable_no_vcs' } },
@@ -89,8 +89,8 @@ test('a well-formed perTest block parses through, entries and ambient both', () 
 		engineVersion: '1.15.8',
 		modules: [{
 			id: 'root',
-			entries: [{ className: 'dev.coverdict.playground.Calculator', methodName: 'add', lines: [{ line: 7, tests: ['CalcTest#addsTwoNumbers()'] }] }],
-			ambient: [{ className: 'dev.coverdict.playground.Calculator', methodName: '<clinit>', lines: [{ line: 3, tests: ['CalcTest#addsTwoNumbers()'] }] }],
+			entries: [{ className: 'dev.proofjava.playground.Calculator', methodName: 'add', lines: [{ line: 7, tests: ['CalcTest#addsTwoNumbers()'] }] }],
+			ambient: [{ className: 'dev.proofjava.playground.Calculator', methodName: '<clinit>', lines: [{ line: 3, tests: ['CalcTest#addsTwoNumbers()'] }] }],
 		}],
 	};
 	const result = parseVerdict(JSON.stringify(doc));

@@ -198,10 +198,10 @@ function noMutationEvidenceMessage(): string {
 	const warningFor = (code: string) => state?.warnings.find((w) => w.code === code);
 
 	if (warningFor('MUTATION_BUDGET_EXCEEDED')) {
-		return 'Mutasyon koşusu zaman bütçesini aştı ve sonuç üretemeden durduruldu. coverdict.mutationTimeout ayarını artırın ya da tek bir sınıf hedefleyin (dosyada sağ tık).';
+		return 'Mutasyon koşusu zaman bütçesini aştı ve sonuç üretemeden durduruldu. proof.mutationTimeout ayarını artırın ya da tek bir sınıf hedefleyin (dosyada sağ tık).';
 	}
 	if (warningFor('MUTATION_COLLECTION_FAILED')) {
-		return 'Mutasyon koşusu başarısız oldu. Sebep için Output → coverdict kanalına bakın.';
+		return 'Mutasyon koşusu başarısız oldu. Sebep için Output → proof-java kanalına bakın.';
 	}
 	if (warningFor('MUTATION_TARGET_UNRESOLVED')) {
 		return 'Hedeflenen sınıf hiçbir kaynak kökü altında bulunamadı - sınıf adı ya da kaynak kökleri beklenenden farklı olabilir.';
@@ -215,7 +215,7 @@ function noMutationEvidenceMessage(): string {
 	if (warningFor('MUTATION_TRUNCATED')) {
 		return 'Mutant kayıtları üst sınıra takıldı - gösterilenler eksik. Daha dar bir hedefle tekrar çalıştırın.';
 	}
-	return 'Bu koşu mutasyon kanıtı üretmedi. MUTATION_* uyarıları için Output → coverdict kanalına bakın.';
+	return 'Bu koşu mutasyon kanıtı üretmedi. MUTATION_* uyarıları için Output → proof-java kanalına bakın.';
 }
 
 /**
@@ -235,23 +235,23 @@ function headerText(state: NonNullable<ReturnType<typeof getMutationState>>): st
 function headerItem(text: string): vscode.TreeItem {
 	const item = new vscode.TreeItem(text, vscode.TreeItemCollapsibleState.None);
 	item.iconPath = new vscode.ThemeIcon('history');
-	item.contextValue = 'coverdict.mutationHeader';
+	item.contextValue = 'proof.mutationHeader';
 	return item;
 }
 
 function runHintItem(): vscode.TreeItem {
 	const item = new vscode.TreeItem('Mutasyon Testi Çalıştır', vscode.TreeItemCollapsibleState.None);
 	item.iconPath = new vscode.ThemeIcon('play');
-	item.command = { command: 'coverdict.mutationForFile', title: 'Mutasyon Testi Çalıştır' };
+	item.command = { command: 'proof.mutationForFile', title: 'Mutasyon Testi Çalıştır' };
 	item.tooltip = 'Açık Java dosyasındaki sınıf için mutasyon testi çalıştırır (tek sınıf: genelde saniyeler). Modül geneli için "Çalıştır" görünümündeki Mutasyon Testi maddesini kullanın.';
 	return item;
 }
 
-/** Faz 31: "ben değişiklik yapmadan tüm repoda tarama yapabilmeliyim" - diff hiç hedef bulamadığında sunulan kurtarma eylemi, `coverdict.mutationForModuleAll`. Diff-tabanlı koşudan daha pahalı olabileceği için kendi onay modalının arkasında. */
+/** Faz 31: "ben değişiklik yapmadan tüm repoda tarama yapabilmeliyim" - diff hiç hedef bulamadığında sunulan kurtarma eylemi, `proof.mutationForModuleAll`. Diff-tabanlı koşudan daha pahalı olabileceği için kendi onay modalının arkasında. */
 function scanAllHintItem(): vscode.TreeItem {
 	const item = new vscode.TreeItem('Yine de Tüm Modülü Tara (diff\'siz)', vscode.TreeItemCollapsibleState.None);
 	item.iconPath = new vscode.ThemeIcon('play');
-	item.command = { command: 'coverdict.mutationForModuleAll', title: 'Tüm Modülü Tara' };
+	item.command = { command: 'proof.mutationForModuleAll', title: 'Tüm Modülü Tara' };
 	item.tooltip = 'Diff\'ten bağımsız, bu modüldeki her production sınıfını hedefler - değişmemiş sınıflar da dahil olduğu için diff-tabanlı "modül geneli" koşudan daha uzun sürebilir.';
 	return item;
 }
@@ -262,7 +262,7 @@ function classItem(className: string, methods: readonly MutatedMethod[]): vscode
 	item.description = scoreText(score);
 	item.iconPath = new vscode.ThemeIcon('symbol-class');
 	item.tooltip = new vscode.MarkdownString(`\`${className}\`\n\n${scoreTooltip(score)}`);
-	item.contextValue = 'coverdict.mutationClass';
+	item.contextValue = 'proof.mutationClass';
 	return item;
 }
 
@@ -284,8 +284,8 @@ function methodItem(node: Extract<MutationNode, { kind: 'method' }>): vscode.Tre
 		+ `Satır ${node.method.firstLine}-${node.method.lastLine}\n\n${scoreTooltip(score, allNoCoverage)}${bridgeNote}`,
 	);
 	item.command = openCommandFor(node.className, node.method.firstLine, 'Metoda Git');
-	item.id = `coverdict.mutationMethod:${node.className}#${node.method.methodName}${node.method.methodDescription}`;
-	item.contextValue = pseudoTestedFinding ? 'coverdict.mutationMethod.pseudoTested' : 'coverdict.mutationMethod';
+	item.id = `proof.mutationMethod:${node.className}#${node.method.methodName}${node.method.methodDescription}`;
+	item.contextValue = pseudoTestedFinding ? 'proof.mutationMethod.pseudoTested' : 'proof.mutationMethod';
 	return item;
 }
 
@@ -331,7 +331,7 @@ async function killingTestItem(rawTestId: string): Promise<vscode.TreeItem> {
 			item.tooltip = new vscode.MarkdownString(
 				`Bu testin L0 statik oracle taramasında **belirsiz** (\`${finding.rule}\`, INCONCLUSIVE) kaldığı bir bulgu var, ama burada gördüğün gibi gerçekten bir mutant öldürdü - davranışı gözlüyor. "Satır → Testler"de bu testin INCONCLUSIVE etiketine bak.`,
 			);
-			item.contextValue = 'coverdict.killingTest.contradiction';
+			item.contextValue = 'proof.killingTest.contradiction';
 		}
 	}
 	return item;
@@ -368,7 +368,7 @@ function mutantItem(className: string, mutant: Mutant): vscode.TreeItem {
 	const bridgeNote = hasLineEvidence ? '\n\n---\n\nBu satırı kapsayan testler için sağ tık → "Satır → Testler\'de Göster".' : '';
 	item.tooltip = new vscode.MarkdownString(mutantTooltip(bucket, mutant) + bridgeNote);
 	item.command = openCommandFor(className, mutant.line, 'Satıra Git');
-	item.contextValue = hasLineEvidence ? 'coverdict.mutant.hasLineEvidence' : 'coverdict.mutant';
+	item.contextValue = hasLineEvidence ? 'proof.mutant.hasLineEvidence' : 'proof.mutant';
 	return item;
 }
 

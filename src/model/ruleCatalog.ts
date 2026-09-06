@@ -6,7 +6,7 @@ import type { RuleId } from '../verdict/types';
  * anywhere - the user's own words: "CATCH_ORACLE bık bık bana ne".
  *
  * Every `title`/`summary` here is a condensed translation of that rule's
- * own doc in the coverdict repo (`docs/rules/<RULE>.md`) - nothing is
+ * own doc in the proof-java repo (`docs/rules/<RULE>.md`) - nothing is
  * invented. `code` stays visible next to the title everywhere, so the
  * enum remains greppable/searchable and the docs link still matches.
  * Pure - no `vscode` (Plan.md Bölüm 2's first invariant).
@@ -61,5 +61,5 @@ export function ruleInfo(rule: RuleId): RuleInfo {
 
 /** `Problems` panelindeki `diagnostic.code.target` ile aynı adres - tek kaynak, ayrışamazlar. */
 export function ruleDocsUrl(rule: RuleId): string {
-	return `https://github.com/Metonya/coverdict/blob/main/docs/rules/${rule}.md`;
+	return `https://github.com/Metonya/proof-java/blob/main/docs/rules/${rule}.md`;
 }

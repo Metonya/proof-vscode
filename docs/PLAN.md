@@ -1,4 +1,4 @@
-# coverdict-vscode — devir belgesi ve ileri plan
+# proof-vscode — devir belgesi ve ileri plan
 
 **Son güncelleme:** 2026-08-31, Faz 32 (§7.10): "Raporu Dışa Aktar" (HTML) -
 CLI'a üçüncü bir okuyucu (`HtmlRenderer`, offline tek dosya, açık/koyu tema,
@@ -8,7 +8,7 @@ komutu artık hiç yeniden taramıyor, `verdict-current.json` +
 `pertest-current.json`/`mutation-current.json`'ı birleştirip doğrudan
 render ediyor - gerçek kullanıcı testi ilk sürümün boş bir yeniden-taramayla
 kenar çubuğundaki gerçek veriyi sessizce eziyor olduğunu ortaya çıkardı
-(D-73/D-74'ün bir kez düzelttiği hatanın aynısı). Ayrıntı: `coverdict`
+(D-73/D-74'ün bir kez düzelttiği hatanın aynısı). Ayrıntı: `proof-java`
 reposunun `docs/DECISIONS.md`'sinde D-75..D-79.
 
 ---
@@ -60,16 +60,16 @@ maddelerin çoğu sonradan kapandı. **Çelişki olursa bu dosya geçerlidir.**
 
 | Yol | Ne | Neden var |
 |---|---|---|
-| `C:\Users\Mert\Desktop\coverdict` | Java CLI (Maven, JDK 17). Derlenmiş jar: `coverdict-cli/target/coverdict.jar` | Tek gerçek karar mercii. Tüm sayılar, tüm bulgular buradan çıkar. |
-| `C:\Users\Mert\Desktop\coverdict-vscode` | **Bu repo.** VS Code eklentisi (TypeScript) | CLI'ın JSON çıktısını editörde çizer. Kendi başına hiçbir şey hesaplamaz. |
+| `C:\Users\Mert\Desktop\proof-java` | Java CLI (Maven, JDK 17). Derlenmiş jar: `proof-java-cli/target/proof-java.jar` | Tek gerçek karar mercii. Tüm sayılar, tüm bulgular buradan çıkar. |
+| `C:\Users\Mert\Desktop\proof-vscode` | **Bu repo.** VS Code eklentisi (TypeScript) | CLI'ın JSON çıktısını editörde çizer. Kendi başına hiçbir şey hesaplamaz. |
 | `C:\Users\Mert\Desktop\coverdict-playground` | Küçük Java Maven projesi: 3 production + 10 test sınıfı | Gerçek veri kaynağı. Her test dosyası kasten bir rule senaryosudur. |
 
-### coverdict nedir (bir paragrafta)
+### proof-java nedir (bir paragrafta)
 
 Java test paketleri için yerel, deterministik bir **"karar katmanı"**.
 Kendi motoru yoktur; JaCoCo XML raporunu, git diff'ini ve PIT mutasyon
 koşusunu okuyup bunları eyleme dönüştürülebilir bulgulara çevirir. Sloganı:
-*"coverage %80 diyor; coverdict bu kanıtın ne kadar güvene layık olduğunu
+*"coverage %80 diyor; proof-java bu kanıtın ne kadar güvene layık olduğunu
 söyler."* Üç soruya cevap verir: hangi değişen satırlar test edilmemiş,
 hangi testlerde tanınabilir bir oracle (assertion) yok, hangi testler
 birbirinin kopyası. LLM yok, çıktı byte düzeyinde deterministik.
@@ -105,13 +105,13 @@ Testler — her biri bir beklenen sonucu temsil eder:
 
 ## 2. CLI sözleşmesi (eklentinin bilmesi gereken kadarı)
 
-Ayrıntı için `coverdict` reposunun `docs/CLI-REFERENCE.md`,
-`docs/DECISIONS.md` (D-01…D-71) ve `schema/coverdict-verdict.schema.json`
+Ayrıntı için `proof-java` reposunun `docs/CLI-REFERENCE.md`,
+`docs/DECISIONS.md` (D-01…D-71) ve `schema/proof-verdict.schema.json`
 dosyalarına bak. Buradaki her şey gerçek kaynaktan doğrulandı.
 
 ### Komutlar
 
-`coverdict analyze` ve `coverdict doctor`. Eklenti yalnızca `analyze`
+`proof-java analyze` ve `proof-java doctor`. Eklenti yalnızca `analyze`
 kullanır.
 
 ### Diff modları — tam olarak biri zorunlu
@@ -177,7 +177,7 @@ mutation     { engine:"pitest", engineVersion, modules:[{ id, methods[] }] }
 | `sonar-compatible` | JaCoCo satır coverage'ı **+ branch coverage** | SonarQube arayüzüyle ±0.1 içinde eşleşir |
 
 Bu yüzden aynı dosya için üç farklı sayı görürsün; hangisinin rozeti ve
-gutter'ı sürdüğü `coverdict.badgeMetric` ayarıyla seçilir (varsayılan
+gutter'ı sürdüğü `proof.badgeMetric` ayarıyla seçilir (varsayılan
 `sonar-compatible`). **Bu kullanıcının en sık sorduğu şeydir:** Sonar'da
 %81.5 görüp `Calculator.java` yanında 76 görmek çelişki değil — biri
 repo geneli, öteki tek dosya.
@@ -225,7 +225,7 @@ oradan özetlendi.**
 En sık karşılaşılanlar:
 
 - `CHANGED_LINES_ABSENT_FROM_REPORT` — değişen satırların JaCoCo raporunda
-  karşılığı yok. **İki farklı sebebi olabilir ve coverdict ikisini
+  karşılığı yok. **İki farklı sebebi olabilir ve proof-java ikisini
   ayırt edemez:** (a) satırlar zaten çalıştırılabilir değil (süslü parantez,
   metot imzası, import), (b) rapor diff'ten eski — yani `mvn test` sonrası
   kodu değiştirdin. Yapılacak: testleri tekrar koşup raporu tazele; uyarı
@@ -251,7 +251,7 @@ En sık karşılaşılanlar:
 ```json
 "mutation": { "engine": "pitest", "engineVersion": "1.15.8",
   "modules": [{ "id": "root", "methods": [{
-    "className": "dev.coverdict.playground.Calculator",
+    "className": "dev.proofjava.playground.Calculator",
     "methodName": "square", "methodDescription": "(I)I",
     "firstLine": 36, "lastLine": 38,
     "mutants": [{ "mutator": "TRUE_RETURNS", "line": 37,
@@ -278,17 +278,17 @@ Mutatörler yalnızca `RETURNS` ve `VOID_METHOD_CALLS`, tek thread
 
 ### İlerleme akışı (Faz 20'nin yüzde göstergesi buradan gelecek)
 
-CLI her ilerleme satırını **stderr**'e, `coverdict: ` önekiyle, anında
+CLI her ilerleme satırını **stderr**'e, `proof-java: ` önekiyle, anında
 flush ederek basar (stdout metin raporu taşır ve JSON byte-deterministik
 kalmalı, D-64). Heartbeat **30 saniye**. Gerçek satır biçimleri:
 
 ```
-coverdict: mutation: module 'root' - 3 target class(es), budget 300s
-coverdict: mutation: module 'root' - 2/3 class(es), 6m12s elapsed
-coverdict: mutation: module 'root' - done, 5 method(s) with mutants
-coverdict: mutation: module 'root' - FAILED, budget of 300s exhausted after 2/3 class(es) completed
-coverdict: per-test: module 'root' - 4 target class(es)
-coverdict: per-test: module 'root' - collecting coverage, 48s elapsed
+proof-java: mutation: module 'root' - 3 target class(es), budget 300s
+proof-java: mutation: module 'root' - 2/3 class(es), 6m12s elapsed
+proof-java: mutation: module 'root' - done, 5 method(s) with mutants
+proof-java: mutation: module 'root' - FAILED, budget of 300s exhausted after 2/3 class(es) completed
+proof-java: per-test: module 'root' - 4 target class(es)
+proof-java: per-test: module 'root' - collecting coverage, 48s elapsed
 ```
 
 Teşhis notu (D-64): bir modül bütçesinin çoğunu `0/219`'da geçiriyorsa
@@ -339,11 +339,11 @@ komut (ui/commands.ts)
 | Dosya | Görev |
 |---|---|
 | `src/extension.ts` | Sadece `activate`/`deactivate` ve kayıt. İş mantığı yok. Son taramayı `context.storageUri`'den geri yükler. |
-| `cli/jarLocator.ts` | Jar arama sırası: `coverdict.jarPath` → `<ws>/coverdict-cli/target/coverdict.jar` → `<ws>/.coverdict/coverdict.jar`. Jar `.vsix`'e **gömülmez**. |
+| `cli/jarLocator.ts` | Jar arama sırası: `proof.jarPath` → `<ws>/proof-java-cli/target/proof-java.jar` → `<ws>/.proof-java/proof-java.jar`. Jar `.vsix`'e **gömülmez**. |
 | `cli/argsBuilder.ts` | `analyze` argv'sini kurar (saf). `DiffMode` tipi burada. |
 | `cli/runner.ts` | `spawn` ile çalıştırır, stdout/stderr'i ayrı satır tamponlar, `onStderrLine` kancası sunar, `cancel` verir. |
 | `cli/classpathParser.ts` | `mvn dependency:build-classpath` çıktısından classpath satırını ayıklar (saf). |
-| `cli/classpathBuilder.ts` | Maven'ı çalıştırıp `target/coverdict-classpath.txt`'i üretir (Faz 19). Mutasyon da aynı dosyayı kullanır. |
+| `cli/classpathBuilder.ts` | Maven'ı çalıştırıp `target/proof-classpath.txt`'i üretir (Faz 19). Mutasyon da aynı dosyayı kullanır. |
 | `cli/progressParser.ts` | CLI'ın stderr ilerleme satırlarını yapılandırılmış olaya çevirir (saf). Tanımadığını yutmaz. |
 | `verdict/types.ts` | JSON şemasının TypeScript karşılığı. `vscode` import etmez. |
 | `verdict/parse.ts` | `parseVerdict(raw)` — **asla throw etmez**, sonuç nesnesi döner; rule id'lerini doğrular. |
@@ -354,7 +354,7 @@ komut (ui/commands.ts)
 | `model/testQuality.ts` | **Projenin en değerli birleşimi:** `findings[].testMethod` ile `perTest` test id'lerini eşler (gerçek veride 17 tam eşleşme ile doğrulandı). "Yeşil ama oracle'sız" satırları buradan biliyoruz. |
 | `model/falseGreenIndex.ts` | JaCoCo'ya göre covered ama kapsayan her testin oracle bulgusu olan satırlar → turuncu gutter. |
 | `model/metrics.ts` | Tek izinli aritmetik: klasör rollup'ı. |
-| `model/pathIndex.ts` | Yol matematiği + `classifySourcePath` (test mi production mı — "Satır → Testler"in yön kararı). coverdict yolları repo-göreli ve **ileri eğik çizgili**dir (D-22). |
+| `model/pathIndex.ts` | Yol matematiği + `classifySourcePath` (test mi production mı — "Satır → Testler"in yön kararı). proof-java yolları repo-göreli ve **ileri eğik çizgili**dir (D-22). |
 | `model/classNameDetector.ts` | package + dosya adı → FQCN. Çok sınıflı dosyada tahmin yapmaz. |
 | `model/productionClassIndex.ts` | `fileCoverage.files[]`'ten `className → yol` haritası; diskte arama yapmaz. |
 | `model/mutationModel.ts` | 9 PIT statüsü → 3 kova, skor, sınıf gruplama, mutator adı kısaltma (saf). |
@@ -384,7 +384,7 @@ gerçek yüzde ve geçen süre gösteriliyor.
 
 ## 4. Bugünkü durum (Faz 19)
 
-Activity Bar'da `coverdict` konteyneri, içinde **5 görünüm**:
+Activity Bar'da `proof-java` konteyneri, içinde **5 görünüm**:
 
 1. **Çalıştır** — "Hızlı Tarama" (coverage + oracle bulguları, saniyeler),
    "Derin Tarama" (üstüne L2: hangi test hangi satırı çalıştırıyor, PIT
@@ -406,40 +406,40 @@ Activity Bar'da `coverdict` konteyneri, içinde **5 görünüm**:
 
 ### Komutlar (15)
 
-`coverdict.analyze` (Hızlı Tarama) · `coverdict.analyzePerTest` (Derin
-Tarama) · `coverdict.mutationForModule` (modül geneli mutasyon, onaylı) ·
-`coverdict.mutationForFile` (editör sağ tık — **mutasyon için önerilen
-yol**) · `coverdict.toggleCoverage` · `coverdict.perTestForFile` (editör
-sağ tık, Java) · `coverdict.copyItem` (ağaçlarda sağ tık → Kopyala) ·
-`coverdict.qualityView.filter` · `coverdict.qualityView.toggleGrouping` ·
-`coverdict.lineTestsView.toggleProblemsOnly` ·
-`coverdict.mutationView.toggleSurvivorsOnly` ·
-`coverdict.qualityView.showInMutation` (Faz 24, sağ tık, yalnızca
+`proof.analyze` (Hızlı Tarama) · `proof.analyzePerTest` (Derin
+Tarama) · `proof.mutationForModule` (modül geneli mutasyon, onaylı) ·
+`proof.mutationForFile` (editör sağ tık — **mutasyon için önerilen
+yol**) · `proof.toggleCoverage` · `proof.perTestForFile` (editör
+sağ tık, Java) · `proof.copyItem` (ağaçlarda sağ tık → Kopyala) ·
+`proof.qualityView.filter` · `proof.qualityView.toggleGrouping` ·
+`proof.lineTestsView.toggleProblemsOnly` ·
+`proof.mutationView.toggleSurvivorsOnly` ·
+`proof.qualityView.showInMutation` (Faz 24, sağ tık, yalnızca
 `PSEUDO_TESTED_METHOD` bulgusunda) ·
-`coverdict.mutationView.showInQuality` (Faz 24, sağ tık, yalnızca
+`proof.mutationView.showInQuality` (Faz 24, sağ tık, yalnızca
 eşleşen bir bulgu varsa - §7.6 madde 5) ·
-`coverdict.lineTestsView.showInMutation` (Faz 24, sağ tık, yalnızca L0/L3
+`proof.lineTestsView.showInMutation` (Faz 24, sağ tık, yalnızca L0/L3
 çelişkisi gerçekten varsa - §7.6 madde 6) ·
-`coverdict.mutationView.showInLineTests` (Faz 26, sağ tık, yalnızca
+`proof.mutationView.showInLineTests` (Faz 26, sağ tık, yalnızca
 o satırın gerçek bir perTest kaydı varsa - §7.7).
 
 ### Ayarlar (13)
 
 | Ayar | Varsayılan |
 |---|---|
-| `coverdict.jarPath` | `""` (arama sırası devreye girer) |
-| `coverdict.javaExecutable` | `"java"` |
-| `coverdict.mavenExecutable` | `""` → Windows'ta `mvn.cmd`, diğerinde `mvn` |
-| `coverdict.reportPath` | `"target/site/jacoco/jacoco.xml"` |
-| `coverdict.perTestClasspathPath` | `"target/coverdict-classpath.txt"` |
-| `coverdict.mutationTimeout` | `300` (saniye, modül başına bütçe) |
-| `coverdict.coverageExclusions` | `[]` |
-| `coverdict.diffMode` | `"uncommitted"` (`no-vcs` \| `uncommitted` \| `base`) |
-| `coverdict.baseRef` | `""` |
-| `coverdict.badgeMetric` | `"sonar-compatible"` |
-| `coverdict.show.explorerBadges` | `true` |
-| `coverdict.show.lineGutter` | `true` |
-| `coverdict.show.oraclelessLines` | `true` |
+| `proof.jarPath` | `""` (arama sırası devreye girer) |
+| `proof.javaExecutable` | `"java"` |
+| `proof.mavenExecutable` | `""` → Windows'ta `mvn.cmd`, diğerinde `mvn` |
+| `proof.reportPath` | `"target/site/jacoco/jacoco.xml"` |
+| `proof.perTestClasspathPath` | `"target/proof-classpath.txt"` |
+| `proof.mutationTimeout` | `300` (saniye, modül başına bütçe) |
+| `proof.coverageExclusions` | `[]` |
+| `proof.diffMode` | `"uncommitted"` (`no-vcs` \| `uncommitted` \| `base`) |
+| `proof.baseRef` | `""` |
+| `proof.badgeMetric` | `"sonar-compatible"` |
+| `proof.show.explorerBadges` | `true` |
+| `proof.show.lineGutter` | `true` |
+| `proof.show.oraclelessLines` | `true` |
 
 ### Kullanıcının yerleşik kararları (değiştirme, önce sor)
 
@@ -454,7 +454,7 @@ o satırın gerçek bir perTest kaydı varsa - §7.7).
 
 169 unit + 57 integration test geçiyor (Faz 29, iki geçiş - önceki
 157+57'ye `reportDiscovery`/`argsBuilder`'ın 12 yeni testi eklendi).
-SonarQube (`coverdict-vscode`, `http://localhost:9001`) sıfır açık bulgu,
+SonarQube (`proof-vscode`, `http://localhost:9001`) sıfır açık bulgu,
 kalite kapısı **OK** (Faz 27,
 §7.4).
 
@@ -475,7 +475,7 @@ kontrolü ve testleri `out/`'a derlemek için kullanılır.
 ### Çalıştırma / hata ayıklama
 
 VS Code'da **F5** → "Run Extension" → Extension Development Host penceresi
-açılır. Orada `coverdict-playground`'ı aç ve Activity Bar'daki coverdict
+açılır. Orada `coverdict-playground`'ı aç ve Activity Bar'daki proof-java
 ikonuna tıkla.
 
 ### Test
@@ -494,13 +494,13 @@ rm -rf out dist coverage && npm run pretest && npm run test:unit:coverage && nod
 
 ### Jar'ı derlemek
 
-`coverdict` reposunda:
+`proof-java` reposunda:
 
 ```bash
 mvn verify
 ```
 
-→ `coverdict-cli/target/coverdict.jar`. Derlemek için JDK 17+ gerekir
+→ `proof-java-cli/target/proof-java.jar`. Derlemek için JDK 17+ gerekir
 (`maven.compiler.release=17`). Bu makinede PATH'teki `java` şu an
 Temurin 25 — jar'ı çalıştırmak için sorun değil; `mvn verify` başarısız
 olursa önce `java -version`'a bak.
@@ -513,20 +513,20 @@ mvn -q clean test
 
 → JaCoCo raporunu tazeler: `target/site/jacoco/jacoco.xml`.
 
-**Tuzak:** `mvn clean` `target/coverdict-classpath.txt`'i de siler. Faz
+**Tuzak:** `mvn clean` `target/proof-classpath.txt`'i de siler. Faz
 19'dan beri eklenti Derin Tarama'da dosyanın yokluğunu fark edip
 "Maven ile şimdi üretilsin mi?" diye soruyor ve kendisi üretiyor —
 elle üretmene gerek yok.
 
 `run.ps1` playground'ın kendi kısayol scripti: `mvn clean test` + PIT
-mutasyon koşusu + classpath dosyası yazımı + coverdict CLI'ı ilk commit'i
+mutasyon koşusu + classpath dosyası yazımı + proof-java CLI'ı ilk commit'i
 base alarak çağırma, hepsi tek komutta. **Kullanıcı bunu kendi akışında
 kullanmıyor** — varlığını bil, çağırma.
 
 ### SonarQube
 
 ```bash
-sonar-scanner -Dsonar.host.url=http://localhost:9001 -Dsonar.token=$SONAR_TOKEN -Dsonar.projectKey=coverdict-vscode -Dsonar.sources=src -Dsonar.exclusions=**/*.test.ts,out/**,dist/**,.vscode-test/** -Dsonar.coverage.exclusions=src/ui/** -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+sonar-scanner -Dsonar.host.url=http://localhost:9001 -Dsonar.token=$SONAR_TOKEN -Dsonar.projectKey=proof-vscode -Dsonar.sources=src -Dsonar.exclusions=**/*.test.ts,out/**,dist/**,.vscode-test/** -Dsonar.coverage.exclusions=src/ui/** -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
 ```
 
 Sonuçlar SonarQube MCP araçlarıyla okunur
@@ -700,7 +700,7 @@ bir workspace klasörü açık olmadığı için `context.storageUri` hep
 ayrım gerekti.
 
 Yeni test: `src/test/integration/extension.restoreLastCoverage.test.ts`.
-Gerçek playground alan adlarıyla (`dev.coverdict.playground.Calculator`,
+Gerçek playground alan adlarıyla (`dev.proofjava.playground.Calculator`,
 `square` metodu, gerçek PIT mutator sınıf adı) bir `verdict-current.json`
 temp dizine yazılıyor, `lineTestsView`/`mutationView`'ın `refresh()`
 metotları casus (spy) ile sarılıp her çağrıda `getChildren()`'ın o anki
@@ -902,11 +902,11 @@ kapandı**, 4-7 açık — öncelik kullanıcının kendi sıralaması.
    olurdu (hard rule 3a). `model/mutationModel.ts`'e `targetSummary`/
    `formatRelativeTime` (saf, test edilebilir) eklendi.
 3. **"Kapsama" terminoloji kuralını çiğniyordu.** `package.json`'daki
-   `coverdict.toggleCoverage` komut başlığı ve `coverdict.coverageView`
+   `proof.toggleCoverage` komut başlığı ve `proof.coverageView`
    görünüm adı hâlâ Türkçe "Kapsama" diyordu; `statusBar.ts` zaten
    İngilizce "coverage" kullanıyordu (Faz 19'un terminoloji geçişi
    `package.json`'ı atlamış). İkisi de "Coverage" oldu.
-   `coverdict.show.oraclelessLines`'ın açıklaması da eski komut adlarına
+   `proof.show.oraclelessLines`'ın açıklaması da eski komut adlarına
    ("Kapsama + Hangi Test...") atıfta bulunuyordu — Faz 18'den beri
    geçerli olan "Derin Tarama"/"Bu Sınıf İçin Hangi Test Hangi Satırı
    Kapsıyor" adlarına güncellendi.
@@ -914,7 +914,7 @@ kapandı**, 4-7 açık — öncelik kullanıcının kendi sıralaması.
 **Açık — öncelik kullanıcının belirlediği sıra:**
 4. ~~**`Satır 4 · 14 test` gürültü.**~~ — **KAPANDI (Faz 24).** Gerçek
    playground verisiyle doğrulandı (`--per-test-target
-   root=dev.coverdict.playground.Calculator`, 2026-08-28):
+   root=dev.proofjava.playground.Calculator`, 2026-08-28):
    `Calculator.java`'da elle yazılmış bir constructor yok, derleyicinin
    ürettiği parametresiz `<init>()`in tek instruction'ı sınıf bildirim
    satırına (satır 4) yazılıyor, nesne oluşturan 14 testin hepsi orada
@@ -948,7 +948,7 @@ kapandı**, 4-7 açık — öncelik kullanıcının kendi sıralaması.
    yapıyor. Anahtar `Finding.productionMethod`'ın gerçek biçimi - canlı bir
    `--mutation-report` koşusundan doğrulandı (2026-08-28, üç ayrı metotla:
    `subtract`, `isPositive`, `square`):
-   `"dev.coverdict.playground.Calculator#square(I)I"`
+   `"dev.proofjava.playground.Calculator#square(I)I"`
    (`FQCN#methodName(descriptor)dönüşTipi`), `MutatedMethod.methodDescription`
    ile birebir aynı format.
 
@@ -961,7 +961,7 @@ kapandı**, 4-7 açık — öncelik kullanıcının kendi sıralaması.
    kayıtlı (`extension.ts`), stabil `TreeItem.id` taşıyorlar. Eşleşme
    yoksa (mutasyon verisi hiç yok ya da güncel değil) sessizce başarısız
    olmak yerine sebebini söylüyor (hard rule 3a) -
-   `coverdict.qualityView.showInMutation`/`coverdict.mutationView.
+   `proof.qualityView.showInMutation`/`proof.mutationView.
    showInQuality` komutları.
 
    Doğrulama: gerçek playground verisiyle (`square`'in tek survived
@@ -984,9 +984,9 @@ kapandı**, 4-7 açık — öncelik kullanıcının kendi sıralaması.
    "Satır → Testler"de bir `prodTest` düğümünün `verdict === 'inconclusive'`
    olduğu her yerde bu arama otomatik çalışıyor; eşleşme varsa tooltip'e
    "Mutasyon kanıtı bunu çürütüyor: ... bir mutantını (satır N) öldürdü"
-   notu ekleniyor, `contextValue` `coverdict.prodTest.contradiction`
+   notu ekleniyor, `contextValue` `proof.prodTest.contradiction`
    oluyor ve sağ tık → "Mutasyon Ağacında Göster"
-   (`coverdict.lineTestsView.showInMutation`) o metodu mutasyon ağacında
+   (`proof.lineTestsView.showInMutation`) o metodu mutasyon ağacında
    açıp seçiyor. Ters yönde (bilgilendirme amaçlı, ayrı komut gerekmedi):
    mutasyon ağacındaki bir `killingTest` yaprağının gerçekten eşleşen bir
    `INCONCLUSIVE` bulgusu varsa tooltip'i aynı çelişkiyi hatırlatıyor.
@@ -1033,8 +1033,8 @@ yerine oraya yönlendirmek seçildi (3 seçenekten kullanıcının seçtiği).
 Uygulama: `ui/treeViews/mutationView.ts`'in `mutantItem`'ı artık
 `getPerTestState()` + `model/lineIndex.ts`'in `testsForClass`'ıyla o
 satırın gerçekten bir `perTest` kaydı olup olmadığını kontrol ediyor;
-varsa `contextValue` `coverdict.mutant.hasLineEvidence` oluyor ve sağ
-tık → "Satır → Testler'de Göster" (`coverdict.mutationView.
+varsa `contextValue` `proof.mutant.hasLineEvidence` oluyor ve sağ
+tık → "Satır → Testler'de Göster" (`proof.mutationView.
 showInLineTests`) production dosyasını o satırda açıp `lineTestsView`'ın
 aktif dosyasını değiştiriyor, ardından `reveal()` ile o satırın düğümünü
 açıp seçiyor. Kanıt yoksa (mutasyon var ama Derin Tarama hiç
@@ -1059,7 +1059,7 @@ integration), SonarQube sıfır açık bulgu.
 ### 7.8 gson dogfood (2026-08-29) — çok-modül workspace kökü **düzeltildi**, iki UX sürtünmesi
 
 `coverdict-corpus/gson`'da (google/gson'ın çok-modül checkout'u) ilk gerçek
-dış-repo VS Code dogfood'u denendi. Kullanıcı `coverdict.jar` bulunamadı ve
+dış-repo VS Code dogfood'u denendi. Kullanıcı `proof-java.jar` bulunamadı ve
 JaCoCo raporu bulunamadı uyarılarıyla karşılaştı; ikinci uyarının kökü
 araştırıldı ve **gerçek, mimari bir boşluk** bulundu, ilki iki UX isteğine
 dönüştü.
@@ -1068,7 +1068,7 @@ dönüştü.
 desteği yok.** Kullanıcı VS Code'u checkout'un **kökünde**
 (`coverdict-corpus/gson`) açtı; gerçek JaCoCo raporu alt modülde
 (`gson/gson/target/site/jacoco/jacoco.xml`), kök pom sadece agregatör.
-`coverdict.reportPath`'i elle düzeltmek bile yetmezdi: `argsBuilder.ts`
+`proof.reportPath`'i elle düzeltmek bile yetmezdi: `argsBuilder.ts`
 kendi yorumunda zaten itiraf ediyor - *"Single-module shorthand only for
 now [...] multi-module bindings [...] land with F8's config UI, when there
 is a real multi-module case to build it against"* - yani `--module`/
@@ -1080,7 +1080,7 @@ modülün kendisi değilse bu sessizce yanlış.
 
 **Bu oturumda uygulanan geçici çözüm (eklenti değişmedi):** VS Code'da
 checkout kökü yerine **alt modülün kendisi** (`coverdict-corpus/gson/gson`)
-ayrı bir klasör olarak açıldı - `coverdict.reportPath`'in varsayılanı
+ayrı bir klasör olarak açıldı - `proof.reportPath`'in varsayılanı
 (`target/site/jacoco/jacoco.xml`) orada doğrudan doğru dosyaya denk geliyor,
 kaynak/test kökü varsayımları da doğru. `gson/gson/.vscode/settings.json`
 dış klasörün ayarlarının (jarPath, JDK 17 env) bir kopyası olarak eklendi.
@@ -1092,7 +1092,7 @@ aynısı eklenti tarafında hiç çözülmemiş.
 bir fix: `cli/reportDiscovery.ts` (saf, `vscode` import etmiyor) +
 `ui/commands.ts`'teki yeni `resolveReportBinding()`. `runAnalyzeCore`
 (Hızlı/Derin/Mutasyon Testi'nin **hepsinin** paylaştığı tek çekirdek)
-`coverdict.reportPath` workspace kökünde yoksa artık pes etmiyor:
+`proof.reportPath` workspace kökünde yoksa artık pes etmiyor:
 `vscode.workspace.findFiles('**/target/site/jacoco/jacoco.xml', ...)` ile
 arama yapıyor.
 
@@ -1172,16 +1172,16 @@ ikinci düzeltmenin 4 yeni testi), SonarQube kalite kapısı OK.
 - ~~Birden fazla modülü **aynı koşuda** birlikte bağlamak~~ — **KAPANDI
   (Faz 30, §7.9):** `showQuickPick` tamamen kalktı, bulunan her modül tek
   koşuda birden bağlanıyor.
-- `doctor`'ın ürettiği `coverdict.config.json`'u (D-40/D-66) okuyup
+- `doctor`'ın ürettiği `proof.config.json`'u (D-40/D-66) okuyup
   kullanma - **Faz 30'da da yapılmadı, bilinçli olarak ertelendi** (§7.9,
   "ertelenenler"): eklenti hâlâ her koşuda kendi keşfini tekrarlıyor, dosya
   yalnızca `doctor --write-config` ile üretiliyor ve elle düzenlenebiliyor.
 
 **UX isteği 1 (kullanıcı, 2026-08-29) — bu oturumda ayrıca düzeltildi.**
-`coverdict.jar` bulunamadı hatası **zaten** `offerToOpenSetting` kullanıyordu
+`proof-java.jar` bulunamadı hatası **zaten** `offerToOpenSetting` kullanıyordu
 (rapor-bulunamadı hatasıyla aynı "Ayarı Aç" düğmesi) - meğer yalnızca jar
 mesajı bunu kullanmıyormuş, düz `showErrorMessage` idi. Tek satırlık fark,
-düzeltildi: `coverdict.jarPath` sorgusuyla ayarları açan bir düğme artık
+düzeltildi: `proof.jarPath` sorgusuyla ayarları açan bir düğme artık
 o hata mesajında da var.
 
 **UX isteği 2 (kullanıcı, 2026-08-29) — KAPANDI (Faz 30, §7.9).** JaCoCo
@@ -1194,7 +1194,7 @@ karşı teşhis etmek** oldu - ayrıntı §7.9'da.
 
 **Fikir - insan-okur "test kanıtı" raporu (kullanıcı, 2026-08-29) — KAPANDI (Faz 32, §7.10).**
 SonarQube/Cucumber tarzı, hangi testlerin çalıştığını ve sonuçlarını
-gösteren dışa aktarılabilir bir rapor - hem CLI'dan (`coverdict analyze
+gösteren dışa aktarılabilir bir rapor - hem CLI'dan (`proof-java analyze
 --report-format html` gibi) hem VS Code'dan ("dışa aktar" komutu). D-15
 zaten "Standalone HTML is deferred until dogfood proves a need" diyor -
 bu ihtiyacın ilk somut talebi. **Tasarlanmadı, kapsamlandırılmadı** - ayrı
@@ -1228,10 +1228,10 @@ modüller arasında seçim yaptırılmıyor**, hepsi birden bağlanıyor.
 - Silindi: `cli/classpathBuilder.ts`, `cli/classpathParser.ts` (ve testleri) - `-pl`/`-am` olmadan reactor kökünden koşan, en uzun satırı alan kırık el yapımı mantık.
 
 **Yeni ayarlar/komutlar:**
-- `coverdict.testCommandPhase` (`test` | `verify`, varsayılan `test`) - "Testleri Çalıştır"ın hangi Maven aşamasını koşacağı.
-- `coverdict.jacocoPluginVersion` (varsayılan `0.8.13`) - pom'da JaCoCo hiç tanımlı değilse enjekte edilen CLI-goal sürümü (D-30'un yaklaşımı, pom asla düzenlenmiyor).
-- `coverdict.perTestClasspathPath`'in rolü değişti: artık "biz üretiyoruz"un yolu değil, tek-modüllü bir koşuda `doctor`'a bırakmak istemeyen kullanıcı için salt-okunur bir kaçış kapısı.
-- Yeni komut `coverdict.runTests` - Çalıştır görünümünün ilk öğesi, raporun gerçek mtime'ını ("12 dakika önce") gösteren bir açıklamayla.
+- `proof.testCommandPhase` (`test` | `verify`, varsayılan `test`) - "Testleri Çalıştır"ın hangi Maven aşamasını koşacağı.
+- `proof.jacocoPluginVersion` (varsayılan `0.8.13`) - pom'da JaCoCo hiç tanımlı değilse enjekte edilen CLI-goal sürümü (D-30'un yaklaşımı, pom asla düzenlenmiyor).
+- `proof.perTestClasspathPath`'in rolü değişti: artık "biz üretiyoruz"un yolu değil, tek-modüllü bir koşuda `doctor`'a bırakmak istemeyen kullanıcı için salt-okunur bir kaçış kapısı.
+- Yeni komut `proof.runTests` - Çalıştır görünümünün ilk öğesi, raporun gerçek mtime'ını ("12 dakika önce") gösteren bir açıklamayla.
 
 **Gerçek gson checkout'una karşı doğrulandı, kısmi:** `doctor --fix` gson'un
 6 modülünün hepsi için doğru classpath listelerini üretti (daha önce elle
@@ -1243,7 +1243,7 @@ listede JUnit Platform engine jar'ı eksik olduğu için PIT'in kendi
 düştü - `doctor`'ın classpath üretimindeki gerçek bir boşluk, bu partinin
 hiçbir değişikliğiyle ilgisi yok. Bu oturumun kendi dersine göre (WTA
 dogfood retrospektifi ve loop-run'dan) **kovalanmadı, sadece kaydedildi** -
-`coverdict` reposunun kendi backlog'una taşınmalı.
+`proof-java` reposunun kendi backlog'una taşınmalı.
 
 169 → 212 unit test, 57 integration test (değişmedi), SonarQube kalite
 kapısı OK (dokunulan her dosyada 0 açık bulgu - konteyner bu oturum
@@ -1252,12 +1252,12 @@ sıfırlandığı için `sinceLeakPeriod=true` artık güvenilir değil, dosya
 bazlı `statuses=OPEN,CONFIRMED,REOPENED` sorgusu kullanıldı).
 
 **Bilinçli olarak ertelenenler (tekrar tartışılmasın diye buraya yazıldı):**
-- **`coverdict.config.json` tüketimi.** `doctor --write-config`'in ürettiği
+- **`proof.config.json` tüketimi.** `doctor --write-config`'in ürettiği
   dosya hâlâ hiç okunmuyor - classpath dosya yolları modül köküne göreli
   olduğu için (id'ye bağlı değil) bu partide gerekli değildi, ama gerçek
   bir sonraki adım hâlâ bu (eski §7.8 backlog'unun ikinci maddesiyle aynı).
 - **`doctor`'ın classpath üretimindeki JUnit Platform engine boşluğu** -
-  yukarıda kaydedildi, `coverdict` (CLI) reposunun işi.
+  yukarıda kaydedildi, `proof-java` (CLI) reposunun işi.
 - **`MavenClient`'a `-am` eklemek** - sahte çözüm olurdu (reactor'ü
   genişletir ama kardeş modül yine de kurulu değilse aynı hatayı verir);
   gerçek çözüm zaten `mvn install -DskipTests` Task'ı.
@@ -1277,10 +1277,10 @@ bazlı `statuses=OPEN,CONFIRMED,REOPENED` sorgusu kullanıldı).
 
 ### 7.10 Faz 32 (2026-08-31) — "Raporu Dışa Aktar" (HTML) (**yapıldı**)
 
-§7.8'in "Fikir" paragrafının karşılığı: hem CLI'dan (`coverdict analyze
+§7.8'in "Fikir" paragrafının karşılığı: hem CLI'dan (`proof-java analyze
 --html-report <path>`) hem VS Code'dan (Çalıştır panelinin başlığındaki
-export ikonu, `coverdict.exportReport`) çalışan, tek dosyalık, offline
-HTML rapor. Tasarım ve kararların tam kaydı `coverdict` reposunun kendi
+export ikonu, `proof.exportReport`) çalışan, tek dosyalık, offline
+HTML rapor. Tasarım ve kararların tam kaydı `proof-java` reposunun kendi
 `docs/DECISIONS.md`'sinde **D-75'ten D-79'a** - burada sadece özet ve bu
 eklentiyi doğrudan ilgilendiren kısım var.
 
@@ -1303,7 +1303,7 @@ koşulsuz yazılıyordu - tam D-73/D-74'ün bir kez düzelttiği sessiz-üzerine
 yazma hatasının aynısı, bu kez export komutunun kendi elinden; (2)
 kullanıcının kendi beklentisi zaten "en güncel taramayla gelmesi" idi,
 yeni ve dar kapsamlı bir analiz değil. Düzeltme: CLI'a ikinci bir komut
-eklendi (`coverdict render-html --in <verdict.json> --out <path>`, hiç
+eklendi (`proof-java render-html --in <verdict.json> --out <path>`, hiç
 yeniden analiz yapmaz, sadece render eder - `VerdictJsonReader` bunun
 için yazıldı). Eklenti artık export'ta `analyze`'ı hiç çağırmıyor;
 `verdict-current.json`'ı `pertest-current.json`/`mutation-current.json`
@@ -1312,8 +1312,8 @@ yeniden-tarama maliyeti, kenar çubuğu state'ine hiç dokunmuyor.
 
 **Yeni/değişen dosyalar:** `ui/commands.ts` (`registerExportReportCommand`,
 `registerOpenSettingsCommand`, `runExportReport` - artık `runAnalyzeCore`
-çağırmıyor), `extension.ts`, `package.json` (`coverdict.exportReport`
-$(export) ve `coverdict.openSettings` $(gear) ikonları, `coverdict.runView`
+çağırmıyor), `extension.ts`, `package.json` (`proof.exportReport`
+$(export) ve `proof.openSettings` $(gear) ikonları, `proof.runView`
 başlık çubuğunda - listeye altıncı bir satır eklenmedi, Faz 18'in "az
 buton" tercihiyle çelişmesin diye).
 
@@ -1332,12 +1332,12 @@ gerçek playground verisiyle doğrulandı.
 ### 8.1 Nereden başlatılır
 
 **Tek sınıf — önerilen ve varsayılan yol:** editör sağ tık → "Bu Sınıf
-İçin Mutasyon Testi" (`coverdict.mutationForFile`) →
+İçin Mutasyon Testi" (`proof.mutationForFile`) →
 `--mutation-report --mutation-target root=<FQCN>`. Diff gerektirmez,
 `--no-vcs`'te bile çalışır (D-71). Playground'da gerçek ölçüm: **5 saniye**.
 
 **Modül geneli:** Çalıştır görünümünde "Mutasyon Testi"
-(`coverdict.mutationForModule`), **modal onay diyaloğunun arkasında** —
+(`proof.mutationForModule`), **modal onay diyaloğunun arkasında** —
 metin bütçeyi de söyler. Asla otomatik tetiklenmez: büyük bir modülde
 `ROADMAP.md`'ye göre 70–90 dakika sürebiliyor. `no-vcs` modunda modül
 geneli koşu devre dışı (hedef türetecek diff yok) ve bunu söylüyor.
@@ -1382,7 +1382,7 @@ POSIX'te `spawn(..., { detached: true })` + `process.kill(-pid)`. Çıplak
 `SIGTERM` PIT'in çocuk JVM'lerini ("minion") arkada bırakıyordu.
 `withProgress` zaten `cancellable: true`.
 
-### 8.5 Rapor yüzeyi — `coverdict.mutationView`
+### 8.5 Rapor yüzeyi — `proof.mutationView`
 
 Sınıf → metot → mutant → **öldüren testler**. Metot ve sınıf düğümlerinde
 skor; hayatta kalanı olan metot uyarı ikonu alır. Mutanta tıklamak satıra
@@ -1448,5 +1448,5 @@ bulgularını kronolojik tutar — bir kararın **neden** öyle alındığını 
 edersen oraya bak. İçindeki maddelerin çoğu kapandı; **açık olanların
 güncel listesi §7'dedir**, NOTES.md'de değil.
 
-Kod ve notlar boyunca geçen `D-xx` işaretleri `coverdict` reposunun
+Kod ve notlar boyunca geçen `D-xx` işaretleri `proof-java` reposunun
 `docs/DECISIONS.md` dosyasındaki karar numaralarıdır (D-01…D-71).

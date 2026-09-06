@@ -1,7 +1,7 @@
 import type { LineTuple } from './types';
 
 /**
- * Pure: turns coverdict's `[line, mi, ci, mb, cb]` tuples into the shape
+ * Pure: turns proof-java's `[line, mi, ci, mb, cb]` tuples into the shape
  * `ui/gutterRenderer.ts` paints as editor decorations and
  * `ui/explorerBadges.ts` rolls up into folder percentages. Kept out of
  * `verdict/` proper only because it is coverage-specific, not because it

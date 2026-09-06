@@ -67,7 +67,7 @@ export function setGutterVisible(next: boolean): void {
 }
 
 /**
- * F3: the last run's L2 evidence, set only by `coverdict.analyzePerTest` (a
+ * F3: the last run's L2 evidence, set only by `proof.analyzePerTest` (a
  * separate command from the main scan - --per-test-report needs a diff
  * mode, D-55). Faz 30: no `moduleId` - `perTest.modules[]` may hold several
  * (a multi-module run), and every consumer merges across all of them

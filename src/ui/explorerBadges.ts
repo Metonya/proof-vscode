@@ -62,7 +62,7 @@ export class ExplorerBadgeProvider implements vscode.FileDecorationProvider, vsc
 		}
 
 		if (isFileStale(uri.fsPath)) {
-			return new vscode.FileDecoration('!', 'coverdict: bu dosya son taramadan sonra değişti - coverage bayat olabilir, tekrar tarayın', new vscode.ThemeColor('charts.yellow'));
+			return new vscode.FileDecoration('!', 'proof-java: bu dosya son taramadan sonra değişti - coverage bayat olabilir, tekrar tarayın', new vscode.ThemeColor('charts.yellow'));
 		}
 
 		// Faz 18: coverage dışı bırakılmış dosyalar artık Explorer'da da
@@ -73,7 +73,7 @@ export class ExplorerBadgeProvider implements vscode.FileDecorationProvider, vsc
 			const relative = toRepoRelativePath(this.workspaceRoot, uri.fsPath) ?? uri.fsPath;
 			return new vscode.FileDecoration(
 				EXCLUDED_BADGE,
-				`coverdict: coverage dışı bırakıldı (coverdict.coverageExclusions)\n${relative}\nBu dosya coverage yüzdelerine hiç katılmıyor.`,
+				`proof-java: coverage dışı bırakıldı (proof.coverageExclusions)\n${relative}\nBu dosya coverage yüzdelerine hiç katılmıyor.`,
 				new vscode.ThemeColor('charts.gray'),
 			);
 		}
@@ -94,7 +94,7 @@ export class ExplorerBadgeProvider implements vscode.FileDecorationProvider, vsc
 		if (metric.percent === null) {
 			return undefined; // no executable lines at all (a pure interface) - "no data" is not "0%"
 		}
-		const tooltip = `coverdict: bu dosya ${metric.percent}% (${metric.numerator}/${metric.denominator}, ${this.metric})\n`
+		const tooltip = `proof-java: bu dosya ${metric.percent}% (${metric.numerator}/${metric.denominator}, ${this.metric})\n`
 			+ 'Durum çubuğundaki yüzde tüm repo içindir - bu sayı yalnızca bu dosyanın kendisi.';
 		return this.badge(metric.percent, tooltip);
 	}
@@ -111,7 +111,7 @@ export class ExplorerBadgeProvider implements vscode.FileDecorationProvider, vsc
 		if (rollup.percent === null) {
 			return undefined;
 		}
-		const tooltip = `coverdict: bu klasör ${rollup.percent}% (${rollup.numerator}/${rollup.denominator}, ${this.metric})\n`
+		const tooltip = `proof-java: bu klasör ${rollup.percent}% (${rollup.numerator}/${rollup.denominator}, ${this.metric})\n`
 			+ `${childFiles.length} dosyanın toplamı.`;
 		return this.badge(rollup.percent, tooltip);
 	}

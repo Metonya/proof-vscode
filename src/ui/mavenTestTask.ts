@@ -45,7 +45,7 @@ async function scanPoms(folder: vscode.WorkspaceFolder): Promise<ReactorPomFacts
 }
 
 function resolveMavenExecutable(folder: vscode.WorkspaceFolder): string {
-	const configured = vscode.workspace.getConfiguration('coverdict', folder).get<string>('mavenExecutable');
+	const configured = vscode.workspace.getConfiguration('proof', folder).get<string>('mavenExecutable');
 	return configured || (process.platform === 'win32' ? 'mvn.cmd' : 'mvn');
 }
 
@@ -70,7 +70,7 @@ export interface MavenTaskResult {
  */
 async function runVisibleMavenTask(folder: vscode.WorkspaceFolder, output: vscode.OutputChannel, taskKind: string, label: string, args: readonly string[]): Promise<MavenTaskResult> {
 	const mavenExecutable = resolveMavenExecutable(folder);
-	output.appendLine(`coverdict: ${mavenExecutable} ${args.join(' ')} (${folder.uri.fsPath})`);
+	output.appendLine(`proof-java: ${mavenExecutable} ${args.join(' ')} (${folder.uri.fsPath})`);
 
 	const writeEmitter = new vscode.EventEmitter<string>();
 	const closeEmitter = new vscode.EventEmitter<number>();
@@ -104,10 +104,10 @@ async function runVisibleMavenTask(folder: vscode.WorkspaceFolder, output: vscod
 	};
 
 	const task = new vscode.Task(
-		{ type: 'coverdict', kind: taskKind },
+		{ type: 'proof-java', kind: taskKind },
 		folder,
 		label,
-		'coverdict',
+		'proof-java',
 		new vscode.CustomExecution(() => Promise.resolve(pty)),
 	);
 	task.presentationOptions = { reveal: vscode.TaskRevealKind.Always, panel: vscode.TaskPanelKind.Dedicated, clear: true };
@@ -135,7 +135,7 @@ export async function runMavenInstallTask(folder: vscode.WorkspaceFolder, output
  * `moduleRoots` (Faz 31): scopes the build to already-bound module(s) via
  * `-pl ... -am` when the caller has them (a re-run after a scan already
  * happened) - real gson testing found a whole-reactor run pulling in
- * sibling modules coverdict never needed (native-image, ProGuard-obfuscated
+ * sibling modules proof-java never needed (native-image, ProGuard-obfuscated
  * tests, JPMS) whose own fragility has nothing to do with the module being
  * analyzed. The very first run (no scan yet) has nothing to scope to and
  * stays whole-reactor - guessing a module here would be a guess.
@@ -145,7 +145,7 @@ export async function runTestsTask(folder: vscode.WorkspaceFolder, output: vscod
 
 	if (facts.literalArgLine) {
 		const choice = await vscode.window.showWarningMessage(
-			`coverdict: ${facts.literalArgLine.file} (satır ${facts.literalArgLine.line}) içindeki surefire yapılandırması <argLine> değerini sabit bir metin olarak yazıyor.`,
+			`proof-java: ${facts.literalArgLine.file} (satır ${facts.literalArgLine.line}) içindeki surefire yapılandırması <argLine> değerini sabit bir metin olarak yazıyor.`,
 			{
 				modal: true,
 				detail: 'JaCoCo ajanı komut satırından bağlandığında bu satır ajanı düşürür - hiç jacoco.exec üretilmez, coverage verisi çıkmaz. '
@@ -166,7 +166,7 @@ export async function runTestsTask(folder: vscode.WorkspaceFolder, output: vscod
 		}
 	}
 
-	const config = vscode.workspace.getConfiguration('coverdict', folder);
+	const config = vscode.workspace.getConfiguration('proof', folder);
 	const phase = (config.get<MavenTestPhase>('testCommandPhase')) || 'test';
 	const jacocoPluginVersion = config.get<string>('jacocoPluginVersion') || '0.8.13';
 	const args = buildMavenTestArgs({ phase, injectJacocoGoals: !facts.hasJacocoPlugin, jacocoPluginVersion, moduleRoots });

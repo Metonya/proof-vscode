@@ -28,7 +28,7 @@ suite('describeNode (Faz 31 - "Kopyala" coverage)', () => {
 	});
 
 	test('class (both tree views\' class node)', () => {
-		assert.equal(describeNode({ kind: 'class', className: 'dev.coverdict.playground.Calculator' }), 'dev.coverdict.playground.Calculator');
+		assert.equal(describeNode({ kind: 'class', className: 'dev.proofjava.playground.Calculator' }), 'dev.proofjava.playground.Calculator');
 	});
 
 	test('testMethod (line tests view, reverse direction)', () => {
@@ -36,21 +36,21 @@ suite('describeNode (Faz 31 - "Kopyala" coverage)', () => {
 	});
 
 	test('testLine (line tests view, reverse direction leaf)', () => {
-		assert.equal(describeNode({ kind: 'testLine', ref: { outerClassName: 'dev.coverdict.playground.Calculator', line: 37 } }), 'dev.coverdict.playground.Calculator:37');
+		assert.equal(describeNode({ kind: 'testLine', ref: { outerClassName: 'dev.proofjava.playground.Calculator', line: 37 } }), 'dev.proofjava.playground.Calculator:37');
 	});
 
 	test('method (mutation view)', () => {
-		const text = describeNode({ kind: 'method', className: 'dev.coverdict.playground.Calculator', method: { methodName: 'square', methodDescription: '(I)I' } });
-		assert.equal(text, 'dev.coverdict.playground.Calculator#square(I)I');
+		const text = describeNode({ kind: 'method', className: 'dev.proofjava.playground.Calculator', method: { methodName: 'square', methodDescription: '(I)I' } });
+		assert.equal(text, 'dev.proofjava.playground.Calculator#square(I)I');
 	});
 
 	test('mutant (mutation view)', () => {
-		const text = describeNode({ kind: 'mutant', className: 'dev.coverdict.playground.Calculator', mutant: { line: 37, mutator: 'PrimitiveReturnsMutator', status: 'SURVIVED' } });
-		assert.equal(text, 'dev.coverdict.playground.Calculator:37 PrimitiveReturnsMutator SURVIVED');
+		const text = describeNode({ kind: 'mutant', className: 'dev.proofjava.playground.Calculator', mutant: { line: 37, mutator: 'PrimitiveReturnsMutator', status: 'SURVIVED' } });
+		assert.equal(text, 'dev.proofjava.playground.Calculator:37 PrimitiveReturnsMutator SURVIVED');
 	});
 
 	test('killingTest (mutation view) - same raw-id convention as prodTest, unchanged', () => {
-		const rawTestId = '[class:dev.coverdict.playground.CalculatorSubsumedTest]/[method:divideNarrow()]';
+		const rawTestId = '[class:dev.proofjava.playground.CalculatorSubsumedTest]/[method:divideNarrow()]';
 		assert.equal(describeNode({ kind: 'killingTest', rawTestId }), rawTestId);
 		assert.equal(describeNode({ kind: 'prodTest', rawTestId }), rawTestId);
 	});
@@ -109,14 +109,14 @@ suite('allProductionTargets (Faz 31)', () => {
 			...BASE_STATE,
 			fileCoverage: {
 				files: [
-					{ module: 'root', path: 'src/main/java/dev/coverdict/playground/Calculator.java', metrics: METRIC, lines: [] },
-					{ module: 'root', path: 'src/main/java/dev/coverdict/playground/Multiplier.java', metrics: METRIC, lines: [] },
+					{ module: 'root', path: 'src/main/java/dev/proofjava/playground/Calculator.java', metrics: METRIC, lines: [] },
+					{ module: 'root', path: 'src/main/java/dev/proofjava/playground/Multiplier.java', metrics: METRIC, lines: [] },
 				],
 				excluded: [],
 			},
 		};
 		const targets = allProductionTargets(state);
-		assert.deepEqual(targets.map((t) => t.fqcn), ['dev.coverdict.playground.Calculator', 'dev.coverdict.playground.Multiplier']);
+		assert.deepEqual(targets.map((t) => t.fqcn), ['dev.proofjava.playground.Calculator', 'dev.proofjava.playground.Multiplier']);
 		assert.ok(targets[0].filePath.endsWith('Calculator.java'));
 	});
 

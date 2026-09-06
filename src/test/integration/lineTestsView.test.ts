@@ -23,9 +23,9 @@ const PER_TEST: PerTestBlock = {
 	modules: [{
 		id: 'root',
 		entries: [{
-			className: 'dev.coverdict.playground.Calculator',
+			className: 'dev.proofjava.playground.Calculator',
 			methodName: 'square',
-			lines: [{ line: 37, tests: ['[class:dev.coverdict.playground.CalculatorPseudoTestedTest]/[method:squareHasNoAssertion()]'] }],
+			lines: [{ line: 37, tests: ['[class:dev.proofjava.playground.CalculatorPseudoTestedTest]/[method:squareHasNoAssertion()]'] }],
 		}],
 		ambient: [],
 	}],
@@ -33,14 +33,14 @@ const PER_TEST: PerTestBlock = {
 
 const FINDINGS: readonly Finding[] = [{
 	rule: 'NO_RECOGNIZED_ORACLE', confidence: 'HIGH', severity: 'WARNING', module: 'root',
-	path: 'src/test/java/dev/coverdict/playground/CalculatorPseudoTestedTest.java', startLine: 16, endLine: 16,
+	path: 'src/test/java/dev/proofjava/playground/CalculatorPseudoTestedTest.java', startLine: 16, endLine: 16,
 	message: 'no oracle', suggestedAction: 'add one', fingerprint: 'f1',
-	testMethod: 'dev.coverdict.playground.CalculatorPseudoTestedTest#squareHasNoAssertion()',
+	testMethod: 'dev.proofjava.playground.CalculatorPseudoTestedTest#squareHasNoAssertion()',
 }];
 
 /** `fileCoverage.files[]` only ever lists production files - that is what makes it the authority on "is this class production". */
 const PRODUCTION_ONLY_FILE_COVERAGE: FileCoverageBlock = {
-	files: [{ module: 'root', path: 'src/main/java/dev/coverdict/playground/Calculator.java', metrics: METRIC_SET, lines: [] }],
+	files: [{ module: 'root', path: 'src/main/java/dev/proofjava/playground/Calculator.java', metrics: METRIC_SET, lines: [] }],
 	excluded: [],
 };
 
@@ -59,7 +59,7 @@ const STATE: Omit<CoverageState, 'workspaceRoot'> = {
  * also needs a real `.java` basename for `detectClassName` to resolve.
  */
 async function openJavaFile(rootRelativeDir: string, packageName: string, className: string): Promise<{ document: vscode.TextDocument; workspaceRoot: string }> {
-	const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-lineTestsView-'));
+	const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-lineTestsView-'));
 	const dir = path.join(workspaceRoot, ...rootRelativeDir.split('/'), ...packageName.split('.'));
 	fs.mkdirSync(dir, { recursive: true });
 	const filePath = path.join(dir, `${className}.java`);
@@ -68,11 +68,11 @@ async function openJavaFile(rootRelativeDir: string, packageName: string, classN
 }
 
 async function openProductionFile(className: string) {
-	return openJavaFile('src/main/java', 'dev.coverdict.playground', className);
+	return openJavaFile('src/main/java', 'dev.proofjava.playground', className);
 }
 
 async function openTestFile(className: string) {
-	return openJavaFile('src/test/java', 'dev.coverdict.playground', className);
+	return openJavaFile('src/test/java', 'dev.proofjava.playground', className);
 }
 
 /**
@@ -125,8 +125,8 @@ suite('Line tests view (Faz 15c)', () => {
 			modules: [{
 				id: 'root',
 				entries: [
-					{ className: 'dev.coverdict.playground.Calculator', methodName: 'add', lines: [{ line: 7, tests: ['CalcTest#addsTwoNumbers()'] }] },
-					{ className: 'dev.coverdict.playground.Multiplier', methodName: 'times', lines: [{ line: 12, tests: ['MultiplierTest#timesTwo()'] }] },
+					{ className: 'dev.proofjava.playground.Calculator', methodName: 'add', lines: [{ line: 7, tests: ['CalcTest#addsTwoNumbers()'] }] },
+					{ className: 'dev.proofjava.playground.Multiplier', methodName: 'times', lines: [{ line: 12, tests: ['MultiplierTest#timesTwo()'] }] },
 				],
 				ambient: [],
 			}],
@@ -137,7 +137,7 @@ suite('Line tests view (Faz 15c)', () => {
 		const provider = new LineTestsTreeProvider();
 		const roots = provider.getChildren();
 		assert.deepEqual(roots.map((r) => r.kind), ['class', 'class']);
-		assert.deepEqual(roots.map((r) => (r.kind === 'class' ? r.className : '')), ['dev.coverdict.playground.Calculator', 'dev.coverdict.playground.Multiplier']);
+		assert.deepEqual(roots.map((r) => (r.kind === 'class' ? r.className : '')), ['dev.proofjava.playground.Calculator', 'dev.proofjava.playground.Multiplier']);
 
 		const calculatorLines = provider.getChildren(roots[0]);
 		assert.equal(calculatorLines.length, 1);
@@ -160,8 +160,8 @@ suite('Line tests view (Faz 15c)', () => {
 			modules: [{
 				id: 'root',
 				entries: [{
-					className: 'dev.coverdict.playground.Calculator', methodName: 'add',
-					lines: [{ line: 7, tests: ['[class:dev.coverdict.playground.CalculatorGoodTest]/[method:addsTwoNumbers()]'] }],
+					className: 'dev.proofjava.playground.Calculator', methodName: 'add',
+					lines: [{ line: 7, tests: ['[class:dev.proofjava.playground.CalculatorGoodTest]/[method:addsTwoNumbers()]'] }],
 				}],
 				ambient: [],
 			}],
@@ -170,10 +170,10 @@ suite('Line tests view (Faz 15c)', () => {
 		const { document, workspaceRoot } = await openProductionFile('Calculator');
 		setCoverageState({ ...STATE, workspaceRoot, findings: [] }); // no findings anywhere - this test is 'ok'
 
-		const testDir = path.join(workspaceRoot, 'src', 'test', 'java', 'dev', 'coverdict', 'playground');
+		const testDir = path.join(workspaceRoot, 'src', 'test', 'java', 'dev', 'proofjava', 'playground');
 		fs.mkdirSync(testDir, { recursive: true });
 		const testFilePath = path.join(testDir, 'CalculatorGoodTest.java');
-		fs.writeFileSync(testFilePath, 'package dev.coverdict.playground;\n\nclass CalculatorGoodTest {\n}\n', 'utf8');
+		fs.writeFileSync(testFilePath, 'package dev.proofjava.playground;\n\nclass CalculatorGoodTest {\n}\n', 'utf8');
 
 		const provider = new LineTestsTreeProvider();
 		provider.setActiveDocument(document);
@@ -195,7 +195,7 @@ suite('Line tests view (Faz 15c)', () => {
 
 	/**
 	 * Faz 24 (§7.6 madde 4) - real data from a live
-	 * `--per-test-target root=dev.coverdict.playground.Calculator` run
+	 * `--per-test-target root=dev.proofjava.playground.Calculator` run
 	 * (2026-08-28): `Calculator.java` has no explicit constructor, so the
 	 * compiler's synthesized no-arg `<init>()` gets its single instruction
 	 * attributed to the class declaration line (line 4). Every one of the 14
@@ -209,9 +209,9 @@ suite('Line tests view (Faz 15c)', () => {
 			modules: [{
 				id: 'root',
 				entries: [{
-					className: 'dev.coverdict.playground.Calculator',
+					className: 'dev.proofjava.playground.Calculator',
 					methodName: '<init>',
-					lines: [{ line: 4, tests: Array.from({ length: 14 }, (_, i) => `[class:dev.coverdict.playground.Test${i}]/[method:t()]`) }],
+					lines: [{ line: 4, tests: Array.from({ length: 14 }, (_, i) => `[class:dev.proofjava.playground.Test${i}]/[method:t()]`) }],
 				}],
 				ambient: [],
 			}],
@@ -249,10 +249,10 @@ suite('Line tests view (Faz 15c)', () => {
 			modules: [{
 				id: 'root',
 				entries: [{
-					className: 'dev.coverdict.playground.NotifyingCalculator',
+					className: 'dev.proofjava.playground.NotifyingCalculator',
 					methodName: 'addAndNotify',
 					lines: [9, 10, 11, 14, 15, 16].map((line) => ({
-						line, tests: ['[class:dev.coverdict.playground.NotifyingCalculatorMockitoTest]/[method:addAndNotifySendsTheComputedResult()]'],
+						line, tests: ['[class:dev.proofjava.playground.NotifyingCalculatorMockitoTest]/[method:addAndNotifySendsTheComputedResult()]'],
 					})),
 				}],
 				ambient: [],
@@ -293,13 +293,13 @@ suite('Line tests view (Faz 15c)', () => {
 			modules: [{
 				id: 'root',
 				entries: [{
-					className: 'dev.coverdict.playground.Calculator',
+					className: 'dev.proofjava.playground.Calculator',
 					methodName: 'mixed',
 					lines: [
 						// line 37: covered only by the test that has a NO_RECOGNIZED_ORACLE finding
-						{ line: 37, tests: ['[class:dev.coverdict.playground.CalculatorPseudoTestedTest]/[method:squareHasNoAssertion()]'] },
+						{ line: 37, tests: ['[class:dev.proofjava.playground.CalculatorPseudoTestedTest]/[method:squareHasNoAssertion()]'] },
 						// line 50: covered by a test with no finding at all
-						{ line: 50, tests: ['[class:dev.coverdict.playground.CalculatorGoodTest]/[method:addWorksCorrectly()]'] },
+						{ line: 50, tests: ['[class:dev.proofjava.playground.CalculatorGoodTest]/[method:addWorksCorrectly()]'] },
 					],
 				}],
 				ambient: [],
@@ -350,7 +350,7 @@ suite('Line tests view (Faz 15c)', () => {
 	/**
 	 * Faz 21 - the regression Faz 16 madde 1 reported and Faz 17/18/19 never
 	 * closed. The fixture below is verbatim real data from a live
-	 * `--per-test-target root=dev.coverdict.playground.Calculator` run
+	 * `--per-test-target root=dev.proofjava.playground.Calculator` run
 	 * (2026-08-28): PIT's L2 collector writes **test classes into `entries`
 	 * too**, each covering its own lines with its own test method. Every
 	 * synthetic fixture in this file omitted that, which is exactly why the
@@ -369,19 +369,19 @@ suite('Line tests view (Faz 15c)', () => {
 				id: 'root',
 				entries: [
 					{
-						className: 'dev.coverdict.playground.Calculator',
+						className: 'dev.proofjava.playground.Calculator',
 						methodName: 'square',
-						lines: [{ line: 37, tests: ['dev.coverdict.playground.CalculatorPseudoTestedTest.[engine:junit-jupiter]/[class:dev.coverdict.playground.CalculatorPseudoTestedTest]/[method:squareHasNoAssertion()]'] }],
+						lines: [{ line: 37, tests: ['dev.proofjava.playground.CalculatorPseudoTestedTest.[engine:junit-jupiter]/[class:dev.proofjava.playground.CalculatorPseudoTestedTest]/[method:squareHasNoAssertion()]'] }],
 					},
 					{
-						className: 'dev.coverdict.playground.CalculatorPseudoTestedTest',
+						className: 'dev.proofjava.playground.CalculatorPseudoTestedTest',
 						methodName: '<init>',
-						lines: [12, 14].map((line) => ({ line, tests: ['dev.coverdict.playground.CalculatorPseudoTestedTest.[engine:junit-jupiter]/[class:dev.coverdict.playground.CalculatorPseudoTestedTest]/[method:squareHasNoAssertion()]'] })),
+						lines: [12, 14].map((line) => ({ line, tests: ['dev.proofjava.playground.CalculatorPseudoTestedTest.[engine:junit-jupiter]/[class:dev.proofjava.playground.CalculatorPseudoTestedTest]/[method:squareHasNoAssertion()]'] })),
 					},
 					{
-						className: 'dev.coverdict.playground.CalculatorPseudoTestedTest',
+						className: 'dev.proofjava.playground.CalculatorPseudoTestedTest',
 						methodName: 'squareHasNoAssertion',
-						lines: [18, 19].map((line) => ({ line, tests: ['dev.coverdict.playground.CalculatorPseudoTestedTest.[engine:junit-jupiter]/[class:dev.coverdict.playground.CalculatorPseudoTestedTest]/[method:squareHasNoAssertion()]'] })),
+						lines: [18, 19].map((line) => ({ line, tests: ['dev.proofjava.playground.CalculatorPseudoTestedTest.[engine:junit-jupiter]/[class:dev.proofjava.playground.CalculatorPseudoTestedTest]/[method:squareHasNoAssertion()]'] })),
 					},
 				],
 				ambient: [],
@@ -406,7 +406,7 @@ suite('Line tests view (Faz 15c)', () => {
 			assert.equal(roots[0].methodName, 'squareHasNoAssertion');
 			// Only the production line it ran - never the test's own 12/14/18/19.
 			assert.deepEqual(roots[0].refs.map((r) => r.line), [37]);
-			assert.ok(roots[0].refs.every((r) => r.outerClassName === 'dev.coverdict.playground.Calculator'));
+			assert.ok(roots[0].refs.every((r) => r.outerClassName === 'dev.proofjava.playground.Calculator'));
 		}
 
 		// The cursor-follow path must agree: there is no production line node to reveal in a test file.
@@ -454,25 +454,25 @@ suite('Line tests view (Faz 15c)', () => {
 	 * shown, not stay silent.
 	 */
 	test('a statically INCONCLUSIVE test that really killed a mutant gets a contradiction note and the bridge contextValue', async () => {
-		const rawTestId = 'dev.coverdict.playground.CalculatorUnresolvedOracleTest.[engine:junit-jupiter]/[class:dev.coverdict.playground.CalculatorUnresolvedOracleTest]/[method:addCheckedViaLocalSoftAssertions()]';
+		const rawTestId = 'dev.proofjava.playground.CalculatorUnresolvedOracleTest.[engine:junit-jupiter]/[class:dev.proofjava.playground.CalculatorUnresolvedOracleTest]/[method:addCheckedViaLocalSoftAssertions()]';
 		const addPerTest: PerTestBlock = {
 			engine: 'pitest', engineVersion: '1.15.8',
-			modules: [{ id: 'root', entries: [{ className: 'dev.coverdict.playground.Calculator', methodName: 'add', lines: [{ line: 7, tests: [rawTestId] }] }], ambient: [] }],
+			modules: [{ id: 'root', entries: [{ className: 'dev.proofjava.playground.Calculator', methodName: 'add', lines: [{ line: 7, tests: [rawTestId] }] }], ambient: [] }],
 		};
 		const inconclusiveFinding: Finding = {
 			rule: 'NO_RECOGNIZED_ORACLE', confidence: 'INCONCLUSIVE', severity: 'WARNING', module: 'root',
-			path: 'src/test/java/dev/coverdict/playground/CalculatorUnresolvedOracleTest.java', startLine: 27, endLine: 33,
+			path: 'src/test/java/dev/proofjava/playground/CalculatorUnresolvedOracleTest.java', startLine: 27, endLine: 33,
 			message: "Test 'addCheckedViaLocalSoftAssertions' calls an unresolved 'assertThat' that looks oracle-suggestive; it could not be resolved to confirm.",
 			suggestedAction: 'Add an assertion on the observed behavior, or register the helper as a custom oracle in configuration.',
 			fingerprint: '4fbd23ef10fc7678',
-			testMethod: 'dev.coverdict.playground.CalculatorUnresolvedOracleTest#addCheckedViaLocalSoftAssertions()',
+			testMethod: 'dev.proofjava.playground.CalculatorUnresolvedOracleTest#addCheckedViaLocalSoftAssertions()',
 		};
 		const addMutation: MutationBlock = {
 			engine: 'pitest', engineVersion: '1.15.8',
 			modules: [{
 				id: 'root',
 				methods: [{
-					className: 'dev.coverdict.playground.Calculator', methodName: 'add', methodDescription: '(II)I', firstLine: 6, lastLine: 8,
+					className: 'dev.proofjava.playground.Calculator', methodName: 'add', methodDescription: '(II)I', firstLine: 6, lastLine: 8,
 					mutants: [{ mutator: 'org.pitest.mutationtest.engine.gregor.mutators.returns.PrimitiveReturnsMutator', line: 7, status: 'KILLED', killingTests: [rawTestId] }],
 				}],
 			}],
@@ -495,7 +495,7 @@ suite('Line tests view (Faz 15c)', () => {
 		}
 
 		const item = await provider.getTreeItem(prodTest);
-		assert.equal(item.contextValue, 'coverdict.prodTest.contradiction');
+		assert.equal(item.contextValue, 'proof.prodTest.contradiction');
 		const tooltip = String((item.tooltip as vscode.MarkdownString).value);
 		assert.match(tooltip, /Mutasyon kanıtı bunu çürütüyor/);
 		assert.match(tooltip, /add\(II\)I/);
@@ -514,6 +514,6 @@ suite('Line tests view (Faz 15c)', () => {
 		const line = provider.getChildren()[0];
 		const prodTest = provider.getChildren(line)[0];
 		const item = await provider.getTreeItem(prodTest);
-		assert.equal(item.contextValue, 'coverdict.prodTest', 'no mutation evidence at all - must not claim a contradiction');
+		assert.equal(item.contextValue, 'proof.prodTest', 'no mutation evidence at all - must not claim a contradiction');
 	});
 });

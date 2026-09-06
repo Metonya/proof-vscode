@@ -31,7 +31,7 @@ export interface GutterDecorationTypes {
  * classic red-green color-vision-deficiency confusion pair - the two
  * states a coverage gutter most needs to keep visually distinct. Swapped
  * for the Okabe-Ito palette (Okabe & Ito, "Color Universal Design", 2008)
- * when `coverdict.colorblindMode` is on - blue/vermillion/yellow/purple
+ * when `proof.colorblindMode` is on - blue/vermillion/yellow/purple
  * stay distinguishable under protanopia, deuteranopia, *and* tritanopia
  * simultaneously, which a single hand-picked "colorblind-friendly" pair
  * usually is not (different CVD types confuse different hues). Raw hex,
@@ -46,7 +46,7 @@ const COLORBLIND_PALETTE = {
 } as const;
 
 /**
- * Called at activation and again, live, whenever `coverdict.colorblindMode`
+ * Called at activation and again, live, whenever `proof.colorblindMode`
  * changes (`extension.ts`'s own `onDidChangeConfiguration` handler disposes
  * the old types and swaps in a fresh set) - no window reload needed.
  */
@@ -61,7 +61,7 @@ export function createGutterDecorationTypes(colorblindMode = false): GutterDecor
 			overviewRulerColor: new vscode.ThemeColor('charts.gray'),
 			overviewRulerLane: vscode.OverviewRulerLane.Left,
 			after: {
-				contentText: '  coverdict: coverage dışı bırakılmış',
+				contentText: '  proof-java: coverage dışı bırakılmış',
 				color: new vscode.ThemeColor('descriptionForeground'),
 				fontStyle: 'italic',
 				margin: '0 0 0 1em',
@@ -75,7 +75,7 @@ export function createGutterDecorationTypes(colorblindMode = false): GutterDecor
 			overviewRulerColor: new vscode.ThemeColor('charts.yellow'),
 			overviewRulerLane: vscode.OverviewRulerLane.Left,
 			after: {
-				contentText: '  coverdict: bu dosya son taramadan sonra değişti - coverage bayat, tekrar tarayın',
+				contentText: '  proof-java: bu dosya son taramadan sonra değişti - coverage bayat, tekrar tarayın',
 				color: new vscode.ThemeColor('editorWarning.foreground'),
 				fontStyle: 'italic',
 				margin: '0 0 0 1em',

@@ -1,11 +1,11 @@
 import { run } from './runner';
 
 /**
- * Faz 30: spawns `coverdict doctor`, the CLI's own Maven-reactor preflight
+ * Faz 30: spawns `proof-java doctor`, the CLI's own Maven-reactor preflight
  * (`docs/CLI-REFERENCE.md`'s doctor section) - the extension delegates to
  * it rather than re-implementing module discovery or classpath generation.
- * `--fix` writes `<module>/target/coverdict-per-test-classpath.txt` and
- * `.../coverdict-mutation-classpath.txt` (module-root-relative, real
+ * `--fix` writes `<module>/target/proof-per-test-classpath.txt` and
+ * `.../proof-mutation-classpath.txt` (module-root-relative, real
  * `mvn -pl <module> dependency:build-classpath` per module, skipping any
  * module whose classpath already validates) - one call fixes every usable
  * module in the reactor, not just one, so `ui/preflight.ts` never needs to

@@ -35,7 +35,7 @@ suite('Diagnostics (Faz 11a)', () => {
 			assert.equal(diagnostics.length, 1);
 			assert.equal(diagnostics[0].severity, vscode.DiagnosticSeverity.Warning);
 			assert.equal(diagnostics[0].range.start.line, 9);
-			assert.equal(diagnostics[0].source, 'coverdict');
+			assert.equal(diagnostics[0].source, 'proof-java');
 
 			clearFindings(collection);
 			assert.deepEqual(collection.get(uri) ?? [], []);

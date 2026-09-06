@@ -121,7 +121,7 @@ function collectLines(entries: readonly PerTestEntry[], outerClassName: string):
 	return { linesToTests, linesToMethod };
 }
 
-/** Strips a nested-class suffix (`Outer$Inner` -> `Outer`) - same convention coverdict-cli's PseudoTestedMethodRule uses on the production side. */
+/** Strips a nested-class suffix (`Outer$Inner` -> `Outer`) - same convention proof-java-cli's PseudoTestedMethodRule uses on the production side. */
 function stripNestedSuffix(className: string): string {
 	const dollar = className.indexOf('$');
 	return dollar < 0 ? className : className.slice(0, dollar);

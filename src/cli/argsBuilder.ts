@@ -54,7 +54,7 @@ export interface AnalyzeArgsInput {
 	modules?: readonly ModuleReportBinding[];
 	outPath: string;
 	fileCoverage?: boolean;
-	/** Sonar-style `sonar.coverage.exclusions` globs (D-05) - passed through verbatim, one authored list, never merged with a repo's own coverdict.config.json. */
+	/** Sonar-style `sonar.coverage.exclusions` globs (D-05) - passed through verbatim, one authored list, never merged with a repo's own proof.config.json. */
 	coverageExclusions?: readonly string[];
 	/**
 	 * F3 (Plan.md Bölüm 4): L2 per-test evidence. `classpaths` requires at

@@ -34,7 +34,7 @@ function projectMarkersPresentAt(dir: string): boolean {
 	return PROJECT_ROOT_MARKER_FILES.some((marker) => fs.existsSync(path.join(dir, marker)));
 }
 
-/** A directory "looks like a project" for sibling-detection purposes if it has a build-system marker of its own, or is simply a separate git checkout (a repo that has not been built with coverdict's supported build tools yet is still a real, distinct project - listing it by name costs nothing and is more honest than silently skipping it). */
+/** A directory "looks like a project" for sibling-detection purposes if it has a build-system marker of its own, or is simply a separate git checkout (a repo that has not been built with proof-java's supported build tools yet is still a real, distinct project - listing it by name costs nothing and is more honest than silently skipping it). */
 function looksLikeASeparateProject(dir: string): boolean {
 	return projectMarkersPresentAt(dir) || fs.existsSync(path.join(dir, '.git'));
 }
@@ -56,7 +56,7 @@ function reportNotAProjectRoot(folder: vscode.WorkspaceFolder, configuredReportP
 		vscode.window.showErrorMessage(describeSiblingProjects(siblingProjects));
 		return;
 	}
-	void offerToOpenSetting(`coverdict: rapor dosyası bulunamadı: ${configuredReportPath}. Önce testleri JaCoCo ile çalıştırın, ya da coverdict.reportPath ayarını düzeltin.`, 'coverdict.reportPath');
+	void offerToOpenSetting(`proof-java: rapor dosyası bulunamadı: ${configuredReportPath}. Önce testleri JaCoCo ile çalıştırın, ya da proof.reportPath ayarını düzeltin.`, 'proof.reportPath');
 }
 
 interface RunTestsModuleQuickPickItem extends vscode.QuickPickItem {
@@ -74,7 +74,7 @@ function describeMissingMainSource(workspaceRoot: string, moduleRoot: string): s
  * `module-info.java` can never resolve a sibling module before `package`)
  * - a first-ever "run tests" click had no way to know which module(s) the
  * user actually cares about, so it always ran the whole reactor, including
- * sibling modules coverdict never needed and that can have their own
+ * sibling modules proof-java never needed and that can have their own
  * unrelated toolchain requirements (JPMS/native-image/ProGuard/...).
  *
  * Module discovery here is a blind `pom.xml` glob (every `pom.xml` under
@@ -126,7 +126,7 @@ export async function resolveRunTestsModuleScope(folder: vscode.WorkspaceFolder)
 	}));
 	const picked = await vscode.window.showQuickPick(items, {
 		canPickMany: true,
-		title: 'coverdict: testler hangi modül(ler)de çalıştırılsın?',
+		title: 'proof-java: testler hangi modül(ler)de çalıştırılsın?',
 		placeHolder: `${modules.length} modül bulundu - varsayılan hepsi seçili, ihtiyacınız olmayanları işaretinden çıkarabilirsiniz`,
 	});
 	if (!picked || picked.length === 0) {
@@ -144,7 +144,7 @@ export async function resolveRunTestsModuleScope(folder: vscode.WorkspaceFolder)
  */
 async function offerToRunTestsNow(folder: vscode.WorkspaceFolder, output: vscode.OutputChannel): Promise<boolean> {
 	const choice = await vscode.window.showInformationMessage(
-		'coverdict: bu projede henüz bir JaCoCo raporu yok. Testleri JaCoCo ile şimdi çalıştıralım mı? Maven kendi terminalinde çalışacak, çıktısını göreceksiniz.',
+		'proof-java: bu projede henüz bir JaCoCo raporu yok. Testleri JaCoCo ile şimdi çalıştıralım mı? Maven kendi terminalinde çalışacak, çıktısını göreceksiniz.',
 		'Testleri Çalıştır',
 		'Vazgeç',
 	);
@@ -159,7 +159,7 @@ async function offerToRunTestsNow(folder: vscode.WorkspaceFolder, output: vscode
 	if (result && !result.success) {
 		const interpretation = interpretMavenFailure(result.capturedOutput);
 		const reasonSuffix = interpretation ? ` Sebep: ${interpretation.detail}` : ' Ayrıntı için terminaldeki çıktıya bakın.';
-		vscode.window.showErrorMessage(`coverdict: Maven başarısız oldu.${reasonSuffix} Tarama başlatılmadı.`);
+		vscode.window.showErrorMessage(`proof-java: Maven başarısız oldu.${reasonSuffix} Tarama başlatılmadı.`);
 	}
 	return result?.success === true;
 }
@@ -190,7 +190,7 @@ export async function resolveReportBinding(folder: vscode.WorkspaceFolder, confi
 		if (!alreadyOfferedRunTests && await offerToRunTestsNow(folder, output)) {
 			return resolveReportBinding(folder, configuredReportPath, output, true);
 		}
-		void offerToOpenSetting(`coverdict: rapor dosyası bulunamadı: ${configuredReportPath}. Önce testleri JaCoCo ile çalıştırın, ya da coverdict.reportPath ayarını düzeltin.`, 'coverdict.reportPath');
+		void offerToOpenSetting(`proof-java: rapor dosyası bulunamadı: ${configuredReportPath}. Önce testleri JaCoCo ile çalıştırın, ya da proof.reportPath ayarını düzeltin.`, 'proof.reportPath');
 		return undefined;
 	}
 
@@ -198,8 +198,8 @@ export async function resolveReportBinding(folder: vscode.WorkspaceFolder, confi
 	const bound = bindModules(repoRelativePaths);
 
 	const summary = bound.length === 1 ? bound[0].root : `${bound.length} modül (${bound.map((m) => m.root).join(', ')})`;
-	output.appendLine(`coverdict: coverdict.reportPath (${configuredReportPath}) bulunamadı - ${summary} otomatik bağlanıldı.`);
-	void vscode.window.showInformationMessage(`coverdict: ${summary} otomatik bağlanıldı. Kalıcı yapmak için coverdict.reportPath ayarını düzeltin.`);
+	output.appendLine(`proof-java: proof.reportPath (${configuredReportPath}) bulunamadı - ${summary} otomatik bağlanıldı.`);
+	void vscode.window.showInformationMessage(`proof-java: ${summary} otomatik bağlanıldı. Kalıcı yapmak için proof.reportPath ayarını düzeltin.`);
 
 	return { modules: bound, allModules: bound };
 }
@@ -214,7 +214,7 @@ export async function resolveReportBinding(folder: vscode.WorkspaceFolder, confi
  */
 async function runDoctorFixWithProgress(javaExecutable: string, jarPath: string, folder: vscode.WorkspaceFolder, output: vscode.OutputChannel, moduleCount: number): Promise<DoctorResult> {
 	return vscode.window.withProgress(
-		{ location: vscode.ProgressLocation.Notification, title: 'coverdict: classpath listeleri üretiliyor (doctor --fix)', cancellable: true },
+		{ location: vscode.ProgressLocation.Notification, title: 'proof-java: classpath listeleri üretiliyor (doctor --fix)', cancellable: true },
 		(progress, token) => new Promise<DoctorResult>((resolve, reject) => {
 			runDoctor(javaExecutable, jarPath, folder.uri.fsPath, {
 				env: resolveWorkspaceEnv(folder),
@@ -235,7 +235,7 @@ async function runDoctorFixWithProgress(javaExecutable: string, jarPath: string,
 export type ClasspathKind = 'perTest' | 'mutation';
 
 function classpathRelPath(root: string, kind: ClasspathKind): string {
-	const file = kind === 'perTest' ? 'target/coverdict-per-test-classpath.txt' : 'target/coverdict-mutation-classpath.txt';
+	const file = kind === 'perTest' ? 'target/proof-per-test-classpath.txt' : 'target/proof-mutation-classpath.txt';
 	return root === '.' ? file : `${root}/${file}`;
 }
 
@@ -246,7 +246,7 @@ interface ClasspathCheck {
 
 /**
  * Checks what already exists - never generates anything itself. The
- * `coverdict.perTestClasspathPath` escape hatch (unchanged setting/default
+ * `proof.perTestClasspathPath` escape hatch (unchanged setting/default
  * from before Faz 30) only applies when there is exactly one bound module,
  * since a single scalar path cannot meaningfully override N modules' files.
  */
@@ -289,7 +289,7 @@ export async function resolveEvidenceClasspaths(
 	kind: ClasspathKind,
 ): Promise<readonly { moduleId: string; path: string }[] | undefined> {
 	const workspaceRoot = folder.uri.fsPath;
-	const escapeHatchPath = vscode.workspace.getConfiguration('coverdict', folder).get<string>('perTestClasspathPath') || 'target/coverdict-classpath.txt';
+	const escapeHatchPath = vscode.workspace.getConfiguration('proof', folder).get<string>('perTestClasspathPath') || 'target/proof-classpath.txt';
 
 	let check = checkClasspaths(workspaceRoot, modules, kind, escapeHatchPath);
 	if (check.missingModuleRoots.length === 0) {
@@ -298,18 +298,18 @@ export async function resolveEvidenceClasspaths(
 
 	if (!projectMarkersPresentAt(workspaceRoot)) {
 		vscode.window.showErrorMessage(
-			`coverdict: derin tarama classpath listesi olmadan çalışamaz - bu yüzden tarama hiç başlatılmadı. Bu klasör bir Maven projesi değil, otomatik üretim yalnızca Maven'da mümkün. ${escapeHatchPath} ayarına elle ürettiğiniz bir liste verin.`,
+			`proof-java: derin tarama classpath listesi olmadan çalışamaz - bu yüzden tarama hiç başlatılmadı. Bu klasör bir Maven projesi değil, otomatik üretim yalnızca Maven'da mümkün. ${escapeHatchPath} ayarına elle ürettiğiniz bir liste verin.`,
 		);
 		return undefined;
 	}
 
 	const choice = await vscode.window.showInformationMessage(
-		`coverdict: derin tarama için classpath listesi gerekli (${check.missingModuleRoots.length} modülde yok: ${check.missingModuleRoots.join(', ')}). Maven ile şimdi üretilsin mi?`,
+		`proof-java: derin tarama için classpath listesi gerekli (${check.missingModuleRoots.length} modülde yok: ${check.missingModuleRoots.join(', ')}). Maven ile şimdi üretilsin mi?`,
 		'Üret',
 		'Vazgeç',
 	);
 	if (choice !== 'Üret') {
-		vscode.window.showErrorMessage('coverdict: derin tarama classpath listesi olmadan çalışamaz - bu yüzden tarama hiç başlatılmadı.');
+		vscode.window.showErrorMessage('proof-java: derin tarama classpath listesi olmadan çalışamaz - bu yüzden tarama hiç başlatılmadı.');
 		return undefined;
 	}
 
@@ -321,12 +321,12 @@ export async function resolveEvidenceClasspaths(
 		return handleClasspathGenerationFailure({ folder, jarPath, javaExecutable, output, modules, kind, escapeHatchPath }, doctorResult.stdout + doctorResult.stderr);
 	}
 	if (check.missingModuleRoots.length > 0) {
-		vscode.window.showWarningMessage(`coverdict: şu modüller için derin kanıt toplanamayacak (classpath üretilemedi): ${check.missingModuleRoots.join(', ')}. Coverage yine de hesaplanacak.`);
+		vscode.window.showWarningMessage(`proof-java: şu modüller için derin kanıt toplanamayacak (classpath üretilemedi): ${check.missingModuleRoots.join(', ')}. Coverage yine de hesaplanacak.`);
 	}
 	return check.classpaths;
 }
 
-const CLASSPATH_UNAVAILABLE_PREFIX = 'coverdict: derin tarama classpath listesi olmadan çalışamaz - bu yüzden tarama hiç başlatılmadı.';
+const CLASSPATH_UNAVAILABLE_PREFIX = 'proof-java: derin tarama classpath listesi olmadan çalışamaz - bu yüzden tarama hiç başlatılmadı.';
 
 interface ClasspathGenerationContext {
 	folder: vscode.WorkspaceFolder;
@@ -348,7 +348,7 @@ interface ClasspathGenerationContext {
 async function handleClasspathGenerationFailure(ctx: ClasspathGenerationContext, rawOutput: string): Promise<readonly { moduleId: string; path: string }[] | undefined> {
 	const { folder, jarPath, javaExecutable, output, modules, kind, escapeHatchPath } = ctx;
 	const interpretation = interpretMavenFailure(rawOutput);
-	const reasonSuffix = interpretation ? ` Sebep: ${interpretation.detail}` : ' Ayrıntı için Output → coverdict kanalına bakın.';
+	const reasonSuffix = interpretation ? ` Sebep: ${interpretation.detail}` : ' Ayrıntı için Output → proof-java kanalına bakın.';
 
 	if (interpretation?.kind !== 'unresolvedReactorSibling') {
 		vscode.window.showErrorMessage(`${CLASSPATH_UNAVAILABLE_PREFIX}${reasonSuffix}`);
@@ -368,12 +368,12 @@ async function handleClasspathGenerationFailure(ctx: ClasspathGenerationContext,
 	const check = checkClasspaths(workspaceRoot, modules, kind, escapeHatchPath);
 	if (check.classpaths.length === 0) {
 		const retryInterpretation = interpretMavenFailure(retried.stdout + retried.stderr);
-		const retryReasonSuffix = retryInterpretation ? ` Sebep: ${retryInterpretation.detail}` : ' Ayrıntı için Output → coverdict kanalına bakın.';
+		const retryReasonSuffix = retryInterpretation ? ` Sebep: ${retryInterpretation.detail}` : ' Ayrıntı için Output → proof-java kanalına bakın.';
 		vscode.window.showErrorMessage(`${CLASSPATH_UNAVAILABLE_PREFIX}${retryReasonSuffix}`);
 		return undefined;
 	}
 	if (check.missingModuleRoots.length > 0) {
-		vscode.window.showWarningMessage(`coverdict: şu modüller için derin kanıt toplanamayacak (classpath üretilemedi): ${check.missingModuleRoots.join(', ')}. Coverage yine de hesaplanacak.`);
+		vscode.window.showWarningMessage(`proof-java: şu modüller için derin kanıt toplanamayacak (classpath üretilemedi): ${check.missingModuleRoots.join(', ')}. Coverage yine de hesaplanacak.`);
 	}
 	return check.classpaths;
 }

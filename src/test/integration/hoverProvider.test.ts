@@ -18,9 +18,9 @@ const PER_TEST: PerTestBlock = {
 	modules: [{
 		id: 'root',
 		entries: [{
-			className: 'dev.coverdict.playground.Calculator',
+			className: 'dev.proofjava.playground.Calculator',
 			methodName: 'square',
-			lines: [{ line: 37, tests: ['[class:dev.coverdict.playground.CalculatorPseudoTestedTest]/[method:squareHasNoAssertion()]'] }],
+			lines: [{ line: 37, tests: ['[class:dev.proofjava.playground.CalculatorPseudoTestedTest]/[method:squareHasNoAssertion()]'] }],
 		}],
 		ambient: [],
 	}],
@@ -28,9 +28,9 @@ const PER_TEST: PerTestBlock = {
 
 const FINDINGS: readonly Finding[] = [{
 	rule: 'NO_RECOGNIZED_ORACLE', confidence: 'HIGH', severity: 'WARNING', module: 'root',
-	path: 'src/test/java/dev/coverdict/playground/CalculatorPseudoTestedTest.java', startLine: 16, endLine: 16,
+	path: 'src/test/java/dev/proofjava/playground/CalculatorPseudoTestedTest.java', startLine: 16, endLine: 16,
 	message: 'no oracle', suggestedAction: 'add one', fingerprint: 'f1',
-	testMethod: 'dev.coverdict.playground.CalculatorPseudoTestedTest#squareHasNoAssertion()',
+	testMethod: 'dev.proofjava.playground.CalculatorPseudoTestedTest#squareHasNoAssertion()',
 }];
 
 /** Exactly the shape a real single-module run emits (`inputs.modules[0]`, verified 2026-08-28). */
@@ -52,7 +52,7 @@ const STATE: Omit<CoverageState, 'workspaceRoot'> = {
  * file's actual location is part of what these tests exercise.
  */
 async function openPaddedJavaFile(rootRelativeDir: string, packageName: string, className: string): Promise<{ document: vscode.TextDocument; workspaceRoot: string }> {
-	const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-hoverProvider-'));
+	const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-hoverProvider-'));
 	const dir = path.join(workspaceRoot, ...rootRelativeDir.split('/'), ...packageName.split('.'));
 	fs.mkdirSync(dir, { recursive: true });
 	const filePath = path.join(dir, `${className}.java`);
@@ -64,7 +64,7 @@ async function openPaddedJavaFile(rootRelativeDir: string, packageName: string, 
 suite('Hover provider (Faz 15b)', () => {
 	test('a false-green production line hover names the missing oracle', async () => {
 		setPerTestState({ perTest: PER_TEST, warnings: [] });
-		const { document, workspaceRoot } = await openPaddedJavaFile('src/main/java', 'dev.coverdict.playground', 'Calculator');
+		const { document, workspaceRoot } = await openPaddedJavaFile('src/main/java', 'dev.proofjava.playground', 'Calculator');
 		setCoverageState({ ...STATE, workspaceRoot });
 
 		const disposable = registerHoverProvider();
@@ -83,7 +83,7 @@ suite('Hover provider (Faz 15b)', () => {
 
 	test('a line with no per-test evidence at all produces no hover (no data, no claim)', async () => {
 		setPerTestState({ perTest: PER_TEST, warnings: [] });
-		const { document, workspaceRoot } = await openPaddedJavaFile('src/main/java', 'dev.coverdict.playground', 'Calculator');
+		const { document, workspaceRoot } = await openPaddedJavaFile('src/main/java', 'dev.proofjava.playground', 'Calculator');
 		setCoverageState({ ...STATE, workspaceRoot });
 
 		const disposable = registerHoverProvider();
@@ -112,32 +112,32 @@ suite('Hover provider (Faz 15b)', () => {
 				id: 'root',
 				entries: [
 					{
-						className: 'dev.coverdict.playground.Calculator',
+						className: 'dev.proofjava.playground.Calculator',
 						methodName: 'square',
-						lines: [{ line: 37, tests: ['dev.coverdict.playground.CalculatorPseudoTestedTest.[engine:junit-jupiter]/[class:dev.coverdict.playground.CalculatorPseudoTestedTest]/[method:squareHasNoAssertion()]'] }],
+						lines: [{ line: 37, tests: ['dev.proofjava.playground.CalculatorPseudoTestedTest.[engine:junit-jupiter]/[class:dev.proofjava.playground.CalculatorPseudoTestedTest]/[method:squareHasNoAssertion()]'] }],
 					},
 					// Real data: the test class covers its own lines too.
 					{
-						className: 'dev.coverdict.playground.CalculatorPseudoTestedTest',
+						className: 'dev.proofjava.playground.CalculatorPseudoTestedTest',
 						methodName: 'squareHasNoAssertion',
-						lines: [{ line: 4, tests: ['dev.coverdict.playground.CalculatorPseudoTestedTest.[engine:junit-jupiter]/[class:dev.coverdict.playground.CalculatorPseudoTestedTest]/[method:squareHasNoAssertion()]'] }],
+						lines: [{ line: 4, tests: ['dev.proofjava.playground.CalculatorPseudoTestedTest.[engine:junit-jupiter]/[class:dev.proofjava.playground.CalculatorPseudoTestedTest]/[method:squareHasNoAssertion()]'] }],
 					},
 				],
 				ambient: [],
 			}],
 		};
 		setPerTestState({ perTest: realPerTest, warnings: [] });
-		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coverdict-hoverProvider-'));
-		const dir = path.join(workspaceRoot, 'src', 'test', 'java', 'dev', 'coverdict', 'playground');
+		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-hoverProvider-'));
+		const dir = path.join(workspaceRoot, 'src', 'test', 'java', 'dev', 'proofjava', 'playground');
 		fs.mkdirSync(dir, { recursive: true });
 		const filePath = path.join(dir, 'CalculatorPseudoTestedTest.java');
-		fs.writeFileSync(filePath, 'package dev.coverdict.playground;\n\npublic class CalculatorPseudoTestedTest {\n    void squareHasNoAssertion() {}\n}\n', 'utf8');
+		fs.writeFileSync(filePath, 'package dev.proofjava.playground;\n\npublic class CalculatorPseudoTestedTest {\n    void squareHasNoAssertion() {}\n}\n', 'utf8');
 		const document = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
 		setCoverageState({
 			...STATE,
 			workspaceRoot,
 			// Authoritative production listing - lets the reverse index drop the test class's own self-covering entry.
-			fileCoverage: { files: [{ module: 'root', path: 'src/main/java/dev/coverdict/playground/Calculator.java', metrics: METRIC_SET, lines: [] }], excluded: [] },
+			fileCoverage: { files: [{ module: 'root', path: 'src/main/java/dev/proofjava/playground/Calculator.java', metrics: METRIC_SET, lines: [] }], excluded: [] },
 		});
 
 		const disposable = registerHoverProvider();

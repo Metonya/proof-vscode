@@ -73,11 +73,11 @@ async function productionHover(workspaceRoot: string, modules: CoverageState['mo
 	md.isTrusted = true;
 
 	if (quality.isFalseGreen) {
-		md.appendMarkdown('**⚠ coverdict: bu satırı kapsayan hiçbir testin oracle\'ı yok** - kapsama yeşil ama satır gerçekte doğrulanmıyor.\n\n---\n\n');
+		md.appendMarkdown('**⚠ proof-java: bu satırı kapsayan hiçbir testin oracle\'ı yok** - kapsama yeşil ama satır gerçekte doğrulanmıyor.\n\n---\n\n');
 	}
 
 	const weakCount = quality.byVerdict.noOracle + quality.byVerdict.weak;
-	md.appendMarkdown(`**coverdict — satır ${lineNumber}**\n\n`);
+	md.appendMarkdown(`**proof-java — satır ${lineNumber}**\n\n`);
 	md.appendMarkdown(`${quality.tests.length} test çalıştırıyor` + (weakCount > 0 ? ` · ${weakCount}'inin oracle'ı yok/zayıf` : '') + '\n\n');
 
 	// Resolve each test's own file only once per class (most lines share a
@@ -124,7 +124,7 @@ async function testMethodHover(document: vscode.TextDocument, position: vscode.P
 
 	const md = new vscode.MarkdownString(undefined, true);
 	md.isTrusted = true;
-	md.appendMarkdown(`**coverdict — ${methodName}()**\n\n`);
+	md.appendMarkdown(`**proof-java — ${methodName}()**\n\n`);
 	md.appendMarkdown('Bu test şu production satırlarını çalıştırıyor (yalnızca bu koşuda hedeflenen sınıflar):\n\n');
 
 	const productionClassIndex = buildProductionClassIndexFor();

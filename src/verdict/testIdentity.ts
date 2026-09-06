@@ -1,9 +1,9 @@
 /**
- * Ported from coverdict-cli's `TestIdentity.java` (D-49): a raw test id
+ * Ported from proof-java-cli's `TestIdentity.java` (D-49): a raw test id
  * string from `perTest.entries[].lines[].tests[]` can be a JUnit5
  * `UniqueId` (`[engine:...]/[class:X]/[method:Y()]` for a plain test, or
  * `[class:X]/[test-template:Y(args)]/[test-template-invocation:#N]` for one
- * invocation of a `@ParameterizedTest`/`@RepeatedTest`) or coverdict's own
+ * invocation of a `@ParameterizedTest`/`@RepeatedTest`) or proof-java's own
  * `Class#method(...)` shape, depending on the target's test engine - the
  * real format was never confirmed against every live PIT shape, so an
  * unrecognized id is displayed verbatim (`display`) rather than guessed at

@@ -2,9 +2,9 @@
  * Pure: builds the Maven argv for the "Testleri Çalıştır" task (Faz 30/31).
  * Default is still the whole reactor - no `-pl`/`-am`, matching what a user
  * would type by hand. `moduleRoots` (Faz 31) scopes it to just the module(s)
- * coverdict already knows it needs, once a scan has bound them: real gson
+ * proof-java already knows it needs, once a scan has bound them: real gson
  * testing found a whole-reactor run pulling in sibling modules (native-image,
- * ProGuard-obfuscated test classes, JPMS) that coverdict never asked for and
+ * ProGuard-obfuscated test classes, JPMS) that proof-java never asked for and
  * has nothing to do with the module actually being analyzed - scoping avoids
  * their fragility entirely rather than trying to work around each one. The
  * very first run (no scan yet, no known modules) still has to be whole-reactor
