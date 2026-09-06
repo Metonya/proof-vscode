@@ -103,8 +103,10 @@ with live progress on a run.
 
 ## Installation
 
-Not yet published to the VS Code Marketplace. For now, build it from
-source. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Search for **Proof** in the VS Code Extensions view, or install it from
+the [Marketplace listing](https://marketplace.visualstudio.com/items?itemName=metonya.proof-vscode).
+
+To build it from source instead, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Usage
 
@@ -149,4 +151,5 @@ full list):
 
 ## License
 
-Not yet decided for this repository.
+[Apache-2.0](LICENSE), the same license as
+[proof-java](https://github.com/Metonya/proof-java).
