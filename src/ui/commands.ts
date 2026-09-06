@@ -968,6 +968,11 @@ async function runMutation(
 	const targetFqcns = targets.map((t) => t.fqcn);
 	setMutationState({ mutation: parsed.mutation, warnings: parsed.warnings, targets: targetFqcns, ranAt: ranAtMs });
 	sinks.mutationView.refresh();
+	// Faz 33: the Run panel's own Mutation Testing row shows this same
+	// ranAt as a "last run: X ago" freshness text - it needs its own
+	// refresh, setMutationState() firing mutationView's event does not
+	// reach it.
+	sinks.runView.refresh();
 	void vscode.commands.executeCommand('proof.mutationView.focus');
 	// Faz 25: yalnızca blok gerçekten varsa yazılır - yoksa (bütçe aşıldı vb.)
 	// eski bir sonucu yeni ama boş bir "koşu" ile ezmemek için hiç dokunulmaz.

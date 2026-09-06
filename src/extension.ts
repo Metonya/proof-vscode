@@ -271,6 +271,12 @@ async function restoreMutationSnapshot(storageDir: string, sinks: CoverageSinks)
 	}
 	setMutationState({ mutation: snapshot.mutation, warnings: snapshot.warnings, targets: snapshot.targets, ranAt: snapshot.ranAtMs });
 	sinks.mutationView.refresh();
+	// Faz 33: the Run panel's Mutation Testing row shows this same ranAt
+	// as a "last run: X ago" freshness text and needs its own refresh -
+	// the Run panel can already be visible by the time this restore
+	// finishes, so without this it keeps showing "never run" until
+	// something unrelated happens to refresh it.
+	sinks.runView.refresh();
 }
 
 /**

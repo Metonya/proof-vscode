@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 
 import { formatRelativeTime } from '../../model/mutationModel';
-import { isGutterVisible } from '../../model/store';
+import { getMutationState, isGutterVisible } from '../../model/store';
 
 /**
  * Faz 11b: "proof-java: Çalıştır" - komut paletine gitmeden analiz
@@ -99,7 +99,7 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 		items.push(noVcs
 			? new RunItem(
 				'Mutation Testing (whole module, no diff)',
-				'deliberately break the code, find where no test notices',
+				`deliberately break the code, find where no test notices · ${mutationFreshnessText()}`,
 				'proof.mutationForModuleAll',
 				'zap',
 				'REAL MUTATION TESTING (different from Deep Scan).\n\n'
@@ -109,7 +109,7 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 			)
 			: new RunItem(
 				'Mutation Testing (diff-scoped)',
-				'deliberately break the code, find where no test notices',
+				`deliberately break the code, find where no test notices · ${mutationFreshnessText()}`,
 				'proof.mutationForModule',
 				'zap',
 				'REAL MUTATION TESTING (different from Deep Scan).\n\n'
@@ -139,6 +139,12 @@ function reportFreshnessText(folder: vscode.WorkspaceFolder): string {
 	} catch {
 		return 'report: not yet generated';
 	}
+}
+
+/** Faz 33 (user request): the Run panel's own "last ran" freshness signal (same style as `reportFreshnessText` above) for Mutation Testing specifically - it has its own real timestamp (`MutationState.ranAt`, set at write time since the CLI's own output carries none, D-25/§7.5) independent of the JaCoCo report's mtime. */
+function mutationFreshnessText(): string {
+	const ranAt = getMutationState()?.ranAt;
+	return ranAt === undefined ? 'never run' : `last run: ${formatRelativeTime(ranAt, Date.now())}`;
 }
 
 function diffModeText(diffMode: string, baseRef: string | undefined): string {
