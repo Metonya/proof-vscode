@@ -4,12 +4,18 @@ See which of your passing tests actually prove anything — inline, as you
 code.
 
 Coverage tells you a line executed. It doesn't tell you that anything
-checked what that line did. This extension runs [proof-java](https://github.com/)
+checked what that line did. This extension runs [proof-java](https://github.com/Metonya/proof-java)
 against your workspace and shows its verdict directly in the editor: which
 lines are covered, which of the tests covering them have no real assertion,
 and — when you ask for it — which mutations nothing catches.
 
 Works in VS Code, Cursor, and Windsurf.
+
+![Coverage gutter and Explorer badges](media/screenshots/hero-gutter.png)
+<!-- Suggested shot: a Java file open with the coverage gutter visible
+     (a mix of covered/uncovered/oracleless lines) and Explorer badges
+     showing in the sidebar file tree. This is the first thing a visitor
+     sees - the one screenshot that has to sell the idea on its own. -->
 
 ## Why
 
@@ -54,13 +60,38 @@ the Problems panel.
   coverage XML, runs git, or computes a percentage itself — see
   [`docs/PLAN.md`](docs/PLAN.md) if you want the reasoning.
 
+## Screenshots
+
+**Line → Tests** — which tests cover this line, and whether each one has a
+real oracle (a test file open shows the reverse: which lines this test
+actually exercises).
+
+![Line → Tests view](media/screenshots/line-to-tests.png)
+
+**Test Quality** — every finding, filterable and groupable by rule or file.
+
+![Test Quality view](media/screenshots/test-quality.png)
+
+**Mutation** — class → method → mutant → the tests that failed to kill it,
+with live progress on a run.
+
+![Mutation view](media/screenshots/mutation.png)
+
+<!-- Drop the four PNGs above into media/screenshots/ with these exact
+     filenames (hero-gutter, line-to-tests, test-quality, mutation) and
+     they'll show up here and on the Marketplace listing automatically -
+     no other change needed. A short GIF instead of a still for the hero
+     shot (e.g. running Quick Scan and watching the gutter light up) tends
+     to land better on a Marketplace page than a static image, if you want
+     to go that far. -->
+
 ## Requirements
 
 - A JDK to build/run `proof-java` (Java 17 recommended — see the CLI's own
   support matrix).
 - A Maven project with a JaCoCo report (`mvn verify` produces one by
   default at `target/site/jacoco/jacoco.xml`).
-- `proof-java.jar`, built from the [`proof-java`](https://github.com/)
+- `proof-java.jar`, built from the [`proof-java`](https://github.com/Metonya/proof-java)
   repository (`mvn -pl proof-java-cli package`). Not yet published to
   GitHub Releases — see that repo's own README for current status.
 
@@ -113,8 +144,12 @@ full list):
   current open work.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — building, running, and testing
   the extension itself.
-- [proof-java](https://github.com/) — the CLI this extension runs, and
+- [proof-java](https://github.com/Metonya/proof-java) — the CLI this extension runs, and
   what each finding actually means.
+- [`skills/proof-java`](https://github.com/Metonya/proof-java/tree/main/skills/proof-java)
+  — if you use an AI coding agent to write or repair tests, this is a skill
+  for it: it runs `proof-java`, reads the verdict JSON, and acts on the
+  findings in a loop instead of guessing whether a test is good.
 
 ## License
 
