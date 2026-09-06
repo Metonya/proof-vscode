@@ -190,6 +190,102 @@ function resolveInternedTestIds(value: unknown): void {
 				line.tests = line.tests.map((index: unknown) => (typeof index === 'number' ? testIds[index] : index));
 			}
 		}
+		// Faz 34: without this, the module is left in a mixed state (a
+		// `testIds` array alongside now-resolved-to-strings `tests`) - a
+		// snapshot later written from this data would then fool
+		// `reinternPerTestIds`'s "already interned" check (which only looks
+		// for `testIds`'s presence) into skipping it, re-emitting plain
+		// strings where proof-java's own reader expects numeric indexes
+		// again. Deleting it here keeps "has `testIds`" and "`tests` is
+		// numeric" the same fact everywhere in this file.
+		delete testModule.testIds;
+	}
+}
+
+/**
+ * Faz 34, real user bug: "Proof: report could not be generated (exit code
+ * 2) ... Current token (VALUE_STRING) not numeric". `ui/commands.ts`'s
+ * `runExportReport` merges `pertest-current.json`/`mutation-current.json`
+ * (our OWN snapshots - already resolved to plain strings by
+ * `resolveInternedTestIds` above, since that runs at `parseVerdict` time,
+ * before `writeJsonSnapshot` ever sees the data) into a document it then
+ * hands back to proof-java's `render-html` command. That reader still
+ * expects D-86's wire shape (`testIds` + numeric indexes) - feeding it
+ * plain strings where it expects numbers is exactly this crash. This is
+ * the inverse of `resolveInternedTestIds`: rebuilds a `testIds` array and
+ * replaces each `tests: string[]` with indexes into it, so the document
+ * `runExportReport` sends back to the CLI matches what the CLI itself
+ * would have produced. A module that already has a `testIds` array (read
+ * straight from a fresh `verdict-current.json`, never touched by our
+ * resolver) is left alone - re-interning it would silently discard its
+ * real one.
+ */
+export function reinternPerTestIds(value: unknown): void {
+	if (!isRecord(value) || !Array.isArray(value.modules)) {
+		return;
+	}
+	for (const testModule of value.modules) {
+		if (!isRecord(testModule)) {
+			continue;
+		}
+		const lines = [...(Array.isArray(testModule.entries) ? testModule.entries : []), ...(Array.isArray(testModule.ambient) ? testModule.ambient : [])]
+			.flatMap((entry) => (isRecord(entry) && Array.isArray(entry.lines) ? entry.lines : []))
+			.filter((line): line is Record<string, unknown> => isRecord(line) && Array.isArray(line.tests));
+		// A stray leftover `testIds` field (an older extension build's
+		// snapshot, written before it deleted this on resolve) is not a
+		// reliable "already native" signal on its own - checking the
+		// `tests` values themselves is: a module with nothing left to
+		// convert is a true no-op, self-healing regardless of what shape
+		// this document happened to arrive in.
+		if (!lines.some((line) => (line.tests as unknown[]).some((t) => typeof t === 'string'))) {
+			continue;
+		}
+		const testIds: string[] = [];
+		const indexOf = (id: string): number => {
+			const existing = testIds.indexOf(id);
+			if (existing !== -1) {
+				return existing;
+			}
+			testIds.push(id);
+			return testIds.length - 1;
+		};
+		for (const line of lines) {
+			line.tests = (line.tests as unknown[]).map((id) => (typeof id === 'string' ? indexOf(id) : id));
+		}
+		testModule.testIds = testIds;
+	}
+}
+
+/** Same reasoning as `reinternPerTestIds`, for `mutation.modules[].methods[].mutants[].killingTests`. */
+export function reinternMutationTestIds(value: unknown): void {
+	if (!isRecord(value) || !Array.isArray(value.modules)) {
+		return;
+	}
+	for (const mutationModule of value.modules) {
+		if (!isRecord(mutationModule) || !Array.isArray(mutationModule.methods)) {
+			continue;
+		}
+		const mutants = mutationModule.methods
+			.flatMap((method) => (isRecord(method) && Array.isArray(method.mutants) ? method.mutants : []))
+			.filter((mutant): mutant is Record<string, unknown> => isRecord(mutant) && Array.isArray(mutant.killingTests));
+		// Same reasoning as reinternPerTestIds: check the values, not a
+		// possibly-stale leftover testIds field.
+		if (!mutants.some((mutant) => (mutant.killingTests as unknown[]).some((t) => typeof t === 'string'))) {
+			continue;
+		}
+		const testIds: string[] = [];
+		const indexOf = (id: string): number => {
+			const existing = testIds.indexOf(id);
+			if (existing !== -1) {
+				return existing;
+			}
+			testIds.push(id);
+			return testIds.length - 1;
+		};
+		for (const mutant of mutants) {
+			mutant.killingTests = (mutant.killingTests as unknown[]).map((id) => (typeof id === 'string' ? indexOf(id) : id));
+		}
+		mutationModule.testIds = testIds;
 	}
 }
 
@@ -242,6 +338,8 @@ function resolveInternedMutationTestIds(value: unknown): void {
 				mutant.killingTests = mutant.killingTests.map((index: unknown) => (typeof index === 'number' ? testIds[index] : index));
 			}
 		}
+		// Faz 34: same reasoning as resolveInternedTestIds's own delete above.
+		delete mutationModule.testIds;
 	}
 }
 

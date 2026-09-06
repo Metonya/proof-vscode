@@ -25,7 +25,7 @@ import {
 	setMutationState,
 	setPerTestState,
 } from '../model/store';
-import { parseVerdict } from '../verdict/parse';
+import { parseVerdict, reinternMutationTestIds, reinternPerTestIds } from '../verdict/parse';
 import { parseTestIdentity } from '../verdict/testIdentity';
 import type { ChangedFile, FileCoverageBlock, Finding, MetricSet, ModuleInput, MutationBlock, NewCodeCoverage, PerTestBlock, Reason, VerdictDocument } from '../verdict/types';
 import { publishFindings } from './diagnostics';
@@ -334,6 +334,14 @@ async function runExportReport(output: vscode.OutputChannel): Promise<void> {
 	if (!target) {
 		return;
 	}
+
+	// Faz 34: perTest/mutation here may be our own already-resolved snapshot
+	// (plain string test ids, from readJsonSnapshotIfPresent above) rather
+	// than proof-java's own D-86 wire shape (testIds + numeric indexes) -
+	// render-html's own reader expects the latter. Re-intern before writing,
+	// or the CLI fails with a Jackson "not numeric" error reading this file.
+	reinternPerTestIds(verdict.perTest);
+	reinternMutationTestIds(verdict.mutation);
 
 	const composedUri = vscode.Uri.joinPath(storageRoot, 'export-verdict.json');
 	await vscode.workspace.fs.writeFile(composedUri, Buffer.from(JSON.stringify(verdict), 'utf8'));

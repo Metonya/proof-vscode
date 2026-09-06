@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { parseVerdict } from '../../../verdict/parse';
+import { parseVerdict, reinternMutationTestIds, reinternPerTestIds } from '../../../verdict/parse';
 
 const MINIMAL_METRIC = { numeratorName: 'a', numerator: 1, denominatorName: 'b', denominator: 2, percent: 50 };
 const MINIMAL_METRIC_SET = { 'jacoco-line': MINIMAL_METRIC, 'strict-line': MINIMAL_METRIC, 'sonar-compatible': MINIMAL_METRIC };
@@ -118,7 +118,74 @@ test('D-86: a perTest block with interned testIds/numeric indexes resolves back 
 	if (result.ok) {
 		assert.deepEqual(result.value.perTest?.modules[0].entries[0].lines[0].tests, ['CalcTest#addsTwoNumbers()', 'CalcTest#subtractsTwoNumbers()']);
 		assert.deepEqual(result.value.perTest?.modules[0].ambient[0].lines[0].tests, ['CalcTest#addsTwoNumbers()']);
+		assert.ok(!('testIds' in (result.value.perTest?.modules[0] as object)), 'the now-redundant testIds must be dropped, not left mixed with resolved-to-strings tests (Faz 34 - a leftover testIds fooled reinternPerTestIds\'s presence check)');
 	}
+});
+
+test('Faz 34: reinternPerTestIds converts a resolved (plain-string) perTest block back into testIds + numeric indexes', () => {
+	const doc: Record<string, unknown> = {
+		modules: [{
+			id: 'root',
+			entries: [{ className: 'C', methodName: 'm', lines: [{ line: 7, tests: ['CalcTest#addsTwoNumbers()', 'CalcTest#subtractsTwoNumbers()'] }] }],
+			ambient: [{ className: 'C', methodName: '<clinit>', lines: [{ line: 3, tests: ['CalcTest#addsTwoNumbers()'] }] }],
+		}],
+	};
+	reinternPerTestIds(doc);
+	const testModule = (doc.modules as Record<string, unknown>[])[0];
+	assert.deepEqual(testModule.testIds, ['CalcTest#addsTwoNumbers()', 'CalcTest#subtractsTwoNumbers()']);
+	const entries = testModule.entries as Record<string, unknown>[];
+	assert.deepEqual((entries[0].lines as Record<string, unknown>[])[0].tests, [0, 1]);
+	const ambient = testModule.ambient as Record<string, unknown>[];
+	assert.deepEqual((ambient[0].lines as Record<string, unknown>[])[0].tests, [0]);
+});
+
+test('Faz 34: reinternPerTestIds self-heals a mixed/stale document (a leftover testIds array alongside already-resolved string tests) instead of trusting testIds\'s mere presence', () => {
+	const doc: Record<string, unknown> = {
+		modules: [{
+			id: 'root',
+			testIds: ['stale', 'leftover'], // from an older extension build's snapshot, before it deleted this on resolve
+			entries: [{ className: 'C', methodName: 'm', lines: [{ line: 7, tests: ['CalcTest#addsTwoNumbers()'] }] }],
+			ambient: [],
+		}],
+	};
+	reinternPerTestIds(doc);
+	const testModule = (doc.modules as Record<string, unknown>[])[0];
+	assert.deepEqual(testModule.testIds, ['CalcTest#addsTwoNumbers()'], 'must rebuild from the real string values, not trust the stale leftover array');
+	const entries = testModule.entries as Record<string, unknown>[];
+	assert.deepEqual((entries[0].lines as Record<string, unknown>[])[0].tests, [0]);
+});
+
+test('Faz 34: reinternPerTestIds leaves an already-native module (numeric tests, real testIds) untouched', () => {
+	const doc: Record<string, unknown> = {
+		modules: [{
+			id: 'root',
+			testIds: ['CalcTest#addsTwoNumbers()'],
+			entries: [{ className: 'C', methodName: 'm', lines: [{ line: 7, tests: [0] }] }],
+			ambient: [],
+		}],
+	};
+	reinternPerTestIds(doc);
+	const testModule = (doc.modules as Record<string, unknown>[])[0];
+	assert.deepEqual(testModule.testIds, ['CalcTest#addsTwoNumbers()']);
+	const entries = testModule.entries as Record<string, unknown>[];
+	assert.deepEqual((entries[0].lines as Record<string, unknown>[])[0].tests, [0]);
+});
+
+test('Faz 34: reinternMutationTestIds converts a resolved (plain-string) mutation block back into testIds + numeric killingTests', () => {
+	const doc: Record<string, unknown> = {
+		modules: [{
+			id: 'root',
+			methods: [{
+				className: 'C', methodName: 'add', methodDescription: '(II)I', firstLine: 6, lastLine: 8,
+				mutants: [{ mutator: 'PrimitiveReturnsMutator', line: 7, status: 'KILLED', killingTests: ['CalcTest#addsTwoNumbers()', 'CalcTest#subtractsTwoNumbers()'] }],
+			}],
+		}],
+	};
+	reinternMutationTestIds(doc);
+	const mutationModule = (doc.modules as Record<string, unknown>[])[0];
+	assert.deepEqual(mutationModule.testIds, ['CalcTest#addsTwoNumbers()', 'CalcTest#subtractsTwoNumbers()']);
+	const methods = mutationModule.methods as Record<string, unknown>[];
+	assert.deepEqual((methods[0].mutants as Record<string, unknown>[])[0].killingTests, [0, 1]);
 });
 
 test('a document with no perTest at all parses with it left undefined', () => {
