@@ -7,6 +7,7 @@ import { type DoctorResult, runDoctor } from '../cli/doctorRunner';
 import { interpretMavenFailure } from '../cli/mavenErrorInterpreter';
 import { parseDoctorProgressLine } from '../cli/progressParser';
 import { bindModules, describeSiblingProjects, discoverModuleRootsFromPoms, isProjectRoot, moduleForPath, PROJECT_ROOT_MARKER_FILES, toRepoRelativePosix } from '../cli/reportDiscovery';
+import { resolveGradleWrapper, runGradleTestsTask } from './gradleTestTask';
 import { runMavenInstallTask, runTestsTask } from './mavenTestTask';
 import { resolveWorkspaceEnv } from './workspaceEnv';
 
@@ -32,6 +33,25 @@ export interface ReportBinding {
 /** Impure: a plain existence check against `PROJECT_ROOT_MARKER_FILES` (the pure definition lives in `reportDiscovery.ts` so both this check and its test share one list). */
 function projectMarkersPresentAt(dir: string): boolean {
 	return PROJECT_ROOT_MARKER_FILES.some((marker) => fs.existsSync(path.join(dir, marker)));
+}
+
+/**
+ * Which "Run Tests" flow applies to this workspace - same priority the CLI's
+ * own `DoctorCommand.discoverModules` uses (Maven first, Gradle only when no
+ * root `pom.xml` exists): a root `pom.xml` means the existing Maven-only
+ * flow (`mavenTestTask.ts`, pom-inspection, module scoping) applies
+ * unchanged; otherwise a committed Gradle wrapper at the root means
+ * `gradleTestTask.ts` applies; neither means there is nothing this command
+ * can run (falls through to the pre-existing Maven error path, unchanged).
+ */
+export function detectRunTestsBuildTool(folder: vscode.WorkspaceFolder): 'maven' | 'gradle' | undefined {
+	if (fs.existsSync(path.join(folder.uri.fsPath, 'pom.xml'))) {
+		return 'maven';
+	}
+	if (resolveGradleWrapper(folder)) {
+		return 'gradle';
+	}
+	return undefined;
 }
 
 /** A directory "looks like a project" for sibling-detection purposes if it has a build-system marker of its own, or is simply a separate git checkout (a repo that has not been built with proof-java's supported build tools yet is still a real, distinct project - listing it by name costs nothing and is more honest than silently skipping it). */
@@ -143,14 +163,25 @@ export async function resolveRunTestsModuleScope(folder: vscode.WorkspaceFolder)
  * have already shown their own message.
  */
 async function offerToRunTestsNow(folder: vscode.WorkspaceFolder, output: vscode.OutputChannel): Promise<boolean> {
+	const buildTool = detectRunTestsBuildTool(folder);
+	const toolLabel = buildTool === 'gradle' ? 'Gradle' : 'Maven';
 	const choice = await vscode.window.showInformationMessage(
-		'Proof: this project has no JaCoCo report yet. Run the tests with JaCoCo now? Maven will run in its own terminal, you\'ll see its output.',
+		`Proof: this project has no JaCoCo report yet. Run the tests with JaCoCo now? ${toolLabel} will run in its own terminal, you'll see its output.`,
 		'Run Tests',
 		'Cancel',
 	);
 	if (choice !== 'Run Tests') {
 		return false;
 	}
+
+	if (buildTool === 'gradle') {
+		const gradleResult = await runGradleTestsTask(folder, output);
+		if (gradleResult && !gradleResult.success) {
+			vscode.window.showErrorMessage('Proof: Gradle failed. See the terminal output for detail. Scan not started.');
+		}
+		return gradleResult?.success === true;
+	}
+
 	const scope = await resolveRunTestsModuleScope(folder);
 	if (!scope) {
 		return false;

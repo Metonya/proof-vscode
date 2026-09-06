@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 
-import { resolveRunTestsModuleScope } from '../../ui/preflight';
+import { detectRunTestsBuildTool, resolveRunTestsModuleScope } from '../../ui/preflight';
 
 /**
  * Faz 31: the real fix behind the gson `test-jpms` failure - a first-ever
@@ -155,5 +155,48 @@ suite('resolveRunTestsModuleScope (Faz 31)', () => {
 		} finally {
 			vscode.window.showQuickPick = originalShowQuickPick;
 		}
+	});
+});
+
+/**
+ * Faz "Gradle support" G2: which "Run Tests" flow applies - same priority
+ * the CLI's own DoctorCommand.discoverModules uses (Maven first, Gradle
+ * only when no root pom.xml exists), so the button/offer-to-run-tests flow
+ * never disagrees with what `doctor` itself would have discovered.
+ */
+suite('detectRunTestsBuildTool (Faz "Gradle support" G2)', () => {
+	function writeGradlew(root: string): void {
+		fs.mkdirSync(root, { recursive: true });
+		fs.writeFileSync(path.join(root, process.platform === 'win32' ? 'gradlew.bat' : 'gradlew'), '', 'utf8');
+	}
+
+	test('a root pom.xml means Maven, even when a Gradle wrapper also happens to be present', () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-buildtool-both-'));
+		writePom(root, '.');
+		writeGradlew(root);
+
+		assert.equal(detectRunTestsBuildTool(makeWorkspaceFolder(root)), 'maven');
+	});
+
+	test('a committed Gradle wrapper with no root pom.xml means Gradle', () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-buildtool-gradle-'));
+		writeGradlew(root);
+
+		assert.equal(detectRunTestsBuildTool(makeWorkspaceFolder(root)), 'gradle');
+	});
+
+	test('neither a root pom.xml nor a committed wrapper means undefined - never guessed at', () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-buildtool-neither-'));
+		fs.mkdirSync(root, { recursive: true });
+
+		assert.equal(detectRunTestsBuildTool(makeWorkspaceFolder(root)), undefined);
+	});
+
+	test('a Gradle project with no committed wrapper (bare gradle on PATH only) is not detected - this command never runs a bare gradle', () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-buildtool-nowrapper-'));
+		fs.mkdirSync(root, { recursive: true });
+		fs.writeFileSync(path.join(root, 'build.gradle.kts'), '', 'utf8');
+
+		assert.equal(detectRunTestsBuildTool(makeWorkspaceFolder(root)), undefined);
 	});
 });
