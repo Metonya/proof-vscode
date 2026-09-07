@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 
 import { fetchSkillFiles } from '../cli/skillFetcher';
+import { CANCELLED, raceAgainstCancellation } from './cancellation';
 
 /**
  * Faz 34 (user request): "let's add a way to point users at installing the
@@ -105,11 +106,14 @@ async function runInstallSkill(): Promise<void> {
 	}
 	const destDir = target.resolveDir(scope, folder?.uri.fsPath ?? '');
 
-	await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Proof: fetching the latest skill from GitHub...' }, async () => {
+	await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Proof: fetching the latest skill from GitHub...', cancellable: true }, async (_progress, token) => {
 		let files;
 		try {
-			files = await fetchSkillFiles();
+			files = await raceAgainstCancellation(fetchSkillFiles(), token);
 		} catch (e) {
+			if (e === CANCELLED) {
+				return;
+			}
 			vscode.window.showErrorMessage(`Proof: could not fetch the skill from GitHub: ${(e as Error).message}`);
 			return;
 		}

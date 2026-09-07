@@ -8,13 +8,24 @@ import * as https from 'node:https';
  */
 const USER_AGENT = 'proof-vscode';
 
-export function httpsGetBuffer(url: string, redirectsLeft = 5): Promise<Buffer> {
+/**
+ * A corporate proxy/firewall that silently drops a connection (rather than
+ * refusing it) leaves Node's `http`/`https` request with no socket activity
+ * at all - no `error`, no `data`, no `end` ever fires, so without this the
+ * returned promise (and any `vscode.window.withProgress` awaiting it) hangs
+ * forever with no way to dismiss it. `setTimeout` on a `ClientRequest` is an
+ * *idle* timeout, reset by any socket activity, not a total-request-time
+ * cap, so it does not cut off a large, slow-but-progressing jar download.
+ */
+const DEFAULT_TIMEOUT_MS = 20_000;
+
+export function httpsGetBuffer(url: string, redirectsLeft = 5, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<Buffer> {
 	return new Promise((resolve, reject) => {
-		https.get(url, { headers: { 'User-Agent': USER_AGENT } }, (res) => {
+		const req = https.get(url, { headers: { 'User-Agent': USER_AGENT } }, (res) => {
 			const status = res.statusCode ?? 0;
 			if (status >= 300 && status < 400 && res.headers.location && redirectsLeft > 0) {
 				res.resume();
-				resolve(httpsGetBuffer(new URL(res.headers.location, url).toString(), redirectsLeft - 1));
+				resolve(httpsGetBuffer(new URL(res.headers.location, url).toString(), redirectsLeft - 1, timeoutMs));
 				return;
 			}
 			if (status !== 200) {
@@ -26,10 +37,14 @@ export function httpsGetBuffer(url: string, redirectsLeft = 5): Promise<Buffer> 
 			res.on('data', (chunk: Buffer) => chunks.push(chunk));
 			res.on('end', () => resolve(Buffer.concat(chunks)));
 			res.on('error', reject);
-		}).on('error', reject);
+		});
+		req.on('error', reject);
+		req.setTimeout(timeoutMs, () => {
+			req.destroy(new Error(`timed out after ${timeoutMs}ms contacting ${url} - check your network/proxy connection`));
+		});
 	});
 }
 
-export async function httpsGetText(url: string): Promise<string> {
-	return (await httpsGetBuffer(url)).toString('utf8');
+export async function httpsGetText(url: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<string> {
+	return (await httpsGetBuffer(url, 5, timeoutMs)).toString('utf8');
 }

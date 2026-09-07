@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 
 import { downloadLatestJar } from '../cli/jarDownloader';
 import { userJarPath, workspaceJarPath } from '../cli/jarLocator';
+import { CANCELLED, raceAgainstCancellation } from './cancellation';
 
 /**
  * Faz 34 (user request): "give me something that makes it convenient to
@@ -31,11 +32,14 @@ async function runDownloadJar(): Promise<void> {
 	}
 	const destPath = scopePick.scope === 'workspace' && folder ? workspaceJarPath(folder.uri.fsPath) : userJarPath();
 
-	await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Proof: downloading the latest proof-java.jar from GitHub...' }, async () => {
+	await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Proof: downloading the latest proof-java.jar from GitHub...', cancellable: true }, async (_progress, token) => {
 		let result;
 		try {
-			result = await downloadLatestJar();
+			result = await raceAgainstCancellation(downloadLatestJar(), token);
 		} catch (e) {
+			if (e === CANCELLED) {
+				return;
+			}
 			vscode.window.showErrorMessage(`Proof: could not download proof-java.jar: ${(e as Error).message}`);
 			return;
 		}
