@@ -48,6 +48,6 @@ test('a real self-scan: JSON jacoco-line percent matches the CLI text report per
 	const parsed = parseVerdict(raw);
 	assert.equal(parsed.ok, true, parsed.ok ? undefined : parsed.error);
 	if (parsed.ok) {
-		assert.equal(parsed.value.coverage.overall['jacoco-line'].percent, stdoutPercent);
+		assert.equal(parsed.value.coverage.overall['jacoco-line']?.percent, stdoutPercent);
 	}
 });

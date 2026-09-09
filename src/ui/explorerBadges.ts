@@ -1,7 +1,7 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 
-import { rollupFolder, type BadgeMetric } from '../model/metrics';
+import { metricFor, rollupFolder, type BadgeMetric } from '../model/metrics';
 import { toAbsolutePath, toRepoRelativePath } from '../model/pathIndex';
 import { isFileStale, markFileStale } from '../model/store';
 import type { FileCoverageBlock, FileCoverageEntry } from '../verdict/types';
@@ -90,8 +90,10 @@ export class ExplorerBadgeProvider implements vscode.FileDecorationProvider, vsc
 	}
 
 	private fileDecoration(file: FileCoverageEntry): vscode.FileDecoration | undefined {
-		const metric = file.metrics[this.metric];
-		if (metric.percent === null) {
+		const metric = metricFor(file.metrics, this.metric);
+		// A document from an engine whose mode this setting does not name has
+		// no metric here; "no data" is not "0%", so the badge is simply absent.
+		if (!metric || metric.percent === null) {
 			return undefined; // no executable lines at all (a pure interface) - "no data" is not "0%"
 		}
 		const tooltip = `Proof: this file is ${metric.percent}% (${metric.numerator}/${metric.denominator}, ${this.metric})\n`

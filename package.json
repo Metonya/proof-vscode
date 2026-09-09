@@ -107,11 +107,12 @@
           "type": "string",
           "enum": [
             "jacoco-line",
+            "coverage-line",
             "strict-line",
             "sonar-compatible"
           ],
           "default": "sonar-compatible",
-          "description": "Which coverage mode drives Explorer badges and line coloring. sonar-compatible (default): matches SonarQube's own percentage within +/-0.1 - it also counts branch coverage, so it usually comes out lower than jacoco-line. jacoco-line: a line counts as covered if any instruction on it ran (the highest number you'll see). strict-line: a line only counts as covered if EVERY instruction on it ran (the strictest, usually the lowest number). The status bar and tooltips always show all three; this setting only picks one for the badge/line color."
+          "description": "Which coverage mode drives Explorer badges and line coloring. sonar-compatible (default): matches SonarQube's own percentage within +/-0.1 - it also counts branch coverage, so it usually comes out lower. jacoco-line / coverage-line: a line counts as covered if it ran at all (the highest number you'll see); these two are the same choice under the name of whichever engine produced the report - JaCoCo for Java, coverage.py for Python - and either value works with either. strict-line: a line only counts if EVERY instruction on it ran and no branch was missed (the strictest, usually the lowest). The status bar and tooltips always show all three; this setting only picks one for the badge and line color."
         },
         "proof.mutationTimeout": {
           "type": "number",

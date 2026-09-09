@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { getCoverageState, type CoverageState } from '../../model/store';
 import { warningInfo } from '../../model/warningCatalog';
 import { toAbsolutePath } from '../../model/pathIndex';
-import type { ChangedFile, Metric, MetricSet, Reason } from '../../verdict/types';
+import { engineLine, type ChangedFile, type Metric, type MetricSet, type Reason } from '../../verdict/types';
 
 /**
  * Faz 11b: "proof-java: Kapsama" - genel kapsama, yeni kod kapsaması, ve
@@ -122,7 +122,7 @@ function sectionChildren(id: 'overall' | 'newCode' | 'uncovered' | 'warnings', s
  * çalıştı) ama içi boşken *neden* boş olduğunu söylüyor.
  */
 function newCodeChildren(newCode: CoverageState['newCode'], changedFiles: CoverageState['changedFiles'], warnings: CoverageState['warnings']): CoverageNode[] {
-	if (!('jacoco-line' in newCode)) {
+	if ('status' in newCode) {
 		return [{ kind: 'newCodeStatus', status: newCode.status }];
 	}
 	if (changedFiles.length === 0) {
@@ -151,8 +151,9 @@ function diffModeDetail(): string {
 }
 
 function metricNodes(set: MetricSet): CoverageNode[] {
+	const engine = engineLine(set);
 	return [
-		{ kind: 'metric', name: 'jacoco-line', metric: set['jacoco-line'] },
+		...(engine ? [{ kind: 'metric' as const, name: engine.mode, metric: engine.metric }] : []),
 		{ kind: 'metric', name: 'strict-line', metric: set['strict-line'] },
 		{ kind: 'metric', name: 'sonar-compatible', metric: set['sonar-compatible'] },
 	];
@@ -198,15 +199,27 @@ function leaf(label: string, icon: string, tooltip?: string): vscode.TreeItem {
 	return item;
 }
 
-/** Faz 13 madde 10: üç metrik modunun nasıl hesaplandığını anlatan tek yer - `MetricsEngine.java`/D-04'e dayanıyor, uydurulmuyor. */
-function metricTooltip(name: keyof MetricSet): string {
+/**
+ * Faz 13 madde 10: üç metrik modunun nasıl hesaplandığını anlatan tek yer -
+ * `MetricsEngine.java`/D-04'e dayanıyor, uydurulmuyor. İlk mod, raporu üreten
+ * motorun kendi sayacının adını taşıyor (proof-java D-99), o yüzden iki
+ * yazımın da karşılığı var.
+ */
+function metricTooltip(name: string): string {
 	switch (name) {
 		case 'jacoco-line':
 			return 'A line counts as covered if any instruction on it ran - the most generous number, identical to JaCoCo\'s own raw line coverage.';
+		case 'coverage-line':
+			return 'A statement counts as covered if it ran - identical to coverage.py\'s own statement percentage. proof-python\'s counterpart to jacoco-line.';
 		case 'strict-line':
-			return 'A line only counts as covered if EVERY instruction on it ran - the strictest number, usually the lowest.';
+			return 'A line only counts as covered if EVERY instruction on it ran and no branch on it was missed - the strictest number, usually the lowest.';
 		case 'sonar-compatible':
-			return 'Adds branch coverage on top of JaCoCo line coverage - matches the percentage SonarQube shows within ±0.1, so it usually comes out lower than jacoco-line.';
+			return 'Adds branch coverage on top of the engine\'s own line coverage - matches the percentage SonarQube shows within ±0.1, so it usually comes out lower.';
+		default:
+			// Never reached from `metricNodes`, which only produces the four
+			// ids above; a mode this build does not know gets no tooltip
+			// rather than an invented one.
+			return '';
 	}
 }
 

@@ -13,10 +13,34 @@ export interface Metric {
 	percent: number | null;
 }
 
+/**
+ * The first mode is named after the engine whose headline counter it
+ * reproduces exactly: `jacoco-line` from proof-java, `coverage-line` from
+ * proof-python (proof-java D-99). The schema requires exactly one of the two,
+ * so both are optional here and `engineLine()` resolves whichever is present.
+ * Never index `['jacoco-line']` directly - that reads `undefined` on a
+ * proof-python verdict, which renders as a missing number rather than an
+ * error.
+ */
 export interface MetricSet {
-	'jacoco-line': Metric;
+	'jacoco-line'?: Metric;
+	'coverage-line'?: Metric;
 	'strict-line': Metric;
 	'sonar-compatible': Metric;
+}
+
+export const ENGINE_LINE_MODES = ['jacoco-line', 'coverage-line'] as const;
+export type EngineLineMode = (typeof ENGINE_LINE_MODES)[number];
+
+/** The engine-named mode this document actually carries, with its id. */
+export function engineLine(metrics: MetricSet): { mode: EngineLineMode; metric: Metric } | undefined {
+	for (const mode of ENGINE_LINE_MODES) {
+		const metric = metrics[mode];
+		if (metric) {
+			return { mode, metric };
+		}
+	}
+	return undefined;
 }
 
 export type NewCodeCoverage = MetricSet | { status: string };

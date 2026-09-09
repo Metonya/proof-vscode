@@ -2,6 +2,7 @@ import * as assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { parseVerdict, reinternMutationTestIds, reinternPerTestIds } from '../../../verdict/parse';
+import { engineLine } from '../../../verdict/types';
 
 const MINIMAL_METRIC = { numeratorName: 'a', numerator: 1, denominatorName: 'b', denominator: 2, percent: 50 };
 const MINIMAL_METRIC_SET = { 'jacoco-line': MINIMAL_METRIC, 'strict-line': MINIMAL_METRIC, 'sonar-compatible': MINIMAL_METRIC };
@@ -23,7 +24,7 @@ test('a real shaped document parses', () => {
 	const result = parseVerdict(JSON.stringify(minimalDocument()));
 	assert.equal(result.ok, true);
 	if (result.ok) {
-		assert.equal(result.value.coverage.overall['jacoco-line'].percent, 50);
+		assert.equal(result.value.coverage.overall['jacoco-line']?.percent, 50);
 	}
 });
 
@@ -46,7 +47,7 @@ test('a null percent (denominator 0) is preserved, not coerced to a number', () 
 	const result = parseVerdict(JSON.stringify(doc));
 	assert.equal(result.ok, true);
 	if (result.ok) {
-		assert.equal(result.value.coverage.overall['jacoco-line'].percent, null);
+		assert.equal(result.value.coverage.overall['jacoco-line']?.percent, null);
 	}
 });
 
@@ -238,8 +239,8 @@ test('coverage.newCode as a real metricSet (a diff that ran fine) parses through
 	(doc.coverage as Record<string, unknown>).newCode = { 'jacoco-line': freshMetric, 'strict-line': freshMetric, 'sonar-compatible': freshMetric };
 	const result = parseVerdict(JSON.stringify(doc));
 	assert.equal(result.ok, true);
-	if (result.ok && 'jacoco-line' in result.value.coverage.newCode) {
-		assert.equal(result.value.coverage.newCode['jacoco-line'].percent, 25);
+	if (result.ok && !('status' in result.value.coverage.newCode)) {
+		assert.equal(engineLine(result.value.coverage.newCode)?.metric.percent, 25);
 	} else {
 		assert.fail('expected a real metricSet, not a status object');
 	}

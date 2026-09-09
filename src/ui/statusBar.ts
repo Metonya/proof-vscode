@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 
-import type { BadgeMetric } from '../model/metrics';
-import type { MetricSet, NewCodeCoverage } from '../verdict/types';
+import { metricFor, type BadgeMetric } from '../model/metrics';
+import { engineLine, type Metric, type MetricSet, type NewCodeCoverage } from '../verdict/types';
 
 /**
  * F2's fourth state, "blok hiç yok": when a run had no `fileCoverage` at
@@ -24,8 +24,14 @@ export function showNoFileCoverageWarning(item: vscode.StatusBarItem): void {
 	item.show();
 }
 
+/** The engine-named line row, labelled with the mode the document carries. */
+function engineLineRow(metrics: MetricSet): string[] {
+	const resolved = engineLine(metrics);
+	return resolved ? [metricLine(resolved.mode, resolved.metric)] : [];
+}
+
 export function showCoverageSummary(item: vscode.StatusBarItem, overall: MetricSet, gutterVisible: boolean, badgeMetric: BadgeMetric, newCode: NewCodeCoverage): void {
-	const headlinePercent = overall[badgeMetric].percent;
+	const headlinePercent = metricFor(overall, badgeMetric)?.percent ?? null;
 	const eyeIcon = gutterVisible ? 'eye' : 'eye-closed';
 	item.text = headlinePercent === null ? '$(check) Proof' : `$(${eyeIcon}) Proof ${headlinePercent}%`;
 	item.tooltip = new vscode.MarkdownString(
@@ -33,7 +39,7 @@ export function showCoverageSummary(item: vscode.StatusBarItem, overall: MetricS
 			`**Proof** - coverage view is ${gutterVisible ? 'on' : 'off'} (click to toggle)`,
 			'',
 			'**Overall** (whole repo)',
-			metricLine('jacoco-line', overall['jacoco-line']),
+			...engineLineRow(overall),
 			metricLine('strict-line', overall['strict-line']),
 			metricLine('sonar-compatible', overall['sonar-compatible']),
 			'',
@@ -45,17 +51,16 @@ export function showCoverageSummary(item: vscode.StatusBarItem, overall: MetricS
 }
 
 function newCodeLines(newCode: NewCodeCoverage): string {
-	if (!('jacoco-line' in newCode)) {
+	if ('status' in newCode) {
 		return newCode.status === 'unavailable_no_vcs' ? 'cannot be computed in no-vcs mode' : 'an error occurred during the diff';
 	}
 	return [
-		metricLine('jacoco-line', newCode['jacoco-line']),
 		metricLine('strict-line', newCode['strict-line']),
 		metricLine('sonar-compatible', newCode['sonar-compatible']),
 	].join('\n\n');
 }
 
-function metricLine(name: string, metric: MetricSet['jacoco-line']): string {
+function metricLine(name: string, metric: Metric): string {
 	const percentText = metric.percent === null ? 'n/a' : `${metric.percent}%`;
 	return `${name}: ${percentText} (${metric.numerator}/${metric.denominator})`;
 }
