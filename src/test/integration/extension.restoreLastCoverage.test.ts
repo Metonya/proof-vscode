@@ -147,7 +147,51 @@ function spyRefresh<N>(view: { refresh(): void; getChildren(): N[] }): N[][] {
 	return snapshots;
 }
 
+/**
+ * Real shape from a live proof-python `analyze --no-vcs --file-coverage
+ * --per-test-report` run (verbatim from proof-java-playground's `python`
+ * branch, coverdict-ws 2026-09-09): `coverage-line` instead of
+ * `jacoco-line`, and two of proof-python's own rule ids with no Java
+ * counterpart, to catch anything still assuming the Java-only shape.
+ */
+function realPythonVerdictJson(): unknown {
+	const metric = { numeratorName: 'coveredLines', numerator: 29, denominatorName: 'executableLines', denominator: 31, percent: 93.5 };
+	const metricSet = { 'coverage-line': metric, 'strict-line': metric, 'sonar-compatible': metric };
+	return {
+		schemaVersion: '0.1.0', tool: { name: 'proof-python', version: '0.1.0' },
+		analysis: { status: 'complete', exitCode: 0, incompleteReasons: [] },
+		inputs: { modules: [{ id: 'root', root: '.', sourceRoots: ['src'], testRoots: ['tests'] }] },
+		coverage: { overall: metricSet, newCode: { status: 'unavailable_no_vcs' } },
+		changedFiles: [],
+		findings: [{
+			rule: 'UNCOLLECTED_TEST_CLASS', severity: 'WARNING', confidence: 'HIGH', module: 'root',
+			path: 'tests/test_calculator_uncollected_class.py', startLine: 11, endLine: 16,
+			message: 'm', suggestedAction: 'a', fingerprint: 'c53d2a10',
+		}],
+		warnings: [],
+		fileCoverage: {
+			files: [{ module: 'root', path: 'src/playground/calculator.py', metrics: metricSet, lines: [] }],
+			excluded: [],
+		},
+	};
+}
+
 suite('extension.restoreLastCoverageFrom (Faz 23/25 - pencere yenileme)', () => {
+	test('a saved proof-python verdict (coverage-line, Python-only rule) restores into Coverage and Test Quality, not stuck on "Run an analysis first"', async () => {
+		const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-restore-py-'));
+		fs.writeFileSync(path.join(storageDir, 'verdict-current.json'), JSON.stringify(realPythonVerdictJson()), 'utf8');
+		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-restore-py-ws-'));
+
+		const sinks = buildSinks();
+		await restoreLastCoverageFrom(storageDir, workspaceRoot, sinks);
+
+		const coverageRoots = sinks.coverageView.getChildren();
+		assert.notEqual(coverageRoots[0]?.kind, 'empty', `Coverage view is stuck on its pre-restore empty state: ${JSON.stringify(coverageRoots)}`);
+
+		const qualityRoots = sinks.qualityView.getChildren();
+		assert.notEqual(qualityRoots[0]?.kind, 'empty', `Test Quality view is stuck on its pre-restore empty state: ${JSON.stringify(qualityRoots)}`);
+	});
+
 	test('a saved verdict with perTest, plus a separate mutation-current.json, leaves both views populated after restore, not stuck on their pre-restore snapshot', async () => {
 		const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-restore-'));
 		fs.writeFileSync(path.join(storageDir, 'verdict-current.json'), JSON.stringify(realVerdictJson()), 'utf8');

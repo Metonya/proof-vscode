@@ -54,13 +54,62 @@ const CATALOG: Record<RuleId, Omit<RuleInfo, 'code'>> = {
 		summary: 'This test\'s killed-mutant set is a strict subset of another test\'s - on its own it catches nothing new, for the mutators exercised in this run. Comes from mutation (L3) evidence.',
 		action: 'Informational only: before removing it, confirm the broader test genuinely covers this scenario.',
 	},
+	// proof-python only (pythonrules.py) - no Java counterpart, D-99.
+	UNCOLLECTED_TEST_CLASS: {
+		title: 'Uncollected test class',
+		summary: 'A Test* class defines __init__, so pytest refuses to collect it - every test method inside never runs, and the suite still passes.',
+		action: 'Move the setup out of __init__ into a fixture or setup_method.',
+	},
+	EMPTY_PARAMETRIZE: {
+		title: 'Empty parametrize',
+		summary: 'The test is parametrized over an empty list, so pytest skips it entirely - it never runs, and the suite still passes.',
+		action: 'Give the parametrize list at least one case, or remove the test.',
+	},
+	RETURN_IN_TEST: {
+		title: 'Returns instead of asserting',
+		summary: 'The test returns a value instead of asserting one. pytest warns but still passes the test, so whatever the value was is never checked.',
+		action: 'Replace the return with an assert on the same expression.',
+	},
+	NON_STRICT_XFAIL: {
+		title: 'Non-strict xfail',
+		summary: 'Marked xfail without strict=True - if the test starts passing, the run stays green and nobody is told.',
+		action: 'Add strict=True to the marker, or set xfail_strict in the pytest configuration.',
+	},
+	UNCALLED_ORACLE: {
+		title: 'Uncalled assertion',
+		summary: 'An assertion (a mock check, or self.assert*) is referenced but never actually called - the attribute is evaluated and discarded, so it checks nothing.',
+		action: 'Call it: add the parentheses and its arguments.',
+	},
+	MOCK_ONLY_ORACLE: {
+		title: 'Mock-only assertion',
+		summary: 'Every check in the test is about how a mock was called; nothing verifies what the code under test itself returned or changed.',
+		action: 'Add an assertion on the value or state the code under test produces.',
+	},
+	BROAD_RAISES_WITHOUT_MATCH: {
+		title: 'Broad exception match',
+		summary: 'pytest.raises(Exception) with no match= accepts any error at all, including one from a line the test never meant to reach.',
+		action: 'Name the specific exception type, or add match= to pin the message.',
+	},
 };
 
 export function ruleInfo(rule: RuleId): RuleInfo {
 	return { code: rule, ...CATALOG[rule] };
 }
 
-/** Same address as the Problems panel's `diagnostic.code.target` - single source, they can't drift apart. */
+const PYTHON_ONLY_RULES = new Set<RuleId>([
+	'UNCOLLECTED_TEST_CLASS', 'EMPTY_PARAMETRIZE', 'RETURN_IN_TEST',
+	'NON_STRICT_XFAIL', 'UNCALLED_ORACLE', 'MOCK_ONLY_ORACLE', 'BROAD_RAISES_WITHOUT_MATCH',
+]);
+
+/**
+ * Same address as the Problems panel's `diagnostic.code.target` - single
+ * source, they can't drift apart. proof-java has a `docs/rules/<RULE>.md`
+ * per rule; proof-python has no such directory yet, so its seven own rules
+ * link to the source that documents them instead of a 404.
+ */
 export function ruleDocsUrl(rule: RuleId): string {
+	if (PYTHON_ONLY_RULES.has(rule)) {
+		return `https://github.com/Metonya/proof-python/blob/main/src/proof_python/pythonrules.py`;
+	}
 	return `https://github.com/Metonya/proof-java/blob/main/docs/rules/${rule}.md`;
 }

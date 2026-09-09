@@ -62,6 +62,25 @@ export function classifyTest(rawTestId: string, findingsByTestMethod: ReadonlyMa
 			// single test's oracle quality - has nothing to say about which
 			// of the covering tests is weak, so it does not downgrade any of them.
 			return 'ok';
+		// proof-python only (pythonrules.py), no Java counterpart, D-99.
+		// UNCOLLECTED_TEST_CLASS/EMPTY_PARAMETRIZE rarely reach this switch at
+		// all - neither finding anchors on a test method (no class/parametrize
+		// case to run), so `finding.testMethod` is usually absent and the
+		// lookup above never matches. Kept here only for exhaustiveness.
+		case 'UNCOLLECTED_TEST_CLASS':
+		case 'EMPTY_PARAMETRIZE':
+		case 'RETURN_IN_TEST':
+		case 'UNCALLED_ORACLE':
+			// Nothing genuinely verified anything, same bucket as the L0 rules
+			// above (never ran, or referenced an assertion without calling it).
+			return 'noOracle';
+		case 'NON_STRICT_XFAIL':
+		case 'MOCK_ONLY_ORACLE':
+		case 'BROAD_RAISES_WITHOUT_MATCH':
+			// A real check exists but has a soft spot (silently-reversible
+			// xfail, mock-interaction-only, an overly broad exception match) -
+			// same bucket as NULL_CHECK_ONLY: present, but not enough.
+			return 'weak';
 	}
 }
 

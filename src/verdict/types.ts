@@ -135,14 +135,27 @@ export interface ModuleInput {
 	testRoots: readonly string[];
 }
 
-/** The six rule codes the L0 oracle-quality engine can emit (`RuleIds.java`) - only `severity`/`confidence` decide how loud a finding is, never the rule name alone. */
+/**
+ * Every rule code either engine can emit. The first six are proof-java's
+ * (`RuleIds.java`; four of them shared verbatim with proof-python per
+ * D-99); the rest are proof-python-only (`pythonrules.py`), no Java
+ * counterpart. `severity`/`confidence` decide how loud a finding is, never
+ * the rule name alone.
+ */
 export type RuleId =
 	| 'NO_RECOGNIZED_ORACLE'
 	| 'TAUTOLOGICAL_ORACLE'
 	| 'CATCH_ORACLE_WITHOUT_FAIL'
 	| 'NULL_CHECK_ONLY'
 	| 'PSEUDO_TESTED_METHOD'
-	| 'SUBSUMED_TEST';
+	| 'SUBSUMED_TEST'
+	| 'UNCOLLECTED_TEST_CLASS'
+	| 'EMPTY_PARAMETRIZE'
+	| 'RETURN_IN_TEST'
+	| 'NON_STRICT_XFAIL'
+	| 'UNCALLED_ORACLE'
+	| 'MOCK_ONLY_ORACLE'
+	| 'BROAD_RAISES_WITHOUT_MATCH';
 
 /**
  * A test-oracle-quality finding. `severity` (INFO|WARNING) is NOT the same
