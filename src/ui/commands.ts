@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 
 import { buildAnalyzeArgs, type DiffMode, type TargetBinding } from '../cli/argsBuilder';
+import { buildPythonAnalyzeArgs } from '../cli/pythonArgsBuilder';
 import { locateJar } from '../cli/jarLocator';
 import { interpretGradleFailure } from '../cli/gradleErrorInterpreter';
 import { interpretMavenFailure } from '../cli/mavenErrorInterpreter';
@@ -35,6 +36,7 @@ import { applyGutterCoverage, clearGutterCoverage, type GutterDecorationTypes } 
 import { runGradleTestsTask } from './gradleTestTask';
 import { runTestsTask } from './mavenTestTask';
 import { detectRunTestsBuildTool, offerToDownloadJar, offerToOpenSetting, resolveEvidenceClasspaths, resolveReportBinding, resolveRunTestsModuleScope, type ClasspathKind } from './preflight';
+import { resolvePythonReportBinding } from './pythonPreflight';
 import { showCoverageSummary, showNoFileCoverageWarning } from './statusBar';
 import type { CoverageTreeProvider } from './treeViews/coverageView';
 import type { LineTestsNode, LineTestsTreeProvider } from './treeViews/lineTestsView';
@@ -157,6 +159,11 @@ export interface CoverageSinks {
 
 export function registerAnalyzeCommand(output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
 	return vscode.commands.registerCommand('proof.analyze', () => runAnalyze(output, sinks));
+}
+
+/** Minimal Python engine entry point - see `ui/pythonPreflight.ts`'s file doc comment for scope. */
+export function registerAnalyzePythonCommand(output: vscode.OutputChannel, sinks: CoverageSinks): vscode.Disposable {
+	return vscode.commands.registerCommand('proof.analyzePython', () => runAnalyzePython(output, sinks));
 }
 
 /** Faz 30 (§7.8): kullanıcının "kolay tekrar koş" isteği - her zaman erişilebilir, `runAnalyzeCore`'un içindeki "rapor yok, testleri koşalım mı?" teklifinden bağımsız olarak. Maven başarılıysa Hızlı Tarama'yı otomatik tetikler - tek eylem gibi hissettiren şey bu. */
@@ -729,6 +736,108 @@ async function runAnalyze(output: vscode.OutputChannel, sinks: CoverageSinks): P
 	}
 
 	const parsed = await runAnalyzeCore(output, folder, diffMode);
+	if (!parsed) {
+		return;
+	}
+	publishAnalysis(sinks, folder.uri.fsPath, analysisResultFrom(parsed));
+}
+
+/**
+ * The Python sibling of `runAnalyze`/`runAnalyzeCore`, deliberately kept
+ * separate rather than threaded through the Java-shaped core: no jar, no
+ * module/classpath resolution, no `doctor --fix` - proof-python is one
+ * process, one report, one module (`ui/pythonPreflight.ts`'s scope note).
+ * Everything past parsing the verdict (`publishAnalysis`) is unchanged -
+ * the same UI renders either engine's document.
+ */
+async function runAnalyzePython(output: vscode.OutputChannel, sinks: CoverageSinks): Promise<void> {
+	const folder = vscode.workspace.workspaceFolders?.[0];
+	if (!folder) {
+		vscode.window.showErrorMessage('Proof: open a folder first.');
+		return;
+	}
+	const diffMode = readDiffMode(folder);
+	if (!diffMode) {
+		return;
+	}
+
+	const config = vscode.workspace.getConfiguration('proof', folder);
+	const configuredReportPath = config.get<string>('python.reportPath') || 'coverage.json';
+	const binding = await resolvePythonReportBinding(folder, configuredReportPath);
+	if (!binding) {
+		return;
+	}
+
+	const interpreter = config.get<string>('python.interpreter') || 'python';
+	const sourceRoots = config.get<string>('python.sourceRoots') || 'src';
+	const testRoots = config.get<string>('python.testRoots') || 'tests';
+	const coverageExclusions = config.get<string[]>('coverageExclusions') ?? [];
+
+	const storageRoot = await ensureStorageRoot(folder);
+	const outUri = vscode.Uri.joinPath(storageRoot, 'verdict-current.json');
+
+	const args = buildPythonAnalyzeArgs({
+		repo: folder.uri.fsPath,
+		diffMode,
+		reportPath: binding.reportPath,
+		sourceRoots,
+		testRoots,
+		outPath: outUri.fsPath,
+		fileCoverage: true,
+		perTestReport: true,
+		coverageExclusions,
+	});
+
+	output.appendLine(`Proof: ${interpreter} ${args.join(' ')}`);
+
+	const parsed = await vscode.window.withProgress(
+		{ location: vscode.ProgressLocation.Notification, title: 'proof-python: analiz ediliyor', cancellable: true },
+		async (progress, token) => {
+			const handle = run({ javaExecutable: interpreter, args, env: resolveWorkspaceEnv(folder) });
+			let cancelled = false;
+			token.onCancellationRequested(() => {
+				cancelled = true;
+				handle.cancel();
+			});
+
+			let result;
+			try {
+				result = await handle.result;
+			} catch (e) {
+				vscode.window.showErrorMessage(`Proof: couldn't run "${interpreter}": ${(e as Error).message}`);
+				return undefined;
+			}
+			output.appendLine(result.stdout);
+			output.appendLine(result.stderr);
+
+			if (cancelled) {
+				return undefined;
+			}
+			if (result.exitCode !== 0 && result.exitCode !== 3) {
+				vscode.window.showErrorMessage(`Proof: analysis failed (exit code ${result.exitCode}).`);
+				return undefined;
+			}
+
+			let raw: string;
+			try {
+				raw = await fs.promises.readFile(outUri.fsPath, 'utf8');
+			} catch (e) {
+				vscode.window.showErrorMessage(`Proof: could not read the verdict file: ${(e as Error).message}`);
+				return undefined;
+			}
+
+			const verdict = parseVerdict(raw);
+			if (!verdict.ok) {
+				vscode.window.showErrorMessage(`Proof: could not parse the verdict file: ${verdict.error}`);
+				return undefined;
+			}
+			if (verdict.value.analysis.status === 'incomplete') {
+				vscode.window.showWarningMessage('Proof: analysis completed incompletely - see the "Warnings" section in the Coverage view.');
+			}
+			progress.report({ increment: 100 });
+			return verdict.value;
+		},
+	);
 	if (!parsed) {
 		return;
 	}

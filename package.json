@@ -1,9 +1,9 @@
 {
   "name": "proof-vscode",
   "displayName": "Proof",
-  "description": "Runs the proof CLI (currently proof-java) and renders its verdict: inline coverage gutter, per-line test evidence, and mutation findings.",
+  "description": "Runs the proof CLI (proof-java, and now proof-python) and renders its verdict: inline coverage gutter, per-line test evidence, and mutation findings.",
   "icon": "media/icon.png",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "metonya",
   "license": "Apache-2.0",
   "repository": {
@@ -39,6 +39,26 @@
           "type": "string",
           "default": "java",
           "description": "The Java executable used to run proof-java.jar."
+        },
+        "proof.python.interpreter": {
+          "type": "string",
+          "default": "python",
+          "description": "The Python interpreter used to run \"Proof: Analyze (Python)\" - point this at the target project's own venv (e.g. .venv/Scripts/python.exe), since that is where proof-python must be installed for \"-m proof_python.cli\" to resolve."
+        },
+        "proof.python.reportPath": {
+          "type": "string",
+          "default": "coverage.json",
+          "description": "Path to the coverage.py JSON report (relative to the workspace root), produced by \"coverage json --show-contexts\". \"Proof: Analyze (Python)\" reads this file - if it's missing, you get a one-time prompt with the exact commands to produce it."
+        },
+        "proof.python.sourceRoots": {
+          "type": "string",
+          "default": "src",
+          "description": "Comma-separated source root(s), passed to proof-python's --source-roots."
+        },
+        "proof.python.testRoots": {
+          "type": "string",
+          "default": "tests",
+          "description": "Comma-separated test root(s), passed to proof-python's --test-roots."
         },
         "proof.mavenExecutable": {
           "type": "string",
@@ -160,6 +180,10 @@
       {
         "command": "proof.analyze",
         "title": "Proof: Quick Scan"
+      },
+      {
+        "command": "proof.analyzePython",
+        "title": "Proof: Analyze (Python)"
       },
       {
         "command": "proof.runTests",
