@@ -37,7 +37,10 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 		return item;
 	}
 
-	getChildren(): RunItem[] {
+	getChildren(element?: RunItem): RunItem[] {
+		if (element) {
+			return element.children ? [...element.children] : [];
+		}
 		const folder = vscode.workspace.workspaceFolders?.[0];
 		if (!folder) {
 			return [new RunItem('Open a folder first', undefined, undefined, 'warning')];
@@ -114,15 +117,22 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 			// worse than not being offered.
 			...(buildTool || !isPython ? [runTestsItem(folder, buildTool)] : []),
 			...(isPython ? [pythonAnalyzeItem(folder)] : []),
-			new RunItem(
-				'Quick Scan (overall + new code)',
-				`coverage + bad test findings · new code: ${scopeText} · ${quickScanFreshnessText(folder)}`,
-				'proof.analyze',
-				'play',
-				`Takes seconds. Computes:\n· Overall coverage (whole repo)\n· New code coverage (${scopeText})\n· Test quality findings (tests with no or weak assertions)`,
-			),
-			deepScanItem,
-			mutationItem,
+			// Java-only scans (proof-java's jar, jacoco.xml) - suppressed on a
+			// workspace that is a Python project and neither a Maven nor a
+			// Gradle one, for the same reason the Run Tests row above is: the
+			// underlying report can never exist there, so the row can only
+			// ever end in the same "report not found" toast.
+			...(buildTool || !isPython ? [
+				new RunItem(
+					'Quick Scan (overall + new code)',
+					`coverage + bad test findings · new code: ${scopeText} · ${quickScanFreshnessText(folder)}`,
+					'proof.analyze',
+					'play',
+					`Takes seconds. Computes:\n· Overall coverage (whole repo)\n· New code coverage (${scopeText})\n· Test quality findings (tests with no or weak assertions)`,
+				),
+				deepScanItem,
+				mutationItem,
+			] : []),
 			new RunItem(
 				'Coverage View',
 				isGutterVisible() ? 'on - click to hide' : 'off - click to show',
@@ -130,8 +140,26 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 				isGutterVisible() ? 'eye' : 'eye-closed',
 				'Toggles the editor line colors and Explorer badges together. Does not rerun the scan.',
 			),
-			// Faz 34 (user request): one-time setup actions, not scans - kept
-			// separate from the run-a-scan rows above.
+			setupGroup(),
+		];
+	}
+}
+
+/**
+ * User request (2026-09-09): one-time setup actions (jar/CLI/skill install)
+ * used to sit flat among the scan rows, permanently visible even though
+ * they're run once and rarely touched again. Grouped under one collapsed-
+ * by-default node instead - collapsed because a fresh install of this
+ * extension has nothing to show here yet on every single activation, an
+ * every-time state, not a one-time "look at this" moment; the tree's own
+ * `TreeItemCollapsibleState.Collapsed` is all VS Code needs, no separate
+ * setting to persist.
+ */
+function setupGroup(): RunItem {
+	return new RunItem(
+		'Setup', undefined, undefined, 'gear', 'One-time installs: proof-java.jar, proof-python, and the AI agent skill.',
+		undefined,
+		[
 			new RunItem(
 				'Download proof-java.jar',
 				'from the latest GitHub release, workspace or user scope',
@@ -140,14 +168,21 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 				'Downloads proof-java.jar from proof-java\'s latest GitHub release and verifies it against the published SHA-256 checksum. Installs to either this workspace or a user-wide location every workspace on this machine can find - no other setting to change afterward.',
 			),
 			new RunItem(
+				'Install proof-python',
+				'pipx, uv tool, or pip - pick one',
+				'proof.installPython',
+				'cloud-download',
+				'Installs proof-python from its GitHub repo. Asks which installer to use (pipx/uv tool - an isolated environment of its own - or pip, straight into the proof.python.interpreter venv) and runs it in a visible terminal.',
+			),
+			new RunItem(
 				'Install Skill for AI Agent',
 				'Claude Code, Windsurf, Antigravity, or the portable .agents/skills',
 				'proof.installSkill',
 				'cloud-download',
 				'Fetches the current proof-java skill from GitHub and installs it for the AI coding agent of your choice, at either workspace or user scope. Always pulls the latest version - nothing is bundled with this extension.',
 			),
-		];
-	}
+		],
+	);
 }
 
 /** The Python sibling of `runTestsItem` below - no auto-run offer (minimal scope, `ui/pythonPreflight.ts`'s file doc comment), just the direct command and the same freshness text Quick Scan uses (both engines write the same `verdict-current.json`). */
@@ -233,13 +268,17 @@ function diffModeText(diffMode: string, baseRef: string | undefined): string {
 }
 
 class RunItem extends vscode.TreeItem {
+	/** Present only on a group node (e.g. `setupGroup()`) - `getChildren()` reads this directly rather than each group re-deriving its own children on every expand. */
+	readonly children?: readonly RunItem[];
+
 	/** `contextValue` (Faz 33) drives `package.json`'s `view/item/context` inline-icon menus - only Deep Scan/Mutation Testing's diff-scoped rows set one, for the "run this for the whole module instead" shortcut. */
-	constructor(label: string, description: string | undefined, commandId: string | undefined, icon: string, tooltip?: string, contextValue?: string) {
-		super(label, vscode.TreeItemCollapsibleState.None);
+	constructor(label: string, description: string | undefined, commandId: string | undefined, icon: string, tooltip?: string, contextValue?: string, children?: readonly RunItem[]) {
+		super(label, children ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
 		this.description = description;
 		this.iconPath = new vscode.ThemeIcon(icon);
 		this.tooltip = tooltip;
 		this.contextValue = contextValue;
+		this.children = children;
 		if (commandId) {
 			this.command = { command: commandId, title: label };
 		}

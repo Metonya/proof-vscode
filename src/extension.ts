@@ -31,6 +31,7 @@ import { ExplorerBadgeProvider } from './ui/explorerBadges';
 import { applyGutterCoverage, createGutterDecorationTypes } from './ui/gutterRenderer';
 import { registerHoverProvider } from './ui/hoverProvider';
 import { registerDownloadJarCommand } from './ui/jarDownloaderUi';
+import { registerInstallPythonCommand } from './ui/pythonInstaller';
 import { registerInstallSkillCommand } from './ui/skillInstaller';
 import { createStatusBarItem } from './ui/statusBar';
 import { CoverageTreeProvider } from './ui/treeViews/coverageView';
@@ -101,6 +102,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		registerOpenSettingsCommand(),
 		registerInstallSkillCommand(),
 		registerDownloadJarCommand(),
+		registerInstallPythonCommand(),
 		registerPerTestForFileCommand(output, sinks),
 		registerPerTestForModuleAllCommand(output, sinks),
 		registerToggleCoverageCommand(sinks),
