@@ -21,12 +21,22 @@ import type {
 } from './types';
 
 const RULE_IDS = new Set([
+	// Shared, both engines (proof-java/proof-python D-99).
 	'NO_RECOGNIZED_ORACLE',
 	'TAUTOLOGICAL_ORACLE',
 	'CATCH_ORACLE_WITHOUT_FAIL',
 	'NULL_CHECK_ONLY',
+	// proof-java only (mutation-derived, no proof-python counterpart yet).
 	'PSEUDO_TESTED_METHOD',
 	'SUBSUMED_TEST',
+	// proof-python only - no Java counterpart (pythonrules.py).
+	'UNCOLLECTED_TEST_CLASS',
+	'EMPTY_PARAMETRIZE',
+	'RETURN_IN_TEST',
+	'NON_STRICT_XFAIL',
+	'UNCALLED_ORACLE',
+	'MOCK_ONLY_ORACLE',
+	'BROAD_RAISES_WITHOUT_MATCH',
 ]);
 
 /**
@@ -371,9 +381,18 @@ function isMutant(value: unknown): value is Mutant {
 		&& Array.isArray(value.killingTests) && value.killingTests.every((t) => typeof t === 'string');
 }
 
+/**
+ * D-99: `jacoco-line`/`coverage-line` are each optional in `MetricSet`
+ * (`types.ts`) - a document carries exactly one, named for whichever
+ * engine produced it. This validator was missed when that change landed,
+ * still hard-requiring `jacoco-line` - so every proof-python verdict
+ * failed to parse at all ("missing a required top-level field", the
+ * generic message `isVerdictDocument` falls back to). Found by actually
+ * running a proof-python verdict through this extension end to end.
+ */
 function isMetricSet(value: unknown): value is MetricSet {
 	return isRecord(value)
-		&& isMetric(value['jacoco-line'])
+		&& (isMetric(value['jacoco-line']) || isMetric(value['coverage-line']))
 		&& isMetric(value['strict-line'])
 		&& isMetric(value['sonar-compatible']);
 }

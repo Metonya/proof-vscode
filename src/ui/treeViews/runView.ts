@@ -6,6 +6,7 @@ import { formatRelativeTime } from '../../model/mutationModel';
 import { getMutationState, isGutterVisible } from '../../model/store';
 import { PERTEST_STORAGE_FILE, resolveStorageRoot } from '../commands';
 import { detectRunTestsBuildTool } from '../preflight';
+import { isPythonProjectRoot } from '../pythonPreflight';
 
 /**
  * Faz 11b: "proof-java: Çalıştır" - komut paletine gitmeden analiz
@@ -100,11 +101,19 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 				'proof.runItem.mutation',
 			);
 
+		const buildTool = detectRunTestsBuildTool(folder);
+		const isPython = isPythonProjectRoot(folder.uri.fsPath);
+
 		return [
 			// Faz 30 (§7.8): the user's explicit ask for an "easy re-run
 			// button" - always available, without having to wait for a full
-			// analyze run just because the report is missing.
-			runTestsItem(folder),
+			// analyze run just because the report is missing. Suppressed for
+			// a workspace that is a Python project and neither a Maven nor a
+			// Gradle one - the row's own command (`proof.runTests`) always
+			// fails there (no pom.xml/wrapper to run), and always failing is
+			// worse than not being offered.
+			...(buildTool || !isPython ? [runTestsItem(folder, buildTool)] : []),
+			...(isPython ? [pythonAnalyzeItem(folder)] : []),
 			new RunItem(
 				'Quick Scan (overall + new code)',
 				`coverage + bad test findings · new code: ${scopeText} · ${quickScanFreshnessText(folder)}`,
@@ -141,9 +150,19 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunItem> {
 	}
 }
 
+/** The Python sibling of `runTestsItem` below - no auto-run offer (minimal scope, `ui/pythonPreflight.ts`'s file doc comment), just the direct command and the same freshness text Quick Scan uses (both engines write the same `verdict-current.json`). */
+function pythonAnalyzeItem(folder: vscode.WorkspaceFolder): RunItem {
+	return new RunItem(
+		'Analyze (Python)',
+		`coverage + bad test findings · ${quickScanFreshnessText(folder)}`,
+		'proof.analyzePython',
+		'play',
+		'Takes seconds. Runs proof-python (via the proof.python.interpreter setting) against the coverage.py JSON report named by proof.python.reportPath, and computes:\n· Overall coverage (whole repo)\n· Test quality findings (tests with no or weak assertions)\n\nNo new-code/diff scoping and no auto-run offer yet - run pytest with coverage yourself first.',
+	);
+}
+
 /** Faz "Gradle support" G2: the button's own label used to hardcode "Maven" - stale now that Run Tests also runs a real Gradle build (via its own committed wrapper) on a Gradle workspace. Mirrors detectRunTestsBuildTool's own priority so this never disagrees with what actually runs when clicked. */
-function runTestsItem(folder: vscode.WorkspaceFolder): RunItem {
-	const buildTool = detectRunTestsBuildTool(folder);
+function runTestsItem(folder: vscode.WorkspaceFolder, buildTool: 'maven' | 'gradle' | undefined): RunItem {
 	const label = buildTool === 'gradle' ? 'Run Tests (Gradle + JaCoCo)' : 'Run Tests (Maven + JaCoCo)';
 	const tooltip = buildTool === 'gradle'
 		? 'Runs the tests under JaCoCo via Gradle (in a visible terminal) and refreshes the report - only ever the workspace\'s own committed wrapper, never a bare \'gradle\' on PATH. A multi-project build asks which project(s) to run first. Quick Scan runs automatically when it finishes.'

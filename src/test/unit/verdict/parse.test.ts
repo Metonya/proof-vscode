@@ -51,6 +51,36 @@ test('a null percent (denominator 0) is preserved, not coerced to a number', () 
 	}
 });
 
+test('a proof-python verdict (coverage-line, no jacoco-line) parses - D-99 regression', () => {
+	const doc = minimalDocument() as { tool: { name: string }; coverage: { overall: Record<string, unknown> } };
+	doc.tool.name = 'proof-python';
+	doc.coverage.overall = { 'coverage-line': MINIMAL_METRIC, 'strict-line': MINIMAL_METRIC, 'sonar-compatible': MINIMAL_METRIC };
+	const result = parseVerdict(JSON.stringify(doc));
+	assert.equal(result.ok, true);
+	if (result.ok) {
+		const resolved = engineLine(result.value.coverage.overall);
+		assert.equal(resolved?.mode, 'coverage-line');
+		assert.equal(resolved?.metric.percent, 50);
+	}
+});
+
+test('every proof-python-only finding rule (pythonrules.py) is accepted, not just the four shared ones', () => {
+	const doc = minimalDocument() as Record<string, unknown>;
+	const pythonOnlyRules = [
+		'UNCOLLECTED_TEST_CLASS', 'EMPTY_PARAMETRIZE', 'RETURN_IN_TEST',
+		'NON_STRICT_XFAIL', 'UNCALLED_ORACLE', 'MOCK_ONLY_ORACLE', 'BROAD_RAISES_WITHOUT_MATCH',
+	];
+	doc.findings = pythonOnlyRules.map((rule) => ({
+		rule, severity: 'WARNING', confidence: 'HIGH', module: 'root', path: 'tests/test_x.py',
+		startLine: 1, endLine: 1, message: 'm', suggestedAction: 'a', fingerprint: 'deadbeef',
+	}));
+	const result = parseVerdict(JSON.stringify(doc));
+	assert.equal(result.ok, true);
+	if (result.ok) {
+		assert.equal(result.value.findings.length, pythonOnlyRules.length);
+	}
+});
+
 test('a well-formed fileCoverage block parses through', () => {
 	const doc = minimalDocument() as Record<string, unknown>;
 	doc.fileCoverage = {
