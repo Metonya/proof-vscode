@@ -366,7 +366,11 @@ function isMutatedMethod(value: unknown): value is MutatedMethod {
 	return isRecord(value)
 		&& typeof value.className === 'string'
 		&& typeof value.methodName === 'string'
-		&& typeof value.methodDescription === 'string'
+		// D-100: optional - proof-python's mutation block has no JVM
+		// descriptor to report. Requiring it made every proof-python
+		// mutation block fail isMutationBlock, and therefore the whole
+		// document (the same class of bug isMetricSet had, just above).
+		&& (value.methodDescription === undefined || typeof value.methodDescription === 'string')
 		&& typeof value.firstLine === 'number'
 		&& typeof value.lastLine === 'number'
 		&& Array.isArray(value.mutants) && value.mutants.every(isMutant);

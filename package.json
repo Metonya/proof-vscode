@@ -3,7 +3,7 @@
   "displayName": "Proof",
   "description": "Runs the proof CLI (proof-java, and now proof-python) and renders its verdict: inline coverage gutter, per-line test evidence, and mutation findings.",
   "icon": "media/icon.png",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "publisher": "metonya",
   "license": "Apache-2.0",
   "repository": {

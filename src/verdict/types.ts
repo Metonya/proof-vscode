@@ -102,8 +102,8 @@ export interface Mutant {
 export interface MutatedMethod {
 	className: string;
 	methodName: string;
-	/** JVM descriptor, ör. `(II)I` - aynı isimli aşırı yüklemeleri ayırmanın tek yolu. */
-	methodDescription: string;
+	/** JVM descriptor, ör. `(II)I` - aynı isimli aşırı yüklemeleri ayırmanın tek yolu. D-100: proof-python omits this entirely (Python has no descriptor) rather than inventing one - absent, never an empty string, so "no descriptor" and "empty descriptor" can never be confused. */
+	methodDescription?: string;
 	firstLine: number;
 	lastLine: number;
 	mutants: readonly Mutant[];

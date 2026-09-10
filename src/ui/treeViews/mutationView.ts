@@ -228,17 +228,17 @@ function methodItem(node: Extract<MutationNode, { kind: 'method' }>): vscode.Tre
 	const pseudoTestedFinding = findPseudoTestedFinding(node.className, node.method.methodName, node.method.methodDescription);
 	const bridgeNote = pseudoTestedFinding ? '\n\n---\n\nThere\'s a `PSEUDO_TESTED_METHOD` finding for this in Test Quality - right-click → "Show in Test Quality".' : '';
 	item.tooltip = new vscode.MarkdownString(
-		`\`${node.className}#${node.method.methodName}${node.method.methodDescription}\`\n\n`
+		`\`${node.className}#${node.method.methodName}${node.method.methodDescription ?? ''}\`\n\n`
 		+ `Line ${node.method.firstLine}-${node.method.lastLine}\n\n${scoreTooltip(score, allNoCoverage)}${bridgeNote}`,
 	);
 	item.command = openCommandFor(node.className, node.method.firstLine, 'Go to Method');
-	item.id = `proof.mutationMethod:${node.className}#${node.method.methodName}${node.method.methodDescription}`;
+	item.id = `proof.mutationMethod:${node.className}#${node.method.methodName}${node.method.methodDescription ?? ''}`;
 	item.contextValue = pseudoTestedFinding ? 'proof.mutationMethod.pseudoTested' : 'proof.mutationMethod';
 	return item;
 }
 
 /** `getCoverageState()?.findings`'te bu tam metoda ait bir `PSEUDO_TESTED_METHOD` bulgusu var mı - varsa köprünün hedefi. */
-function findPseudoTestedFinding(className: string, methodName: string, methodDescription: string): Finding | undefined {
+function findPseudoTestedFinding(className: string, methodName: string, methodDescription: string | undefined): Finding | undefined {
 	const key = productionMethodKey(className, methodName, methodDescription);
 	return getCoverageState()?.findings.find((f) => f.rule === 'PSEUDO_TESTED_METHOD' && f.productionMethod === key);
 }
@@ -292,7 +292,7 @@ async function killingTestItem(rawTestId: string): Promise<vscode.TreeItem> {
  * koşuda metot artık orada değilse (güncel olmayan sonuç) `undefined`
  * döner, uydurulmaz (hard rule 3a).
  */
-export function findMutationBridgeTarget(className: string, methodName: string, methodDescription: string): MutationNode | undefined {
+export function findMutationBridgeTarget(className: string, methodName: string, methodDescription: string | undefined): MutationNode | undefined {
 	const state = getMutationState();
 	if (!state?.mutation) {
 		return undefined;

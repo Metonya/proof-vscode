@@ -263,6 +263,30 @@ test('D-86: a mutation block with interned testIds/numeric killingTests indexes 
 	}
 });
 
+test('D-100: a proof-python mutation block (cosmic-ray, no methodDescription, empty testIds/killingTests) parses - regression', () => {
+	const doc = minimalDocument() as Record<string, unknown>;
+	doc.mutation = {
+		engine: 'cosmic-ray',
+		engineVersion: '8.7.0',
+		modules: [{
+			id: 'root',
+			testIds: [],
+			methods: [{
+				className: 'src/playground/calculator.py',
+				methodName: 'subtract',
+				firstLine: 14,
+				lastLine: 14,
+				mutants: [{ mutator: 'core/ReplaceBinaryOperator_Sub_Add', line: 14, status: 'SURVIVED', killingTests: [] }],
+			}],
+		}],
+	};
+	const result = parseVerdict(JSON.stringify(doc));
+	assert.equal(result.ok, true);
+	if (result.ok) {
+		assert.equal(result.value.mutation?.modules[0].methods[0].methodDescription, undefined);
+	}
+});
+
 test('coverage.newCode as a real metricSet (a diff that ran fine) parses through', () => {
 	const freshMetric = { numeratorName: 'a', numerator: 1, denominatorName: 'b', denominator: 4, percent: 25 };
 	const doc = minimalDocument() as Record<string, unknown>;

@@ -179,7 +179,7 @@ export function formatRelativeTime(fromMs: number, nowMs: number): string {
 
 export function methodLabel(method: MutatedMethod, siblings: readonly MutatedMethod[]): string {
 	const overloaded = siblings.filter((m) => m.methodName === method.methodName).length > 1;
-	return overloaded ? `${method.methodName}${method.methodDescription}` : `${method.methodName}()`;
+	return overloaded ? `${method.methodName}${method.methodDescription ?? ''}` : `${method.methodName}()`;
 }
 
 /**
@@ -203,12 +203,23 @@ export function mutatorLabel(mutator: string): string {
  * JVM descriptor'ları her zaman `(` ile başladığı için ayraç orada -
  * tahmin değil, biçimin kendisi. Ayrıştırılamıyorsa (beklenmeyen bir
  * biçim) `undefined` döner, uydurulmaz.
+ *
+ * D-100: proof-python's own shape has no descriptor at all -
+ * `"src/playground/calculator.py#subtract"` - so a missing `(` after `#`
+ * is not an unparseable shape, it is this engine's own, and methodName is
+ * simply everything after `#`.
  */
-export function parseProductionMethod(productionMethod: string): { className: string; methodName: string; methodDescription: string } | undefined {
+export function parseProductionMethod(productionMethod: string): { className: string; methodName: string; methodDescription?: string } | undefined {
 	const hashIndex = productionMethod.indexOf('#');
-	const parenIndex = productionMethod.indexOf('(', hashIndex);
-	if (hashIndex < 0 || parenIndex < 0) {
+	if (hashIndex < 0) {
 		return undefined;
+	}
+	const parenIndex = productionMethod.indexOf('(', hashIndex);
+	if (parenIndex < 0) {
+		return {
+			className: productionMethod.slice(0, hashIndex),
+			methodName: productionMethod.slice(hashIndex + 1),
+		};
 	}
 	return {
 		className: productionMethod.slice(0, hashIndex),
@@ -218,14 +229,14 @@ export function parseProductionMethod(productionMethod: string): { className: st
 }
 
 /** `parseProductionMethod`'ın tersi - bir `MutatedMethod`'un `finding.productionMethod` ile birebir karşılaştırılabilecek anahtarı. */
-export function productionMethodKey(className: string, methodName: string, methodDescription: string): string {
-	return `${className}#${methodName}${methodDescription}`;
+export function productionMethodKey(className: string, methodName: string, methodDescription?: string): string {
+	return `${className}#${methodName}${methodDescription ?? ''}`;
 }
 
-/** Bir sınıfın metotları arasında `parseProductionMethod`'ın verdiği kimliğe tam uyan metodu bulur - `Finding.productionMethod` → mutasyon ağacındaki metot köprüsü. */
-export function findMutatedMethod(classes: readonly MutatedClass[], className: string, methodName: string, methodDescription: string): { cls: MutatedClass; method: MutatedMethod } | undefined {
+/** Bir sınıfın metotları arasında `parseProductionMethod`'ın verdiği kimliğe tam uyan metodu bulur - `Finding.productionMethod` → mutasyon ağacındaki metot köprüsü. Absent (proof-python) ve boş dize karşılaştırmada eşit sayılır - ikisi de "tanımlayıcı yok" demek. */
+export function findMutatedMethod(classes: readonly MutatedClass[], className: string, methodName: string, methodDescription?: string): { cls: MutatedClass; method: MutatedMethod } | undefined {
 	const cls = classes.find((c) => c.className === className);
-	const method = cls?.methods.find((m) => m.methodName === methodName && m.methodDescription === methodDescription);
+	const method = cls?.methods.find((m) => m.methodName === methodName && (m.methodDescription ?? '') === (methodDescription ?? ''));
 	return cls && method ? { cls, method } : undefined;
 }
 
@@ -246,7 +257,7 @@ export function findMutatedMethod(classes: readonly MutatedClass[], className: s
 export interface KillContribution {
 	className: string;
 	methodName: string;
-	methodDescription: string;
+	methodDescription?: string;
 	mutantLine: number;
 }
 

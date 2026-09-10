@@ -171,13 +171,38 @@ test('parseProductionMethod: parametresiz/void bir metodun descriptor\'ı da do�
 	);
 });
 
-test('parseProductionMethod: # ya da ( yoksa uydurmaz, undefined döner', () => {
+test('parseProductionMethod: # hiç yoksa uydurmaz, undefined döner', () => {
 	assert.equal(parseProductionMethod('no hash here'), undefined);
-	assert.equal(parseProductionMethod('dev.proofjava.playground.Calculator#square'), undefined);
+});
+
+test('parseProductionMethod: D-100 - ( yoksa proof-python\'ın kendi biçimi sayılır, methodDescription olmadan ayrıştırılır', () => {
+	assert.deepEqual(
+		parseProductionMethod('src/playground/calculator.py#subtract'),
+		{ className: 'src/playground/calculator.py', methodName: 'subtract' },
+	);
 });
 
 test('productionMethodKey: parseProductionMethod\'ın tam tersi, finding.productionMethod ile birebir eşleşir', () => {
 	assert.equal(productionMethodKey('dev.proofjava.playground.Calculator', 'square', '(I)I'), 'dev.proofjava.playground.Calculator#square(I)I');
+});
+
+test('productionMethodKey: D-100 - methodDescription verilmezse (proof-python) sonda boş kalır, "undefined" yazılmaz', () => {
+	assert.equal(productionMethodKey('src/playground/calculator.py', 'subtract'), 'src/playground/calculator.py#subtract');
+});
+
+test('findMutatedMethod: D-100 - proof-python\'ın methodDescription\'sız MutatedMethod\'u, methodDescription verilmeden bulunur', () => {
+	const classes = classesOf({
+		engine: 'cosmic-ray', engineVersion: '8.7.0',
+		modules: [{
+			id: 'root',
+			methods: [
+				{ className: 'src/playground/calculator.py', methodName: 'subtract', firstLine: 14, lastLine: 14, mutants: [] },
+			],
+		}],
+	});
+	const found = findMutatedMethod(classes, 'src/playground/calculator.py', 'subtract');
+	assert.ok(found);
+	assert.equal(found?.method.methodName, 'subtract');
 });
 
 test('findMutatedMethod: gerçek playground şekliyle, method + description eşleşince bulunur', () => {
